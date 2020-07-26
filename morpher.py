@@ -79,39 +79,39 @@ def morph_prop_simple(name, skmin, skmax):
             if skmin != None: skmin.value = 0
             if skmax != None: skmax.value = value
     return bpy.props.FloatProperty(name=name,
-        min = -1.0, max = 1.0,
         soft_min = -1.0, soft_max = 1.0,
         precision = 3,
-        subtype="FACTOR",
-        get=lambda self: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
-        set=setter)
+        subtype = "FACTOR",
+        get = lambda self: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
+        set = setter)
+
+def get_combo_value(arr, idx):
+    print(idx)
+    return sum(0 if sk is None else sk.value * ((arr_idx>>idx&1)*2-1) for arr_idx, sk in enumerate(arr))
 
 # create a bunch of props from combo shape keys
 def morph_props_combo(name, arr):
     nameParts = name.split("_")
     names = nameParts[1].split("-")
     dims = len(names)
-
-    for i in range(dims):
-        names[i] = nameParts[0]+"_"+names[i]
-
-    # calculate combo values at moment of creation
-    values = [ sum(0 if sk is None else sk.value * ((arr_idx>>val_idx&1)*2-1) for arr_idx, sk in enumerate(arr)) for val_idx in range(dims) ]
-
     coeff = 2 / len(arr)
 
-    def update(self, context):
-        values = [ getattr(self, "prop_"+name) for name in names ]
-        for arr_idx, sk in enumerate(arr):
-            sk.value = sum(val*((arr_idx>>val_idx&1)*2-1)*coeff for val_idx, val in enumerate(values))
+    def getterfunc(idx):
+        return lambda self: get_combo_value(arr, idx)
+    def setterfunc(idx):
+        def setter(self, value):
+            values = [ value if val_idx == idx else get_combo_value(arr, val_idx) for val_idx in range(dims) ]
+            for arr_idx, sk in enumerate(arr):
+                sk.value = sum(val*((arr_idx>>val_idx&1)*2-1)*coeff for val_idx, val in enumerate(values))
+        return setter
 
     return [(name, bpy.props.FloatProperty(name=name,
-        min = -dims, max = dims,
-        soft_min = -1.0, soft_max = 1.0,
-        default=values[i],
-        precision = 3,
-        subtype="FACTOR",
-        update=update)) for i, name in enumerate(names)]
+            soft_min = -1.0, soft_max = 1.0,
+            precision = 3,
+            subtype = "FACTOR",
+            get = getterfunc(i),
+            set = setterfunc(i),
+        )) for i, name in ((i, nameParts[0]+"_"+name) for i, name in enumerate(names))]
 
 def morph_props(name, arr):
     if len(arr) == 2:

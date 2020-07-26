@@ -78,7 +78,7 @@ class CharMorphPanel(bpy.types.Panel):
         if hasattr(scn,'charmorphs'):
             self.layout.label(text= "MORPHING", icon='MODIFIER_ON')
             box_new_opt = self.layout.column(align=True)
-            for prop in (p for p in dir(scn.charmorphs) if p.startswith("prop_")):
+            for prop in (p for p in sorted(dir(scn.charmorphs)) if p.startswith("prop_")):
                 box_new_opt.prop(scn.charmorphs, prop)
 
 def import_obj(file,obj):
