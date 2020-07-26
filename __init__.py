@@ -116,6 +116,7 @@ else:
 
 
 def on_select_object():
+    #print("on_select")
     global last_object
     obj = bpy.context.active_object 
     if obj == None or obj == last_object:

@@ -23,29 +23,16 @@ import bpy
 
 logger = logging.getLogger(__name__)
 
-# create n-dimensional array
-def ndim_create(n):
-    if n==1:
-        return [None, None]
-    return [ndim_create(n-1), ndim_create(n-1)]
-
-# assign a value in n-dimensional array
-def ndim_assign(arr, signs, value):
-    if len(signs)==1:
-        arr[signs[0]] = value
-        return
-    ndim_assign(arr[signs[0]], signs[1:], value)
-
-# convert array of min/max to 0/1
+# convert array of min/max binary representation
 def convertSigns(signs):
     d = {"min":0,"max":1}
     try:
-        return [d[sign] for sign in signs]
+        return sum(d[sign]<<i for i, sign in enumerate(signs))
     except KeyError:
-        return []
+        return -1
 
 # scan object shape keys and convert them to dictionary
-# each morph corresponds to n-dimensional array of shape keys
+# each morph corresponds to array of shape keys
 def get_obj_morphs(obj):
     if obj.type != "MESH":
         return None
@@ -59,25 +46,26 @@ def get_obj_morphs(obj):
             continue
 
         names = nameParts[1].split("-")
-        signs = convertSigns(nameParts[2].split("-"))
+        signArr = nameParts[2].split("-")
+        signIdx = convertSigns(signArr)
 
-        if len(names)==0 or len(names) != len(signs):
+        if len(names)==0 or len(names) != len(signArr):
             logger.error("Invalid L2 morph name: {}, skipping".format(sk.name))
             continue
 
-        dims = len(names)
         morph_name = nameParts[0]+"_"+nameParts[1]
+        cnt = 2 ** len(names)
 
         if morph_name in result:
             morph = result[morph_name]
-            if morph[0] != dims:
+            if len(morph) != cnt:
                 logger.error("L2 combo morph conflict: different dimension count on {}, skipping".format(sk.name))
                 continue
         else:
-            morph = (dims, ndim_create(dims))
+            morph = [None] * cnt
             result[morph_name] = morph
 
-        ndim_assign(morph[1], signs, sk)
+        morph[signIdx]=sk
 
     return result
 
@@ -98,41 +86,24 @@ def morph_prop_simple(name, skmin, skmax):
         get=lambda self: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
         set=setter)
 
-def walk_ndim(indices,arr):
-    for i, value in enumerate(arr):
-        if isinstance(value, list):
-            for i2, val2 in walk_ndim(indices+[i],value):
-                yield i2, val2
-        else:
-            yield indices+[i], value
-
 # create a bunch of props from combo shape keys
-def morph_props_combo(name, tup):
-    dims = tup[0]
+def morph_props_combo(name, arr):
     nameParts = name.split("_")
     names = nameParts[1].split("-")
+    dims = len(names)
 
-    for i in range(len(names)):
+    for i in range(dims):
         names[i] = nameParts[0]+"_"+names[i]
 
-    arr = tup[1]
-
     # calculate combo values at moment of creation
-    values = [0] * dims
-    for indices, sk in walk_ndim([], arr):
-        for idx, sign in enumerate(indices):
-            values[idx] += sk.value*(sign*2-1)
+    values = [ sum(0 if sk is None else sk.value * ((arr_idx>>val_idx&1)*2-1) for arr_idx, sk in enumerate(arr)) for val_idx in range(dims) ]
 
-    coeff = 2 ** (1-dims)
+    coeff = 2 / len(arr)
 
     def update(self, context):
         values = [ getattr(self, "prop_"+name) for name in names ]
-        for indices, sk in walk_ndim([], arr):
-            value = 0
-            for idx, sign in enumerate(indices):
-                value += values[idx]*(sign*2-1)*coeff
-            print(sk.name,value,values, indices)
-            sk.value=value
+        for arr_idx, sk in enumerate(arr):
+            sk.value = sum(val*((arr_idx>>val_idx&1)*2-1)*coeff for val_idx, val in enumerate(values))
 
     return [(name, bpy.props.FloatProperty(name=name,
         min = -dims, max = dims,
@@ -142,11 +113,11 @@ def morph_props_combo(name, tup):
         subtype="FACTOR",
         update=update)) for i, name in enumerate(names)]
 
-def morph_props(name, tup):
-    if tup[0] == 1:
-        return [(name, morph_prop_simple(name, tup[1][0], tup[1][1]))]
+def morph_props(name, arr):
+    if len(arr) == 2:
+        return [(name, morph_prop_simple(name, arr[0], arr[1]))]
     else:
-        return morph_props_combo(name, tup)
+        return morph_props_combo(name, arr)
 
 # Create a property group with all morphs
 def create_charmorphs(morphs):
