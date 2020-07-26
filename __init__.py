@@ -72,9 +72,9 @@ class CharMorphPanel(bpy.types.Panel):
             box_new_opt.operator('charmorph.create', icon='ARMATURE_DATA')
         else:
             self.layout.label(text= "Data dir is not found at {}. Creation is not available.".format(data_dir))
-        
+
         box_new_opt.separator(factor=0.5)
-   
+
         if hasattr(scn,'charmorphs'):
             self.layout.label(text= "MORPHING", icon='MODIFIER_ON')
             box_new_opt = self.layout.column(align=True)
@@ -112,7 +112,7 @@ logger.debug("Looking for the database in the folder %s...", data_dir)
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
 else:
-    has_dir=True    
+    has_dir=True
 
 
 def on_select_object():
@@ -164,4 +164,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
