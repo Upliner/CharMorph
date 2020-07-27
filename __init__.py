@@ -62,20 +62,30 @@ class CharMorphPanel(bpy.types.Panel):
 
     def draw(self, context):
         scn = bpy.context.scene
+        ui = scn.charmorph_ui
 
         self.layout.label(text= "CREATION", icon='RNA_ADD')
         box_new_opt = self.layout.column(align=True)
         if utils.data_dir != "" and utils.has_dir:
-            box_new_opt.prop(scn, 'charmorph_base_model')
+            box_new_opt.prop(ui, 'base_model')
+            box_new_opt.prop(ui, 'material_mode')
             box_new_opt.operator('charmorph.create', icon='ARMATURE_DATA')
         else:
-            self.layout.label(text= "Data dir is not found at {}. Creation is not available.".format(data_dir))
+            self.layout.label(text= "Data dir is not found at {}. Creation is not available.".format(utils.data_dir))
 
         box_new_opt.separator(factor=0.5)
 
         if hasattr(scn,'charmorphs'):
             self.layout.label(text= "MORPHING", icon='MODIFIER_ON')
             propList = sorted(dir(scn.charmorphs))
+            self.layout.label(text= "Character type")
+            box_new_opt = self.layout.column(align=True)
+
+            box_new_opt.prop(scn,"chartype")
+            if hasattr(scn.charmorphs,"sub_type"):
+                box_new_opt.prop(scn.charmorphs,"sub_type")
+
+            box_new_opt.separator(factor=0.5)
 
             self.layout.label(text= "Meta morphs")
             box_new_opt = self.layout.column(align=True)
@@ -83,11 +93,17 @@ class CharMorphPanel(bpy.types.Panel):
             for prop in (p for p in propList if p.startswith("meta_")):
                 box_new_opt.prop(scn.charmorphs, prop)
 
-            self.layout.label(text= "Regular morphs")
-            box_new_opt = self.layout.column(align=True)
+            box_new_opt.separator(factor=0.5)
 
-            for prop in (p for p in propList if p.startswith("prop_")):
-                box_new_opt.prop(scn.charmorphs, prop)
+            if hasattr(scn.charmorphs,"clamp_combos"):
+                box_new_opt.prop(scn.charmorphs,"clamp_combos")
+            self.layout.prop(ui,"all_morphs")
+
+            if ui.all_morphs:
+                box_new_opt = self.layout.column(align=True)
+
+                for prop in (p for p in propList if p.startswith("prop_")):
+                    box_new_opt.prop(scn.charmorphs, prop)
 
 def import_obj(file, obj):
     with bpy.data.libraries.load(os.path.join(utils.data_dir, file)) as (data_from, data_to):
@@ -103,7 +119,7 @@ class CharMorphCreate(bpy.types.Operator):
 
     def execute(self, context):
         global last_object
-        base_model = str(bpy.context.scene.charmorph_base_model)
+        base_model = str(context.scene.charmorph_ui.base_model)
         if not base_model:
             raise("Please select base model")
         obj = import_obj("characters/{}/char.blend".format(base_model),"char")
@@ -111,25 +127,38 @@ class CharMorphCreate(bpy.types.Operator):
             raise("Object is not found")
         obj["charmorph_template"] = base_model
         last_object = obj
-        morpher.create_charmorphs(obj, morpher.get_obj_morphs(obj))
+        morpher.create_charmorphs(obj)
         return {"FINISHED"}
 
 def getBaseModels():
     return [("mb_human_female", "Human female (MB-Lab, AGPL3)","")]
 
+class CharMorphUIProps(bpy.types.PropertyGroup):
+    base_model: bpy.props.EnumProperty(
+        name = "Base",
+        items = getBaseModels(),
+        description = "Choose a base model")
+    material_mode: bpy.props.EnumProperty(
+        name = "Materials",
+        items = [
+            ("NS", "Non-Shared","Use unique material for each character"),
+            ("TS", "Shared textures only","Use same texture for all characters"),
+            ("MS", "Shared","Use same materials for all characters")],
+        description = "Choose a base model")
+    all_morphs: bpy.props.BoolProperty(
+        name = "All morphs",
+        description = "View and manipulate all available morphs")
+
+
 def on_select_object():
-    #print("on_select")
     global last_object
     obj = bpy.context.active_object
     if obj == None or obj == last_object:
         return
     last_object = obj
-    morphs = morpher.get_obj_morphs(obj)
-    if not morphs:
-        return
-    morpher.create_charmorphs(obj, morphs)
+    morpher.create_charmorphs(obj)
 
-classes = (CharMorphPanel, CharMorphCreate)
+classes = (CharMorphPanel, CharMorphCreate, CharMorphUIProps)
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 @bpy.app.handlers.persistent
@@ -141,15 +170,10 @@ def load_handler(dummy):
 
 bpy.app.handlers.load_post.append(load_handler)
 
-
 def register():
     print("Charmorph register")
     class_register()
-    bpy.types.Scene.charmorph_base_model = bpy.props.EnumProperty(
-        name = "Base",
-        items = getBaseModels(),
-        description = "Choose a base model",
-        options = {"SKIP_SAVE"})
+    bpy.types.Scene.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
 
     bpy.msgbus.subscribe_rna(
         owner=owner,
@@ -160,7 +184,7 @@ def register():
 def unregister():
     print("Charmorph unregister")
     bpy.msgbus.clear_by_owner(owner)
-    del bpy.types.Scene.charmorph_base_model
+    del bpy.types.Scene.charmorph_ui
     morpher.del_charmorphs()
 
     class_unregister()
