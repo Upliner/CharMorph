@@ -86,7 +86,6 @@ def morph_prop_simple(name, skmin, skmax):
         set = setter)
 
 def get_combo_value(arr, idx):
-    print(idx)
     return sum(0 if sk is None else sk.value * ((arr_idx>>idx&1)*2-1) for arr_idx, sk in enumerate(arr))
 
 # create a bunch of props from combo shape keys
@@ -96,11 +95,19 @@ def morph_props_combo(name, arr):
     dims = len(names)
     coeff = 2 / len(arr)
 
+    values = [ get_combo_value(arr, val_idx) for val_idx in range(dims) ]
+
     def getterfunc(idx):
-        return lambda self: get_combo_value(arr, idx)
+        def getter(self):
+            val = get_combo_value(arr, idx)
+            values[idx]=val
+            return val
+
+        return getter
+
     def setterfunc(idx):
         def setter(self, value):
-            values = [ value if val_idx == idx else get_combo_value(arr, val_idx) for val_idx in range(dims) ]
+            values[idx] = value
             for arr_idx, sk in enumerate(arr):
                 sk.value = sum(val*((arr_idx>>val_idx&1)*2-1)*coeff for val_idx, val in enumerate(values))
         return setter

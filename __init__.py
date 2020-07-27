@@ -99,6 +99,9 @@ class CharMorphCreate(bpy.types.Operator):
         if not base_model:
             raise("Please select base model")
         obj = import_obj("characters/{}/char.blend".format(base_model),"char")
+        if obj == None:
+            raise("Object is not found")
+        obj["charmorph_template"] = base_model
         last_object = obj
         morpher.create_charmorphs(morpher.get_obj_morphs(obj))
         return {"FINISHED"}
