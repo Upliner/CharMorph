@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import morpher
+from . import utils, morpher
 
 rootLogger = logging.getLogger(None)
 rootLogger.setLevel(10)
@@ -44,8 +44,6 @@ bl_info = {
     "category": "Characters"
 }
 
-has_dir = False
-data_dir=""
 last_object = None
 owner = object()
 
@@ -67,7 +65,7 @@ class CharMorphPanel(bpy.types.Panel):
 
         self.layout.label(text= "CREATION", icon='RNA_ADD')
         box_new_opt = self.layout.column(align=True)
-        if data_dir != "" and has_dir:
+        if utils.data_dir != "" and utils.has_dir:
             box_new_opt.prop(scn, 'charmorph_base_model')
             box_new_opt.operator('charmorph.create', icon='ARMATURE_DATA')
         else:
@@ -77,12 +75,22 @@ class CharMorphPanel(bpy.types.Panel):
 
         if hasattr(scn,'charmorphs'):
             self.layout.label(text= "MORPHING", icon='MODIFIER_ON')
+            propList = sorted(dir(scn.charmorphs))
+
+            self.layout.label(text= "Meta morphs")
             box_new_opt = self.layout.column(align=True)
-            for prop in (p for p in sorted(dir(scn.charmorphs)) if p.startswith("prop_")):
+
+            for prop in (p for p in propList if p.startswith("meta_")):
                 box_new_opt.prop(scn.charmorphs, prop)
 
-def import_obj(file,obj):
-    with bpy.data.libraries.load(os.path.join(data_dir,file)) as (data_from, data_to):
+            self.layout.label(text= "Regular morphs")
+            box_new_opt = self.layout.column(align=True)
+
+            for prop in (p for p in propList if p.startswith("prop_")):
+                box_new_opt.prop(scn.charmorphs, prop)
+
+def import_obj(file, obj):
+    with bpy.data.libraries.load(os.path.join(utils.data_dir, file)) as (data_from, data_to):
         if obj not in data_from.objects:
             raise(obj + " object is not found")
         data_to.objects = [obj]
@@ -103,32 +111,23 @@ class CharMorphCreate(bpy.types.Operator):
             raise("Object is not found")
         obj["charmorph_template"] = base_model
         last_object = obj
-        morpher.create_charmorphs(morpher.get_obj_morphs(obj))
+        morpher.create_charmorphs(obj, morpher.get_obj_morphs(obj))
         return {"FINISHED"}
 
 def getBaseModels():
     return [("mb_human_female", "Human female (MB-Lab, AGPL3)","")]
 
-data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-logger.debug("Looking for the database in the folder %s...", data_dir)
-
-if not os.path.isdir(data_dir):
-    logger.error("Charmorph data is not found at {}".format(data_dir))
-else:
-    has_dir=True
-
-
 def on_select_object():
     #print("on_select")
     global last_object
-    obj = bpy.context.active_object 
+    obj = bpy.context.active_object
     if obj == None or obj == last_object:
         return
     last_object = obj
     morphs = morpher.get_obj_morphs(obj)
     if not morphs:
         return
-    morpher.create_charmorphs(morphs)
+    morpher.create_charmorphs(obj, morphs)
 
 classes = (CharMorphPanel, CharMorphCreate)
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)

@@ -18,8 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging
+import os, json, logging
 import bpy
+
+from . import utils
 
 logger = logging.getLogger(__name__)
 
@@ -126,17 +128,48 @@ def morph_props(name, arr):
     else:
         return morph_props_combo(name, arr)
 
+def load_meta(obj):
+    try:
+        with open(os.path.join(utils.data_dir, "characters/{}/morphs_meta.json".format(obj["charmorph_template"])), "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(e)
+        return {}
+
+def meta_prop(name, data):
+    def update(self, context):
+        value = getattr(self, "meta_" + name)
+        for prop in data:
+            propname = "prop_"+prop[0]
+            if not hasattr(self,propname):
+                continue
+            if value<0:
+                propval=prop[1]*-value
+            else:
+                propval=prop[2]*value
+            setattr(self, propname, propval)
+
+    return bpy.props.FloatProperty(name=name,
+        soft_min = -1.0, soft_max = 1.0,
+        precision = 3,
+        subtype = "FACTOR",
+        update = update)
+
+
 # Create a property group with all morphs
-def create_charmorphs(morphs):
+def create_charmorphs(obj, morphs):
     del_charmorphs()
     if not morphs:
         return
+
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(("prop_"+name, prop) for sublist in (morph_props(k,v) for k,v in morphs.items()) for name, prop in sublist)})
+            dict([("prop_"+name, prop) for sublist in (morph_props(k,v) for k,v in morphs.items()) for name, prop in sublist] +
+                 [("meta_"+name, meta_prop(name, data)) for name, data in load_meta(obj).items()])})
+
     bpy.utils.register_class(propGroup)
-    bpy.types.Scene.charmorphs = bpy.props.PointerProperty(type=propGroup,options={"SKIP_SAVE"})
+    bpy.types.Scene.charmorphs = bpy.props.PointerProperty(type=propGroup, options={"SKIP_SAVE"})
 
 # Delete morphs property group
 def del_charmorphs():
