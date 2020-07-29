@@ -82,8 +82,9 @@ class CharMorphPanel(bpy.types.Panel):
             box_new_opt = self.layout.column(align=True)
 
             box_new_opt.prop(scn,"chartype")
-            if hasattr(scn.charmorphs,"sub_type"):
-                box_new_opt.prop(scn.charmorphs,"sub_type")
+            if hasattr(scn.charmorphs,"preset"):
+                box_new_opt.prop(scn.charmorphs,"preset")
+                box_new_opt.prop(scn.charmorphs,"preset_mix")
 
             box_new_opt.separator(factor=0.5)
 
@@ -95,8 +96,7 @@ class CharMorphPanel(bpy.types.Panel):
 
             box_new_opt.separator(factor=0.5)
 
-            if hasattr(scn.charmorphs,"clamp_combos"):
-                box_new_opt.prop(scn.charmorphs,"clamp_combos")
+            box_new_opt.prop(scn.charmorphs,"clamp_combos")
             self.layout.prop(ui,"all_morphs")
 
             if ui.all_morphs:

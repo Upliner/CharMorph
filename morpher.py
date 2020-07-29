@@ -177,16 +177,19 @@ def load_meta(char):
         print(e)
         return {}
 
-def load_subtypes(char, L1):
+def load_presets(char, L1):
     result = {}
-    try:
-        path = os.path.join(utils.data_dir, "characters/{}/subtypes/{}".format(char, L1))
+    def load_dir(path):
+        path = os.path.join(utils.data_dir, path)
         if not os.path.isdir(path):
             return {}
         for fn in os.listdir(path):
             if fn[-5:] == ".json" and os.path.isfile(os.path.join(path, fn)):
                 with open(os.path.join(path, fn), "r") as f:
                     result[fn[:-5]] = json.load(f)
+    try:
+        load_dir("characters/{}/presets".format(char))
+        load_dir("characters/{}/presets/{}".format(char, L1))
     except Exception as e:
         print(e)
     return result
@@ -250,36 +253,44 @@ def create_charmorphs(obj):
     create_charmorphs_L2(obj, char, L1)
 
 
-def type_props(char, L1):
+def preset_props(char, L1):
+    mix_prop = ("preset_mix", bpy.props.BoolProperty(
+        name="Mix with current",
+        description="Mix selected preset with current morphs",
+        default=False))
+
     clamp_prop = ("clamp_combos", bpy.props.BoolProperty(
         name="Clamp combo props",
-        description="Clamp combo properties to (-1..1) so they remain in realistic values",
+        description="Clamp combo properties to (-1..1) so they remain in realistic range",
         default=True))
 
     if char == "":
         return [clamp_prop]
-    subtypes = load_subtypes(char, L1)
+    presets = load_presets(char, L1)
 
     def update(self, context):
-        if not self.sub_type:
+        if not self.preset:
             return
-        data = subtypes.get(self.sub_type, {})
-        for prop, value in data.items():
-            if hasattr(self, "prop_" + prop):
-                setattr(self, "prop_" + prop, value*2-1)
+        data = presets.get(self.preset, {})
+        preset_props = data.get("structural",{})
+        for prop in dir(self):
+            if prop.startswith("prop_"):
+                value = preset_props.get(prop[5:], 0.5)*2-1
+                if self.preset_mix:
+                    value = (value+getattr(self, prop))/2
+                setattr(self, prop, value)
 
     items = [("_", "(empty)", "")] +\
-        [(name, name, "") for name in subtypes.keys()]
-    return [clamp_prop, ("sub_type", bpy.props.EnumProperty(
-        name="Sub-type",
+        [(name, name, "") for name in sorted(presets.keys())]
+    return [mix_prop, clamp_prop,
+        ("preset", bpy.props.EnumProperty(
+        name="Presets",
         default="_",
         items=items,
-        description="Choose character sub-type",
+        description="Choose morphing preset",
         update=update))]
 
 # Create a property group with all L2 morphs
-
-
 def create_charmorphs_L2(obj, char, L1):
     del_charmorphs_L2()
     morphs = get_morphs_L2(obj, L1)
@@ -289,7 +300,7 @@ def create_charmorphs_L2(obj, char, L1):
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(type_props(char, L1) +
+            dict(preset_props(char, L1) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
                 [("meta_"+name, meta_prop(name, data)) for name, data in load_meta(char).items()])})
 
@@ -299,15 +310,12 @@ def create_charmorphs_L2(obj, char, L1):
         type=propGroup, options={"SKIP_SAVE"})
 
 # Delete morphs property group
-
-
 def del_charmorphs_L2():
     if not hasattr(bpy.types.Scene, "charmorphs"):
         return
     propGroup = bpy.types.Scene.charmorphs[1]['type']
     del bpy.types.Scene.charmorphs
     bpy.utils.unregister_class(propGroup)
-
 
 def del_charmorphs():
     if hasattr(bpy.types.Scene, "chartype"):
