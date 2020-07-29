@@ -290,6 +290,13 @@ def preset_props(char, L1):
         description="Choose morphing preset",
         update=update))]
 
+def morph_categories_prop(morphs):
+    return [("category",bpy.props.EnumProperty(
+        name="Category",
+        items=[("<None>","<None>",""),("<All>","<All>","")] +
+            [(name,name,"") for name in sorted(set(morph[:morph.find("_")] for morph in morphs.keys()))],
+        description="Select morphing categories to show"))]
+
 # Create a property group with all L2 morphs
 def create_charmorphs_L2(obj, char, L1):
     del_charmorphs_L2()
@@ -300,7 +307,7 @@ def create_charmorphs_L2(obj, char, L1):
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(preset_props(char, L1) +
+            dict(preset_props(char, L1) + morph_categories_prop(morphs) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
                 [("meta_"+name, meta_prop(name, data)) for name, data in load_meta(char).items()])})
 

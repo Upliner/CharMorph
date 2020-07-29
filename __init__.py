@@ -97,12 +97,12 @@ class CharMorphPanel(bpy.types.Panel):
             box_new_opt.separator(factor=0.5)
 
             box_new_opt.prop(scn.charmorphs,"clamp_combos")
-            self.layout.prop(ui,"all_morphs")
+            box_new_opt.separator(factor=0.5)
+            self.layout.prop(scn.charmorphs, "category")
 
-            if ui.all_morphs:
+            if scn.charmorphs.category != "<None>":
                 box_new_opt = self.layout.column(align=True)
-
-                for prop in (p for p in propList if p.startswith("prop_")):
+                for prop in (p for p in propList if p.startswith("prop_" + ("" if scn.charmorphs.category == "<All>" else scn.charmorphs.category + "_"))):
                     box_new_opt.prop(scn.charmorphs, prop)
 
 def import_obj(file, obj):
@@ -145,9 +145,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("TS", "Shared textures only","Use same texture for all characters"),
             ("MS", "Shared","Use same materials for all characters")],
         description = "Choose a base model")
-    all_morphs: bpy.props.BoolProperty(
-        name = "All morphs",
-        description = "View and manipulate all available morphs")
 
 
 def on_select_object():
