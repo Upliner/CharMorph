@@ -194,24 +194,38 @@ def load_presets(char, L1):
         print(e)
     return result
 
-def meta_prop(name, data):
+def meta_props(name, data):
     def update(self, context):
+        prev_value = getattr(self, "metaprev_" + name)
         value = getattr(self, "meta_" + name)
+        setattr(self, "metaprev_" + name, value)
         for prop in data:
             propname = "prop_"+prop[0]
             if not hasattr(self, propname):
                 continue
-            if value < 0:
-                propval = prop[1]*-value
-            else:
-                propval = prop[2]*value
-            setattr(self, propname, propval*2)
+            propval = getattr(self, propname)
 
-    return bpy.props.FloatProperty(name=name,
-        soft_min = -1.0, soft_max = 1.0,
+            def calc_val(val):
+                return 2 * (prop[2]*val if val > 0 else -prop[1]*val)
+
+            val_prev = calc_val(prev_value)
+            val_cur = calc_val(value)
+
+            # assign absolute prop value if current property value is out of range
+            # or add a delta if it is within (-0.999..0.999)
+            sign = -1 if value-prev_value < 0 else 1
+            if propval*sign>0.999 and val_prev*sign > 1:
+                 propval = val_cur
+            else:
+                propval += val_cur-val_prev
+            setattr(self, propname, propval)
+
+    return [("metaprev_"+name,bpy.props.FloatProperty(name=name)),
+        ("meta_"+name,bpy.props.FloatProperty(name=name,
+        min = -1.0, max = 1.0,
         precision = 3,
         subtype = "FACTOR",
-        update = update)
+        update = update))]
 
 
 def clear_old_L2(obj, new_L1):
@@ -280,7 +294,7 @@ def preset_props(char, L1):
                     value = (value+getattr(self, prop))/2
                 setattr(self, prop, value)
 
-    items = [("_", "(empty)", "")] +\
+    items = [("_", "(reset)", "")] +\
         [(name, name, "") for name in sorted(presets.keys())]
     return [mix_prop, clamp_prop,
         ("preset", bpy.props.EnumProperty(
@@ -293,7 +307,7 @@ def preset_props(char, L1):
 def morph_categories_prop(morphs):
     return [("category",bpy.props.EnumProperty(
         name="Category",
-        items=[("<None>","<None>",""),("<All>","<All>","")] +
+        items=[("<None>","<None>",""),("<All>","<All>",""),("","-------","")] +
             [(name,name,"") for name in sorted(set(morph[:morph.find("_")] for morph in morphs.keys()))],
         description="Select morphing categories to show"))]
 
@@ -309,7 +323,7 @@ def create_charmorphs_L2(obj, char, L1):
         {"__annotations__":
             dict(preset_props(char, L1) + morph_categories_prop(morphs) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
-                [("meta_"+name, meta_prop(name, data)) for name, data in load_meta(char).items()])})
+                [item for sublist in (meta_props(name, data) for name, data in load_meta(char).items()) for item in sublist])})
 
     bpy.utils.register_class(propGroup)
 
