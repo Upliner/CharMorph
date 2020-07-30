@@ -203,16 +203,21 @@ def meta_props(name, data):
             propname = "prop_"+prop[0]
             if not hasattr(self, propname):
                 continue
-            propval = getattr(self, propname)
 
             def calc_val(val):
                 return 2 * (prop[2]*val if val > 0 else -prop[1]*val)
+
+            if not self.relative_meta:
+                setattr(self, propname, calc_val(value))
+                continue
+
+            propval = getattr(self, propname)
 
             val_prev = calc_val(prev_value)
             val_cur = calc_val(value)
 
             # assign absolute prop value if current property value is out of range
-            # or add a delta if it is within (-0.999..0.999)
+            # or add a delta if it is within (-0.999 .. 0.999)
             sign = -1 if value-prev_value < 0 else 1
             if propval*sign>0.999 and val_prev*sign > 1:
                  propval = val_cur
@@ -267,19 +272,24 @@ def create_charmorphs(obj):
     create_charmorphs_L2(obj, char, L1)
 
 
-def preset_props(char, L1):
-    mix_prop = ("preset_mix", bpy.props.BoolProperty(
+def option_props():
+    return [
+        ("preset_mix", bpy.props.BoolProperty(
         name="Mix with current",
         description="Mix selected preset with current morphs",
-        default=False))
-
-    clamp_prop = ("clamp_combos", bpy.props.BoolProperty(
+        default=False)),
+        ("clamp_combos", bpy.props.BoolProperty(
         name="Clamp combo props",
         description="Clamp combo properties to (-1..1) so they remain in realistic range",
-        default=True))
+        default=True)),
+        ("relative_meta", bpy.props.BoolProperty(
+        name="Relative meta props",
+        description="Adjust meta props relatively",
+        default=True))]
 
+def preset_props(char, L1):
     if char == "":
-        return [clamp_prop]
+        return []
     presets = load_presets(char, L1)
 
     def update(self, context):
@@ -294,20 +304,17 @@ def preset_props(char, L1):
                     value = (value+getattr(self, prop))/2
                 setattr(self, prop, value)
 
-    items = [("_", "(reset)", "")] +\
-        [(name, name, "") for name in sorted(presets.keys())]
-    return [mix_prop, clamp_prop,
-        ("preset", bpy.props.EnumProperty(
+    return [("preset", bpy.props.EnumProperty(
         name="Presets",
         default="_",
-        items=items,
+        items=[("_", "(reset)", "")] + [(name, name, "") for name in sorted(presets.keys())],
         description="Choose morphing preset",
         update=update))]
 
 def morph_categories_prop(morphs):
     return [("category",bpy.props.EnumProperty(
         name="Category",
-        items=[("<None>","<None>",""),("<All>","<All>",""),("","-------","")] +
+        items=[("<None>","<None>","Hide all morphs"), ("<All>","<All>","Show all morphs")] +
             [(name,name,"") for name in sorted(set(morph[:morph.find("_")] for morph in morphs.keys()))],
         description="Select morphing categories to show"))]
 
@@ -321,7 +328,7 @@ def create_charmorphs_L2(obj, char, L1):
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(preset_props(char, L1) + morph_categories_prop(morphs) +
+            dict(option_props() + preset_props(char, L1) + morph_categories_prop(morphs) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
                 [item for sublist in (meta_props(name, data) for name, data in load_meta(char).items()) for item in sublist])})
 

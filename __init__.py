@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging
+import os, logging, re, random
 import bpy
 
 from . import utils, morpher
@@ -88,18 +88,28 @@ class CharMorphPanel(bpy.types.Panel):
 
             box_new_opt.separator(factor=0.5)
 
-            self.layout.label(text= "Meta morphs")
-            box_new_opt = self.layout.column(align=True)
+            meta_morphs = [p for p in propList if p.startswith("meta_")]
+            if len(meta_morphs) > 0:
+                self.layout.label(text= "Meta morphs")
+                box_new_opt = self.layout.column(align=True)
+                box_new_opt.prop(scn.charmorphs, "relative_meta")
 
-            for prop in (p for p in propList if p.startswith("meta_")):
-                box_new_opt.prop(scn.charmorphs, prop)
-
-            box_new_opt.separator(factor=0.5)
+                for prop in meta_morphs:
+                    box_new_opt.prop(scn.charmorphs, prop)
 
             box_new_opt.prop(scn.charmorphs,"clamp_combos")
             box_new_opt.separator(factor=0.5)
-            self.layout.prop(scn.charmorphs, "category")
 
+            self.layout.label(text= "Randomize")
+            box_new_opt = self.layout.column(align=True)
+            box_new_opt.prop(ui, "randomize_rel")
+            box_new_opt.prop(ui, "randomize_incl")
+            box_new_opt.prop(ui, "randomize_excl")
+            box_new_opt.prop(ui, "randomize_strength")
+            box_new_opt.operator('charmorph.randomize')
+            box_new_opt.separator(factor=0.5)
+
+            self.layout.prop(scn.charmorphs, "category")
             if scn.charmorphs.category != "<None>":
                 box_new_opt = self.layout.column(align=True)
                 for prop in (p for p in propList if p.startswith("prop_" + ("" if scn.charmorphs.category == "<All>" else scn.charmorphs.category + "_"))):
@@ -130,6 +140,30 @@ class CharMorphCreate(bpy.types.Operator):
         morpher.create_charmorphs(obj)
         return {"FINISHED"}
 
+class CharMorphRandomize(bpy.types.Operator):
+    bl_idname = "charmorph.randomize"
+    bl_label = "Randomize"
+
+    def execute(self, context):
+        scn = context.scene
+        if not hasattr(scn,'charmorphs'):
+            return {"CANCELLED"}
+        ui = scn.charmorph_ui
+        cm = scn.charmorphs
+        incl = re.compile(ui.randomize_incl)
+        excl = re.compile(ui.randomize_excl)
+        for prop in dir(cm):
+            if not prop.startswith("prop_"):
+                continue
+            propname = prop[5:]
+            if excl.match(propname) or not incl.match(propname):
+                continue
+            val = (ui.randomize_strength * (random.random() * 2 - 1))
+            if ui.randomize_rel:
+                val += getattr(cm, prop)
+            setattr(cm, prop, val)
+        return {"FINISHED"}
+
 def getBaseModels():
     return [("mb_human_female", "Human female (MB-Lab, AGPL3)","")]
 
@@ -145,6 +179,14 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("TS", "Shared textures only","Use same texture for all characters"),
             ("MS", "Shared","Use same materials for all characters")],
         description = "Choose a base model")
+    randomize_incl: bpy.props.StringProperty(
+        name = "Incl. regex")
+    randomize_excl: bpy.props.StringProperty(
+        name = "Excl. regex", default="^Fantasy\_")
+    randomize_rel: bpy.props.BoolProperty(
+        name = "Relative")
+    randomize_strength: bpy.props.FloatProperty(
+        name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
 
 
 def on_select_object():
@@ -155,7 +197,7 @@ def on_select_object():
     last_object = obj
     morpher.create_charmorphs(obj)
 
-classes = (CharMorphPanel, CharMorphCreate, CharMorphUIProps)
+classes = (CharMorphPanel, CharMorphUIProps, CharMorphCreate, CharMorphRandomize)
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 @bpy.app.handlers.persistent
