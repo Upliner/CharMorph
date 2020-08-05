@@ -27,6 +27,8 @@ from . import library
 
 logger = logging.getLogger(__name__)
 
+meta_lock = False
+
 # convert array of min/max binary representation
 def convertSigns(signs):
     d = {"min": 0, "max": 1}
@@ -194,6 +196,9 @@ def load_presets(char, L1):
 
 def meta_props(name, data):
     def update(self, context):
+        global meta_lock
+        if meta_lock:
+            return
         prev_value = getattr(self, "metaprev_" + name)
         value = getattr(self, "meta_" + name)
         setattr(self, "metaprev_" + name, value)
@@ -290,16 +295,20 @@ def preset_props(char, L1):
     presets = load_presets(char, L1)
 
     def update(self, context):
+        global meta_lock
         if not self.preset:
             return
         data = presets.get(self.preset, {})
         preset_props = data.get("structural",{})
+        meta_lock = True
         for prop in dir(self):
             if prop.startswith("prop_"):
                 value = preset_props.get(prop[5:], 0.5)*2-1
                 if self.preset_mix:
                     value = (value+getattr(self, prop))/2
                 setattr(self, prop, value)
+            elif prop.startswith("meta"):
+                setattr(self, prop, 0)
 
     return [("preset", bpy.props.EnumProperty(
         name="Presets",
