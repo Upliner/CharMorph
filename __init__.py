@@ -24,10 +24,11 @@ import bpy
 from . import library, morphing
 
 rootLogger = logging.getLogger(None)
-rootLogger.setLevel(10)
-ch = logging.StreamHandler()
-ch.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(name)s - %(funcName)s - %(lineno)s - %(message)s'))
-rootLogger.addHandler(ch)
+if not rootLogger.hasHandlers():
+    rootLogger.setLevel(10)
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(name)s - %(funcName)s - %(lineno)s - %(message)s'))
+    rootLogger.addHandler(ch)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,6 @@ bl_info = {
     "category": "Characters"
 }
 
-last_object = None
 owner = object()
 
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
@@ -56,7 +56,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
 
     @classmethod
     def poll(self, context):
-        if last_object == None and context.active_object != None and not hasattr(context.scene,'charmorphs'):
+        if morphing.last_object == None and context.active_object != None and not hasattr(context.scene,'charmorphs'):
             bpy.msgbus.publish_rna(key=(bpy.types.LayerObjects, "active"))
         return True
 
@@ -113,15 +113,19 @@ def getBaseModels():
 class CharMorphUIProps(bpy.types.PropertyGroup):
     base_model: bpy.props.EnumProperty(
         name = "Base",
-        items = getBaseModels(),
+        items = [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
         description = "Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name = "Materials",
+        default = "TS",
         items = [
             ("NS", "Non-Shared","Use unique material for each character"),
             ("TS", "Shared textures only","Use same texture for all characters"),
             ("MS", "Shared","Use same materials for all characters")],
         description = "Choose a base model")
+    material_local: bpy.props.BoolProperty(
+        name = "Use local materials", default=True,
+        description = "Use local copies of materials for faster loading")
     randomize_incl: bpy.props.StringProperty(
         name = "Incl. regex")
     randomize_excl: bpy.props.StringProperty(
@@ -131,24 +135,33 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     randomize_strength: bpy.props.FloatProperty(
         name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
 
+class CharMorphPrefs(bpy.types.AddonPreferences):
+    bl_idname = __package__
+
+    adult_mode: bpy.props.BoolProperty(
+        name="Adult mode",
+        description="No censors, enable adult assets",
+    )
+
+    def draw(self, context):
+        self.layout.prop(self,"adult_mode")
+
+
 # for some reason bl_order doesn't affect order of child panels and depends only on class registration order
-classes_before = [CharMorphUIProps, VIEW3D_PT_CharMorph]
+classes_before = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 classes_after = [CHARMORPH_PT_Randomize, CharMorphRandomize]
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes_before + library.classes + morphing.classes + classes_after)
 
 def on_select_object():
-    global last_object
     obj = bpy.context.active_object
-    if obj == None or obj == last_object:
+    if obj == None or obj == morphing.last_object:
         return
-    last_object = obj
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent
 def load_handler(dummy):
-    global last_object
-    last_object = None
+    morphing.last_object = None
     morphing.del_charmorphs()
     on_select_object()
 

@@ -18,15 +18,14 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os
-import json
-import logging
+import os, json, yaml, logging
 import bpy
 
-from . import library
+from . import library, materials
 
 logger = logging.getLogger(__name__)
 
+last_object = None
 meta_lock = False
 
 # convert array of min/max binary representation
@@ -44,7 +43,7 @@ def updateL1(L1data, newkey):
 # scan object shape keys and convert them to dictionary
 # each morph corresponds to one or more shape keys
 def get_morphs_L1(obj):
-    if obj.type != "MESH" or not obj.data.shape_keys:
+    if not obj.data.shape_keys:
         return "", {}
     maxkey = ""
     result = {}
@@ -63,7 +62,7 @@ def get_morphs_L1(obj):
     return (maxkey, result)
 
 def get_morphs_L2(obj, L1):
-    if obj.type != "MESH" or not obj.data.shape_keys:
+    if not obj.data.shape_keys:
         return {}
 
     result = {}
@@ -167,16 +166,6 @@ def morph_props(name, arr):
     else:
         return morph_props_combo(name, arr)
 
-def load_meta(char):
-    if char == "":
-        return
-    try:
-        with open(os.path.join(library.data_dir, "characters/{}/morphs_meta.json".format(char)), "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(e)
-        return {}
-
 def load_presets(char, L1):
     result = {}
     def load_dir(path):
@@ -184,9 +173,12 @@ def load_presets(char, L1):
         if not os.path.isdir(path):
             return {}
         for fn in os.listdir(path):
-            if fn[-5:] == ".json" and os.path.isfile(os.path.join(path, fn)):
+            if os.path.isfile(os.path.join(path, fn)):
                 with open(os.path.join(path, fn), "r") as f:
-                    result[fn[:-5]] = json.load(f)
+                    if fn[-5:] == ".yaml":
+                        result[fn[:-5]] = yaml.safe_load(f)
+                    elif fn[-5:] == ".json":
+                        result[fn[:-5]] = json.load(f)
     try:
         load_dir("characters/{}/presets".format(char))
         load_dir("characters/{}/presets/{}".format(char, L1))
@@ -241,12 +233,18 @@ def clear_old_L2(obj, new_L1):
             sk.value = 0
 
 def create_charmorphs(obj):
-    L1, morphs = get_morphs_L1(obj)
-    if len(morphs) == 0:
+    if obj.type != "MESH":
         return
 
-    char = obj.get("charmorph_template", "")
-    items = [("", "(empty)", "")] + [(name, name, "") for name in morphs.keys()]
+    L1, morphs = get_morphs_L1(obj)
+
+    char = library.chars.get(obj.get("charmorph_template"), library.empty_char)
+    items = [(name, char.config.get("types",{}).get(name, {}).get("title",name), "") for name in morphs.keys()]
+
+    if L1=="" and "default_type" in char.config:
+        L1 = char.config["default_type"]
+        updateL1(morphs, L1)
+
     L1_idx = 0
     for i in range(1, len(items)-1):
         if items[i][0] == L1:
@@ -255,6 +253,8 @@ def create_charmorphs(obj):
 
     def chartype_setter(self, value):
         nonlocal L1_idx
+        if value == L1_idx:
+            return
         L1_idx = value
         L1 = items[L1_idx][0]
         updateL1(morphs, L1)
@@ -300,6 +300,7 @@ def preset_props(char, L1):
             return
         data = presets.get(self.preset, {})
         preset_props = data.get("structural",{})
+        meta_props = data.get("metaproperties",{})
         meta_lock = True
         for prop in dir(self):
             if prop.startswith("prop_"):
@@ -308,7 +309,7 @@ def preset_props(char, L1):
                     value = (value+getattr(self, prop))/2
                 setattr(self, prop, value)
             elif prop.startswith("meta"):
-                setattr(self, prop, 0)
+                setattr(self, prop, meta_props.get(prop[prop.find("_")+1:],0))
         meta_lock = False
 
     return [("preset", bpy.props.EnumProperty(
@@ -327,6 +328,9 @@ def morph_categories_prop(morphs):
 
 # Create a property group with all L2 morphs
 def create_charmorphs_L2(obj, char, L1):
+    global last_object
+    last_object = obj
+
     del_charmorphs_L2()
     morphs = get_morphs_L2(obj, L1)
     if not morphs:
@@ -335,9 +339,9 @@ def create_charmorphs_L2(obj, char, L1):
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(option_props() + preset_props(char, L1) + morph_categories_prop(morphs) +
+            dict(option_props() + preset_props(char.name, L1) + morph_categories_prop(morphs) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
-                [item for sublist in (meta_props(name, data) for name, data in load_meta(char).items()) for item in sublist])})
+                [item for sublist in (meta_props(name, data) for name, data in char.morphs_meta.items()) for item in sublist])})
 
     bpy.utils.register_class(propGroup)
 
