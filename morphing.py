@@ -217,7 +217,6 @@ def meta_props(name, data):
             # assign absolute prop value if current property value is out of range
             # or add a delta if it is within (-0.999 .. 0.999)
             sign = -1 if value-prev_value < 0 else 1
-            print(propval,val_prev,sign)
             if propval*sign<-0.999 and val_prev*sign < -1:
                  propval = val_cur
             else:
