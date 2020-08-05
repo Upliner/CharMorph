@@ -309,6 +309,7 @@ def preset_props(char, L1):
                 setattr(self, prop, value)
             elif prop.startswith("meta"):
                 setattr(self, prop, 0)
+        meta_lock = False
 
     return [("preset", bpy.props.EnumProperty(
         name="Presets",
