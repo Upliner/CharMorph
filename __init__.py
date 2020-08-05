@@ -21,7 +21,7 @@
 import os, logging, re, random
 import bpy
 
-from . import utils, morpher
+from . import library, morphing
 
 rootLogger = logging.getLogger(None)
 rootLogger.setLevel(10)
@@ -47,9 +47,9 @@ bl_info = {
 last_object = None
 owner = object()
 
-class CharMorphPanel(bpy.types.Panel):
+class VIEW3D_PT_CharMorph(bpy.types.Panel):
+    bl_idname = "VIEW3D_PT_CharMorph"
     bl_label = "CharMorph {0}.{1}.{2}".format(bl_info["version"][0], bl_info["version"][1], bl_info["version"][2])
-    bl_idname = "OBJECT_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
@@ -61,84 +61,27 @@ class CharMorphPanel(bpy.types.Panel):
         return True
 
     def draw(self, context):
-        scn = bpy.context.scene
-        ui = scn.charmorph_ui
+        pass
 
-        self.layout.label(text= "CREATION", icon='RNA_ADD')
-        box_new_opt = self.layout.column(align=True)
-        if utils.data_dir != "" and utils.has_dir:
-            box_new_opt.prop(ui, 'base_model')
-            box_new_opt.prop(ui, 'material_mode')
-            box_new_opt.operator('charmorph.create', icon='ARMATURE_DATA')
-        else:
-            self.layout.label(text= "Data dir is not found at {}. Creation is not available.".format(utils.data_dir))
+class CHARMORPH_PT_Randomize(bpy.types.Panel):
+    bl_label = "Randomize"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 3
 
-        box_new_opt.separator(factor=0.5)
+    @classmethod
+    def poll(self, context):
+        return hasattr(context.scene,'charmorphs')
 
-        if hasattr(scn,'charmorphs'):
-            self.layout.label(text= "MORPHING", icon='MODIFIER_ON')
-            propList = sorted(dir(scn.charmorphs))
-            self.layout.label(text= "Character type")
-            box_new_opt = self.layout.column(align=True)
+    def draw(self, context):
+        ui = context.scene.charmorph_ui
+        self.layout.prop(ui, "randomize_rel")
+        self.layout.prop(ui, "randomize_incl")
+        self.layout.prop(ui, "randomize_excl")
+        self.layout.prop(ui, "randomize_strength")
+        self.layout.operator('charmorph.randomize')
 
-            box_new_opt.prop(scn,"chartype")
-            if hasattr(scn.charmorphs,"preset"):
-                box_new_opt.prop(scn.charmorphs,"preset")
-                box_new_opt.prop(scn.charmorphs,"preset_mix")
-
-            box_new_opt.separator(factor=0.5)
-
-            meta_morphs = [p for p in propList if p.startswith("meta_")]
-            if len(meta_morphs) > 0:
-                self.layout.label(text= "Meta morphs")
-                box_new_opt = self.layout.column(align=True)
-                box_new_opt.prop(scn.charmorphs, "relative_meta")
-
-                for prop in meta_morphs:
-                    box_new_opt.prop(scn.charmorphs, prop)
-
-            box_new_opt.prop(scn.charmorphs,"clamp_combos")
-            box_new_opt.separator(factor=0.5)
-
-            self.layout.label(text= "Randomize")
-            box_new_opt = self.layout.column(align=True)
-            box_new_opt.prop(ui, "randomize_rel")
-            box_new_opt.prop(ui, "randomize_incl")
-            box_new_opt.prop(ui, "randomize_excl")
-            box_new_opt.prop(ui, "randomize_strength")
-            box_new_opt.operator('charmorph.randomize')
-            box_new_opt.separator(factor=0.5)
-
-            self.layout.prop(scn.charmorphs, "category")
-            if scn.charmorphs.category != "<None>":
-                box_new_opt = self.layout.column(align=True)
-                for prop in (p for p in propList if p.startswith("prop_" + ("" if scn.charmorphs.category == "<All>" else scn.charmorphs.category + "_"))):
-                    box_new_opt.prop(scn.charmorphs, prop)
-
-def import_obj(file, obj):
-    with bpy.data.libraries.load(os.path.join(utils.data_dir, file)) as (data_from, data_to):
-        if obj not in data_from.objects:
-            raise(obj + " object is not found")
-        data_to.objects = [obj]
-    bpy.context.collection.objects.link(data_to.objects[0])
-    return data_to.objects[0]
-
-class CharMorphCreate(bpy.types.Operator):
-    bl_idname = "charmorph.create"
-    bl_label = "Create character"
-
-    def execute(self, context):
-        global last_object
-        base_model = str(context.scene.charmorph_ui.base_model)
-        if not base_model:
-            raise("Please select base model")
-        obj = import_obj("characters/{}/char.blend".format(base_model),"char")
-        if obj == None:
-            raise("Object is not found")
-        obj["charmorph_template"] = base_model
-        last_object = obj
-        morpher.create_charmorphs(obj)
-        return {"FINISHED"}
 
 class CharMorphRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
@@ -188,6 +131,11 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     randomize_strength: bpy.props.FloatProperty(
         name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
 
+# for some reason bl_order doesn't affect order of child panels and depends only on class registration order
+classes_before = [CharMorphUIProps, VIEW3D_PT_CharMorph]
+classes_after = [CHARMORPH_PT_Randomize, CharMorphRandomize]
+
+class_register, class_unregister = bpy.utils.register_classes_factory(classes_before + library.classes + morphing.classes + classes_after)
 
 def on_select_object():
     global last_object
@@ -195,16 +143,13 @@ def on_select_object():
     if obj == None or obj == last_object:
         return
     last_object = obj
-    morpher.create_charmorphs(obj)
-
-classes = (CharMorphPanel, CharMorphUIProps, CharMorphCreate, CharMorphRandomize)
-class_register, class_unregister = bpy.utils.register_classes_factory(classes)
+    morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent
 def load_handler(dummy):
     global last_object
     last_object = None
-    morpher.del_charmorphs()
+    morphing.del_charmorphs()
     on_select_object()
 
 bpy.app.handlers.load_post.append(load_handler)
@@ -224,7 +169,7 @@ def unregister():
     print("Charmorph unregister")
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.Scene.charmorph_ui
-    morpher.del_charmorphs()
+    morphing.del_charmorphs()
 
     class_unregister()
 
