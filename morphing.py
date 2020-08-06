@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, json, yaml, logging
-import bpy, bpy_extras
+import bpy
 
 from . import library, materials
 
@@ -237,7 +237,7 @@ def meta_props(name, data):
 
             # assign absolute prop value if current property value is out of range
             # or add a delta if it is within (-0.999 .. 0.999)
-            sign = -1 if value-prev_value < 0 else 1
+            sign = -1 if val_cur-val_prev < 0 else 1
             if propval*sign<-0.999 and val_prev*sign < -1:
                  propval = val_cur
             else:
@@ -363,15 +363,13 @@ def create_charmorphs_L2(obj, char, L1):
     bpy.types.Scene.charmorphs = bpy.props.PointerProperty(
         type=propGroup, options={"SKIP_SAVE"})
 
-def reset_meta():
+# Reset all meta properties to 0
+def reset_meta(charmorphs):
     global meta_lock
-    if not hasattr(bpy.context.scene,'charmorphs'):
-        return
-    data = bpy.context.scene.charmorphs
     meta_lock = True
-    for prop in dir(data):
+    for prop in dir(charmorphs):
         if prop.startswith("meta"):
-            setattr(data, prop, 0)
+            setattr(charmorphs, prop, 0)
     meta_lock = False
 
 # Delete morphs property group
@@ -431,95 +429,4 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             for prop in (p for p in propList if p.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category + "_"))):
                 col.prop(morphs, prop, slider=True)
 
-class CHARMORPH_PT_ImportExport(bpy.types.Panel):
-    bl_label = "Import/Export"
-    bl_parent_id = "VIEW3D_PT_CharMorph"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_order = 5
-
-    @classmethod
-    def poll(cls, context):
-        return hasattr(context.scene,'charmorphs')
-
-    def draw(self, context):
-        ui = context.scene.charmorph_ui
-
-        self.layout.label(text = "Export format:")
-        self.layout.prop(ui, "export_format", expand=True)
-        self.layout.separator()
-        col = self.layout.column(align=True)
-        if ui.export_format=="json":
-            col.operator("charmorph.export_json")
-        elif ui.export_format=="yaml":
-            col.operator("charmorph.export_yaml")
-        col.operator("charmorph.import")
-
-def morphs_to_data(cm):
-    morphs={}
-    meta={}
-    for prop in dir(cm):
-        if prop.startswith("prop_"):
-            morphs[prop[5:]] = getattr(cm, prop)
-        elif prop.startswith("meta_"):
-            meta[prop[5:]] = getattr(cm, prop)
-    return {"morphs":morphs,"meta": meta}
-
-class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "charmorph.export_json"
-    bl_label = "Export morphs"
-    bl_description = "Export current morphs to MB-Lab compatible json file"
-    filename_ext = ".json"
-
-    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
-
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
-            json.dump(charmorph_to_mblab(morphs_to_data(context.scene.charmorphs)),f, indent=4, sort_keys=True)
-        return {"FINISHED"}
-
-class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "charmorph.export_yaml"
-    bl_label = "Export morphs"
-    bl_description = "Export current morphs to yaml file"
-    filename_ext = ".yaml"
-
-    filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
-
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
-            yaml.dump(morphs_to_data(context.scene.charmorphs),f)
-        return {"FINISHED"}
-
-class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
-    bl_idname = "charmorph.import"
-    bl_label = "Import morphs"
-    bl_description = "Import morphs from yaml or json file"
-    bl_options = {"UNDO"}
-
-    filter_glob: bpy.props.StringProperty(default="*.yaml;*.json", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
-
-    def execute(self, context):
-        data = load_morph_data(self.filepath)
-        if data == None:
-            self.report({'ERROR'}, "Can't recognize format")
-            return {"CANCELLED"}
-
-        apply_morph_data(context.scene.charmorphs, data, False)
-        return {"FINISHED"}
-
-
-
-classes = [CHARMORPH_PT_Morphing, OpImport, OpExportJson, OpExportYaml,CHARMORPH_PT_ImportExport]
+classes = [CHARMORPH_PT_Morphing]

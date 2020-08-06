@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize
+from . import library, morphing, randomize, file_io
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -68,7 +68,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     # Creation
     base_model: bpy.props.EnumProperty(
         name = "Base",
-        items = [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
+        items = lambda scene, context: [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
         description = "Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name = "Materials",
@@ -149,7 +149,10 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-class_register, class_unregister = bpy.utils.register_classes_factory(classes + library.classes + morphing.classes + randomize.classes)
+for module in [library, morphing, randomize, file_io]:
+    classes.extend(module.classes)
+
+class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def on_select_object():
     obj = bpy.context.active_object
@@ -167,6 +170,7 @@ bpy.app.handlers.load_post.append(load_handler)
 
 def register():
     print("Charmorph register")
+    library.load_library()
     class_register()
     bpy.types.Scene.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
 

@@ -21,6 +21,8 @@
 import re, random, math
 import bpy
 
+from . import morphing
+
 saved_props = None
 saved_version = -1
 
@@ -93,6 +95,8 @@ class OpRandomize(bpy.types.Operator):
                 propname = prop[5:]
                 if excl.search(propname) or not incl.search(propname):
                     continue
+                if ui.randomize_mode == "OVR":
+                    morphing.reset_meta(cm)
                 if ui.randomize_mode == "SEG":
                     val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
                 else:

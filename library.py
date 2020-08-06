@@ -67,8 +67,6 @@ def load_library():
 
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
-else:
-    load_library()
 
 class CHARMORPH_PT_Creation(bpy.types.Panel):
     bl_label = "Creation"

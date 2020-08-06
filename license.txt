@@ -22,7 +22,7 @@ LICENSE OF THE DATABASE
 
 The database of CharMorph is based on ManuelbastioniLAB package,
 including all the meshes and data contained in .blend files,
-all the images and all the json files are released
+all the images and all the json, yaml files are released
 under GNU Affero General Public License 3.
 
 ManuelbastioniLAB - Copyright (C) 2015-2018 Manuel Bastioni
