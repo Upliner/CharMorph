@@ -91,7 +91,7 @@ class OpRandomize(bpy.types.Operator):
                 if not prop.startswith("prop_"):
                     continue
                 propname = prop[5:]
-                if excl.match(propname) or not incl.match(propname):
+                if excl.search(propname) or not incl.search(propname):
                     continue
                 if ui.randomize_mode == "SEG":
                     val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
