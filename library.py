@@ -78,7 +78,7 @@ class CHARMORPH_PT_Creation(bpy.types.Panel):
     bl_order = 1
 
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         return context.mode == "OBJECT"
 
     def draw(self, context):
@@ -108,7 +108,7 @@ def is_adult_mode():
         return False
     return prefs.preferences.adult_mode
 
-class CharMorphCreate(bpy.types.Operator):
+class OpCreate(bpy.types.Operator):
     bl_idname = "charmorph.create"
     bl_label = "Create character"
     bl_options = {"UNDO"}
@@ -130,4 +130,4 @@ class CharMorphCreate(bpy.types.Operator):
         morphing.create_charmorphs(obj)
         return {"FINISHED"}
 
-classes = [CHARMORPH_PT_Creation, CharMorphCreate]
+classes = [OpCreate, CHARMORPH_PT_Creation]

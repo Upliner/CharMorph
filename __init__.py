@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging, re, random
+import os, logging
 import bpy
 
-from . import library, morphing
+from . import library, morphing, randomize
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -63,54 +63,9 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     def draw(self, context):
         pass
 
-class CHARMORPH_PT_Randomize(bpy.types.Panel):
-    bl_label = "Randomize"
-    bl_parent_id = "VIEW3D_PT_CharMorph"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_order = 3
-
-    @classmethod
-    def poll(self, context):
-        return hasattr(context.scene,'charmorphs')
-
-    def draw(self, context):
-        ui = context.scene.charmorph_ui
-        self.layout.prop(ui, "randomize_rel")
-        self.layout.prop(ui, "randomize_incl")
-        self.layout.prop(ui, "randomize_excl")
-        self.layout.prop(ui, "randomize_strength")
-        self.layout.operator('charmorph.randomize')
-
-
-class CharMorphRandomize(bpy.types.Operator):
-    bl_idname = "charmorph.randomize"
-    bl_label = "Randomize"
-
-    def execute(self, context):
-        scn = context.scene
-        if not hasattr(scn,'charmorphs'):
-            return {"CANCELLED"}
-        ui = scn.charmorph_ui
-        cm = scn.charmorphs
-        incl = re.compile(ui.randomize_incl)
-        excl = re.compile(ui.randomize_excl)
-        for prop in dir(cm):
-            if not prop.startswith("prop_"):
-                continue
-            propname = prop[5:]
-            if excl.match(propname) or not incl.match(propname):
-                continue
-            val = (ui.randomize_strength * (random.random() * 2 - 1))
-            if ui.randomize_rel:
-                val += getattr(cm, prop)
-            setattr(cm, prop, val)
-        return {"FINISHED"}
-
-def getBaseModels():
-    return [("mb_human_female", "Human female (MB-Lab, AGPL3)","")]
 
 class CharMorphUIProps(bpy.types.PropertyGroup):
+    # Creation
     base_model: bpy.props.EnumProperty(
         name = "Base",
         items = [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
@@ -126,32 +81,75 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     material_local: bpy.props.BoolProperty(
         name = "Use local materials", default=True,
         description = "Use local copies of materials for faster loading")
+
+    # Morphing
+    preset_mix: bpy.props.BoolProperty(
+            name="Mix with current",
+            description="Mix selected preset with current morphs",
+            default=False)
+    clamp_combos: bpy.props.BoolProperty(
+            name="Clamp combo props",
+            description="Clamp combo properties to (-1..1) so they remain in realistic range",
+            default=True)
+    relative_meta: bpy.props.BoolProperty(
+            name="Relative meta props",
+            description="Adjust meta props relatively",
+            default=True)
+
+    export_format: bpy.props.EnumProperty(
+            name="Format",
+            description="Export format",
+            default="yaml",
+            items=[
+                ("yaml","CharMorph (yaml)",""),
+                ("json","MB-Lab (json)","")
+            ])
+
+    # Randomize
+    randomize_morphs: bpy.props.BoolProperty(
+        name = "Morphs", default=True,
+        description = "Randomize morphs")
+    randomize_mats: bpy.props.BoolProperty(
+        name = "Materials", default=False,
+        description = "Randomize materials")
     randomize_incl: bpy.props.StringProperty(
         name = "Incl. regex")
     randomize_excl: bpy.props.StringProperty(
         name = "Excl. regex", default="^Fantasy\_")
-    randomize_rel: bpy.props.BoolProperty(
-        name = "Relative")
+    randomize_segs: bpy.props.IntProperty(
+        name = "Segments",
+        default=7,
+        min=2, soft_max=25,
+        description = "Segment count for segmented randomization"
+    )
+    randomize_mode: bpy.props.EnumProperty(
+        name="Mode",
+        default = "RL1",
+        items = [
+            ("OVR","Overwrite current", "Overwrite current morphing"),
+            ("RL1","Relative to non-random", "Relative to last hand-edited morphing"),
+            ("RL2","Relative to current", "Relative to current morphing"),
+            ("SEG","Segmented", "Split every property to segments and remain within them"),
+        ],
+        description = "Randomization mode (doesn't affect material colors)")
     randomize_strength: bpy.props.FloatProperty(
         name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
+
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     adult_mode: bpy.props.BoolProperty(
         name="Adult mode",
-        description="No censors, enable adult assets",
+        description="No censors, enable adult assets (genitails, pubic hair)",
     )
 
     def draw(self, context):
         self.layout.prop(self,"adult_mode")
 
+classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-# for some reason bl_order doesn't affect order of child panels and depends only on class registration order
-classes_before = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
-classes_after = [CHARMORPH_PT_Randomize, CharMorphRandomize]
-
-class_register, class_unregister = bpy.utils.register_classes_factory(classes_before + library.classes + morphing.classes + classes_after)
+class_register, class_unregister = bpy.utils.register_classes_factory(classes + library.classes + morphing.classes + randomize.classes)
 
 def on_select_object():
     obj = bpy.context.active_object

@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, json, yaml, logging
-import bpy
+import bpy, bpy_extras
 
 from . import library, materials
 
@@ -109,6 +109,7 @@ def get_morphs_L2(obj, L1):
 # create simple prop that drives one min and one max shapekey
 def morph_prop_simple(name, skmin, skmax):
     def setter(self, value):
+        self.version += 1
         if value < 0:
             if skmax != None: skmax.value = 0
             if skmin != None: skmin.value = -value
@@ -143,11 +144,12 @@ def morph_props_combo(name, arr):
 
     def setterfunc(idx):
         def setter(self, value):
-            if self.clamp_combos:
+            if bpy.context.scene.charmorph_ui.clamp_combos:
                 if value<-1:
                     value=-1
                 if value>1:
                     value=1
+            self.version += 1
             values[idx] = value
             for arr_idx, sk in enumerate(arr):
                 sk.value = sum(val*((arr_idx >> val_idx & 1)*2-1) * coeff for val_idx, val in enumerate(values))
@@ -166,6 +168,27 @@ def morph_props(name, arr):
     else:
         return morph_props_combo(name, arr)
 
+def mblab_to_charmorph(data):
+    return {
+        "morphs": { k:v*2-1 for k,v in data.get("structural",{}).items() },
+        "materials": data.get("materialproperties",{}),
+        "meta": { (k[10:] if k.startswith("character_") else k):v for k,v in data.get("metaproperties",{}).items() if not k.startswith("last_character_")},
+    }
+
+def charmorph_to_mblab(data):
+    return {
+        "structural": { k:(v+1)/2 for k,v in data.get("morphs",{}).items() },
+        "metaproperties": { k:v for sublist, v in (([("character_"+k),("last_character_"+k)],v) for k,v in data.get("meta",{}).items()) for k in sublist },
+    }
+
+def load_morph_data(fn):
+    with open(fn, "r") as f:
+        if fn[-5:] == ".yaml":
+            return yaml.safe_load(f)
+        elif fn[-5:] == ".json":
+            return  mblab_to_charmorph(json.load(f))
+    return None
+
 def load_presets(char, L1):
     result = {}
     def load_dir(path):
@@ -174,16 +197,14 @@ def load_presets(char, L1):
             return {}
         for fn in os.listdir(path):
             if os.path.isfile(os.path.join(path, fn)):
-                with open(os.path.join(path, fn), "r") as f:
-                    if fn[-5:] == ".yaml":
-                        result[fn[:-5]] = yaml.safe_load(f)
-                    elif fn[-5:] == ".json":
-                        result[fn[:-5]] = json.load(f)
+                data = load_morph_data(os.path.join(path, fn))
+                if data != None:
+                    result[fn[:-5]] = data
     try:
         load_dir("characters/{}/presets".format(char))
         load_dir("characters/{}/presets/{}".format(char, L1))
     except Exception as e:
-        print(e)
+        logger.error(e)
     return result
 
 def meta_props(name, data):
@@ -193,16 +214,19 @@ def meta_props(name, data):
             return
         prev_value = getattr(self, "metaprev_" + name)
         value = getattr(self, "meta_" + name)
+        if value == prev_value:
+            return
         setattr(self, "metaprev_" + name, value)
-        for prop in data:
-            propname = "prop_"+prop[0]
+        relative_meta = context.scene.charmorph_ui.relative_meta
+        for k, coeffs in data.get("morphs",{}).items():
+            propname = "prop_" + k
             if not hasattr(self, propname):
                 continue
 
             def calc_val(val):
-                return 2 * (prop[2]*val if val > 0 else -prop[1]*val)
+                return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
-            if not self.relative_meta:
+            if not relative_meta:
                 setattr(self, propname, calc_val(value))
                 continue
 
@@ -276,41 +300,32 @@ def create_charmorphs(obj):
 
 def option_props():
     return [
-        ("preset_mix", bpy.props.BoolProperty(
-        name="Mix with current",
-        description="Mix selected preset with current morphs",
-        default=False)),
-        ("clamp_combos", bpy.props.BoolProperty(
-        name="Clamp combo props",
-        description="Clamp combo properties to (-1..1) so they remain in realistic range",
-        default=True)),
-        ("relative_meta", bpy.props.BoolProperty(
-        name="Relative meta props",
-        description="Adjust meta props relatively",
-        default=True))]
+        ("version", bpy.props.IntProperty())]
 
-def preset_props(char, L1):
+def apply_morph_data(charmorphs, data, preset_mix):
+    global meta_lock
+    morph_props = data.get("morphs", {})
+    meta_props = data.get("meta", {})
+    meta_lock = True
+    for prop in dir(charmorphs):
+        if prop.startswith("prop_"):
+            value = morph_props.get(prop[5:], 0)
+            if preset_mix:
+                value = (value+getattr(charmorphs, prop))/2
+            setattr(charmorphs, prop, value)
+        elif prop.startswith("meta"):
+            setattr(charmorphs, prop, meta_props.get(prop[prop.find("_")+1:],0))
+    meta_lock = False
+
+def preset_prop(char, L1):
     if char == "":
         return []
     presets = load_presets(char, L1)
 
     def update(self, context):
-        global meta_lock
         if not self.preset:
             return
-        data = presets.get(self.preset, {})
-        preset_props = data.get("structural",{})
-        meta_props = data.get("metaproperties",{})
-        meta_lock = True
-        for prop in dir(self):
-            if prop.startswith("prop_"):
-                value = preset_props.get(prop[5:], 0.5)*2-1
-                if self.preset_mix:
-                    value = (value+getattr(self, prop))/2
-                setattr(self, prop, value)
-            elif prop.startswith("meta"):
-                setattr(self, prop, meta_props.get(prop[prop.find("_")+1:],0))
-        meta_lock = False
+        apply_morph_data(self, presets.get(self.preset, {}), context.scene.charmorph_ui.preset_mix)
 
     return [("preset", bpy.props.EnumProperty(
         name="Presets",
@@ -339,7 +354,7 @@ def create_charmorphs_L2(obj, char, L1):
     propGroup = type("CharMorpher_Dyn_PropGroup",
         (bpy.types.PropertyGroup,),
         {"__annotations__":
-            dict(option_props() + preset_props(char.name, L1) + morph_categories_prop(morphs) +
+            dict(option_props() + preset_prop(char.name, L1) + morph_categories_prop(morphs) +
                 [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
                 [item for sublist in (meta_props(name, data) for name, data in char.morphs_meta.items()) for item in sublist])})
 
@@ -347,6 +362,17 @@ def create_charmorphs_L2(obj, char, L1):
 
     bpy.types.Scene.charmorphs = bpy.props.PointerProperty(
         type=propGroup, options={"SKIP_SAVE"})
+
+def reset_meta():
+    global meta_lock
+    if not hasattr(bpy.context.scene,'charmorphs'):
+        return
+    data = bpy.context.scene.charmorphs
+    meta_lock = True
+    for prop in dir(data):
+        if prop.startswith("meta"):
+            setattr(data, prop, 0)
+    meta_lock = False
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -369,11 +395,12 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_order = 2
 
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         return hasattr(context.scene,'charmorphs')
 
     def draw(self, context):
         morphs = context.scene.charmorphs
+        ui = context.scene.charmorph_ui
         propList = sorted(dir(morphs))
         self.layout.label(text= "Character type")
         col = self.layout.column(align=True)
@@ -381,7 +408,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         col.prop(context.scene,"chartype")
         if hasattr(morphs,"preset"):
             col.prop(morphs, "preset")
-            col.prop(morphs, "preset_mix")
+            col.prop(ui, "preset_mix")
 
         col.separator()
 
@@ -389,12 +416,14 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         if len(meta_morphs) > 0:
             self.layout.label(text = "Meta morphs")
             col = self.layout.column(align=True)
-            col.prop(morphs, "relative_meta")
+            col.prop(ui, "relative_meta")
 
             for prop in meta_morphs:
                 col.prop(morphs, prop, slider=True)
 
-        self.layout.prop(morphs,"clamp_combos")
+        self.layout.prop(ui, "clamp_combos")
+
+        self.layout.separator()
 
         self.layout.prop(morphs, "category")
         if morphs.category != "<None>":
@@ -402,4 +431,95 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             for prop in (p for p in propList if p.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category + "_"))):
                 col.prop(morphs, prop, slider=True)
 
-classes = [CHARMORPH_PT_Morphing]
+class CHARMORPH_PT_ImportExport(bpy.types.Panel):
+    bl_label = "Import/Export"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 5
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene,'charmorphs')
+
+    def draw(self, context):
+        ui = context.scene.charmorph_ui
+
+        self.layout.label(text = "Export format:")
+        self.layout.prop(ui, "export_format", expand=True)
+        self.layout.separator()
+        col = self.layout.column(align=True)
+        if ui.export_format=="json":
+            col.operator("charmorph.export_json")
+        elif ui.export_format=="yaml":
+            col.operator("charmorph.export_yaml")
+        col.operator("charmorph.import")
+
+def morphs_to_data(cm):
+    morphs={}
+    meta={}
+    for prop in dir(cm):
+        if prop.startswith("prop_"):
+            morphs[prop[5:]] = getattr(cm, prop)
+        elif prop.startswith("meta_"):
+            meta[prop[5:]] = getattr(cm, prop)
+    return {"morphs":morphs,"meta": meta}
+
+class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "charmorph.export_json"
+    bl_label = "Export morphs"
+    bl_description = "Export current morphs to MB-Lab compatible json file"
+    filename_ext = ".json"
+
+    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'charmorphs')
+
+    def execute(self, context):
+        with open(self.filepath, "w") as f:
+            json.dump(charmorph_to_mblab(morphs_to_data(context.scene.charmorphs)),f, indent=4, sort_keys=True)
+        return {"FINISHED"}
+
+class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "charmorph.export_yaml"
+    bl_label = "Export morphs"
+    bl_description = "Export current morphs to yaml file"
+    filename_ext = ".yaml"
+
+    filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'charmorphs')
+
+    def execute(self, context):
+        with open(self.filepath, "w") as f:
+            yaml.dump(morphs_to_data(context.scene.charmorphs),f)
+        return {"FINISHED"}
+
+class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    bl_idname = "charmorph.import"
+    bl_label = "Import morphs"
+    bl_description = "Import morphs from yaml or json file"
+    bl_options = {"UNDO"}
+
+    filter_glob: bpy.props.StringProperty(default="*.yaml;*.json", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'charmorphs')
+
+    def execute(self, context):
+        data = load_morph_data(self.filepath)
+        if data == None:
+            self.report({'ERROR'}, "Can't recognize format")
+            return {"CANCELLED"}
+
+        apply_morph_data(context.scene.charmorphs, data, False)
+        return {"FINISHED"}
+
+
+
+classes = [CHARMORPH_PT_Morphing, OpImport, OpExportJson, OpExportYaml,CHARMORPH_PT_ImportExport]
