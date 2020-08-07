@@ -171,12 +171,15 @@ def mblab_to_charmorph(data):
         "morphs": { k:v*2-1 for k,v in data.get("structural",{}).items() },
         "materials": data.get("materialproperties",{}),
         "meta": { (k[10:] if k.startswith("character_") else k):v for k,v in data.get("metaproperties",{}).items() if not k.startswith("last_character_")},
+        "type": data.get("type",[]),
     }
 
 def charmorph_to_mblab(data):
     return {
         "structural": { k:(v+1)/2 for k,v in data.get("morphs",{}).items() },
         "metaproperties": { k:v for sublist, v in (([("character_"+k),("last_character_"+k)],v) for k,v in data.get("meta",{}).items()) for k in sublist },
+        "materialproperties": data.get("materials"),
+        "type": data.get("type",[]),
     }
 
 def load_morph_data(fn):
@@ -245,7 +248,7 @@ def meta_props(name, data):
             if materials.props and k in materials.props:
                 materials.props[k].default_value = calc_val(value)
 
-    return [("metaprev_"+name,bpy.props.FloatProperty(name=name)),
+    return [("metaprev_"+name,bpy.props.FloatProperty()),
         ("meta_"+name,bpy.props.FloatProperty(name=name,
         min = -1.0, max = 1.0,
         precision = 3,
@@ -265,12 +268,20 @@ def create_charmorphs(obj):
 
     L1, morphs = get_morphs_L1(obj)
 
-    char = library.chars.get(obj.get("charmorph_template"), library.empty_char)
+    char = library.obj_char(obj)
     items = [(name, char.config.get("types",{}).get(name, {}).get("title",name), "") for name in morphs.keys()]
+
+    cur_object = obj
+    materials.update_props(obj)
+    mtl_props = materials.props
+
+    def update_char():
+        updateL1(morphs, L1)
+        materials.apply_props(char.config.get("types", {}).get(L1, {}).get("mtl_props"), mtl_props)
 
     if L1=="" and "default_type" in char.config:
         L1 = char.config["default_type"]
-        updateL1(morphs, L1)
+        update_char()
 
     L1_idx = 0
     for i in range(1, len(items)-1):
@@ -279,12 +290,12 @@ def create_charmorphs(obj):
             break
 
     def chartype_setter(self, value):
-        nonlocal L1_idx
+        nonlocal L1_idx, L1
         if value == L1_idx:
             return
         L1_idx = value
         L1 = items[L1_idx][0]
-        updateL1(morphs, L1)
+        update_char()
         clear_old_L2(obj, L1)
         create_charmorphs_L2(obj, char, L1)
 
@@ -293,17 +304,14 @@ def create_charmorphs(obj):
         items=items,
         description="Choose character type",
         get=lambda self: L1_idx,
-        set=chartype_setter)
-
-    cur_object = obj
-    materials.update_props(obj)
+        set=chartype_setter,
+        options={"SKIP_SAVE"})
 
     create_charmorphs_L2(obj, char, L1)
 
 
 def option_props():
-    return [
-        ("version", bpy.props.IntProperty())]
+    return [("version", bpy.props.IntProperty())]
 
 def apply_morph_data(charmorphs, data, preset_mix):
     global meta_lock
@@ -319,6 +327,7 @@ def apply_morph_data(charmorphs, data, preset_mix):
         elif prop.startswith("meta"):
             setattr(charmorphs, prop, meta_props.get(prop[prop.find("_")+1:],0))
     meta_lock = False
+    materials.apply_props(data.get("materials"))
 
 def preset_prop(char, L1):
     if char == "":

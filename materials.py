@@ -70,7 +70,7 @@ def load_materials(obj, char):
     if adult_mode:
         for i in range(len(mtllist)-1,0,-1):
             if "_censor" in mtllist[i]:
-                obj.data.materials.pop(i)
+                obj.data.materials.pop(index=i)
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
 def load_texdir(dir):
@@ -135,8 +135,8 @@ def load_textures(obj, char_name):
                     if img != None:
                         break
 
-            if img == None:
-                if texmap == None:
+            if img is None:
+                if texmap is None:
                     texmap = load_texmap(char_name)
 
                 img_tuple = None
@@ -175,6 +175,29 @@ def update_props(obj):
     global props
     props = get_props(obj)
 
+def prop_values():
+    return { k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k,v in props.items() }
+
+def parse_color(val):
+    if isinstance(val, list):
+        if len(val)==3:
+            return val + [1]
+        return val
+
+def apply_props(data, mtl_props = None):
+    if mtl_props is None:
+        mtl_props = props
+    if not data or not mtl_props:
+        return
+    for k,v in data.items():
+        prop = mtl_props.get(k)
+        if not prop:
+            continue
+        if prop.node.type == "RGB":
+            mtl_props[k].default_value = parse_color(v)
+        else:
+            mtl_props[k].default_value = v
+
 class CHARMORPH_PT_Materials(bpy.types.Panel):
     bl_label = "Materials"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -187,7 +210,7 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
         return bool(props)
 
     def draw(self, context):
-        for name, prop in props.items():
-            self.layout.prop(prop, "default_value", text=name)
+        for prop in props.values():
+            self.layout.prop(prop, "default_value", text=prop.node.label)
 
 classes = [CHARMORPH_PT_Materials]

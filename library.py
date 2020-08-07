@@ -54,6 +54,11 @@ def get_char_yaml(char, file, default={}):
         logger.error(e)
         return default
 
+def obj_char(obj):
+    if not obj:
+        return empty_char
+    return chars.get(obj.get("charmorph_template"), empty_char)
+
 def load_library():
     chars.clear()
     for char_name in os.listdir(os.path.join(data_dir,"characters")):

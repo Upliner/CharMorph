@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io
+from . import library, morphing, randomize, file_io, materials, fitting
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -56,7 +56,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
 
     @classmethod
     def poll(self, context):
-        if morphing.last_object == None and context.active_object != None and not hasattr(context.scene,'charmorphs'):
+        if morphing.last_object is None and context.active_object is not None and not hasattr(context.scene,'charmorphs'):
             bpy.msgbus.publish_rna(key=(bpy.types.LayerObjects, "active"))
         return True
 
@@ -149,14 +149,14 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-for module in [library, morphing, randomize, file_io, materials]:
+for module in [library, morphing, randomize, file_io, materials, fitting]:
     classes.extend(module.classes)
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def on_select_object():
     obj = bpy.context.active_object
-    if obj == None or obj == morphing.last_object:
+    if obj is None or obj == morphing.last_object:
         return
     morphing.create_charmorphs(obj)
 
