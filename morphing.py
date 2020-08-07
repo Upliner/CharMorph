@@ -26,6 +26,7 @@ from . import library, materials
 logger = logging.getLogger(__name__)
 
 last_object = None
+cur_object = None
 meta_lock = False
 
 # convert array of min/max binary representation
@@ -145,10 +146,7 @@ def morph_props_combo(name, arr):
     def setterfunc(idx):
         def setter(self, value):
             if bpy.context.scene.charmorph_ui.clamp_combos:
-                if value<-1:
-                    value=-1
-                if value>1:
-                    value=1
+                value = max(min(value, 1), -1)
             self.version += 1
             values[idx] = value
             for arr_idx, sk in enumerate(arr):
@@ -218,13 +216,12 @@ def meta_props(name, data):
             return
         setattr(self, "metaprev_" + name, value)
         relative_meta = context.scene.charmorph_ui.relative_meta
+        def calc_val(val):
+            return coeffs[1]*val if val > 0 else -coeffs[0]*val
         for k, coeffs in data.get("morphs",{}).items():
             propname = "prop_" + k
             if not hasattr(self, propname):
                 continue
-
-            def calc_val(val):
-                return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
             if not relative_meta:
                 setattr(self, propname, calc_val(value))
@@ -244,6 +241,10 @@ def meta_props(name, data):
                 propval += val_cur-val_prev
             setattr(self, propname, propval)
 
+        for k, coeffs in data.get("materials",{}).items():
+            if materials.props and k in materials.props:
+                materials.props[k].default_value = calc_val(value)
+
     return [("metaprev_"+name,bpy.props.FloatProperty(name=name)),
         ("meta_"+name,bpy.props.FloatProperty(name=name,
         min = -1.0, max = 1.0,
@@ -257,6 +258,8 @@ def clear_old_L2(obj, new_L1):
             sk.value = 0
 
 def create_charmorphs(obj):
+    global last_object, cur_object
+    last_object = obj
     if obj.type != "MESH":
         return
 
@@ -285,15 +288,15 @@ def create_charmorphs(obj):
         clear_old_L2(obj, L1)
         create_charmorphs_L2(obj, char, L1)
 
-    if hasattr(bpy.types.Scene, "chartype"):
-        del bpy.types.Scene.chartype
-
     bpy.types.Scene.chartype = bpy.props.EnumProperty(
         name="Type",
         items=items,
         description="Choose character type",
         get=lambda self: L1_idx,
         set=chartype_setter)
+
+    cur_object = obj
+    materials.update_props(obj)
 
     create_charmorphs_L2(obj, char, L1)
 
@@ -343,8 +346,6 @@ def morph_categories_prop(morphs):
 
 # Create a property group with all L2 morphs
 def create_charmorphs_L2(obj, char, L1):
-    global last_object
-    last_object = obj
 
     del_charmorphs_L2()
     morphs = get_morphs_L2(obj, L1)
@@ -381,6 +382,9 @@ def del_charmorphs_L2():
     bpy.utils.unregister_class(propGroup)
 
 def del_charmorphs():
+    global last_object, cur_object
+    last_object = None
+    cur_object = None
     if hasattr(bpy.types.Scene, "chartype"):
         del bpy.types.Scene.chartype
     del_charmorphs_L2()

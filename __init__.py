@@ -149,7 +149,7 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-for module in [library, morphing, randomize, file_io]:
+for module in [library, morphing, randomize, file_io, materials]:
     classes.extend(module.classes)
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
@@ -162,7 +162,6 @@ def on_select_object():
 
 @bpy.app.handlers.persistent
 def load_handler(dummy):
-    morphing.last_object = None
     morphing.del_charmorphs()
     on_select_object()
 

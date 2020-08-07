@@ -18,10 +18,12 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging, yaml
+import os, logging, yaml, collections
 import bpy
 
 from . import library
+
+props = None
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,6 @@ def load_texdir(dir):
     except KeyError:
         settings = {}
     default_setting = settings.get("*")
-    print(settings)
 
     result = {}
     for item in os.listdir(dir):
@@ -112,7 +113,6 @@ def tex_try_names(char, names):
 def apply_tex_settings(img, settings):
     if not settings:
         return
-    print(img.name, settings)
     img.colorspace_settings.name = settings # Currently only colorspace settings are supported
 
 def load_textures(obj, char_name):
@@ -147,7 +147,6 @@ def load_textures(obj, char_name):
                     if img_tuple != None:
                         break
                 if img_tuple != None:
-                    print(img_tuple)
                     img = bpy.data.images.load(img_tuple[0], check_existing=True)
                     img.name = img_tuple[1]
                     apply_tex_settings(img, img_tuple[2])
@@ -157,7 +156,38 @@ def load_textures(obj, char_name):
             if img != None:
                 node.image = img
 
-def material_props(obj):
+def get_props(obj):
     if not obj.data.materials:
-        return []
-    return [] # TODO
+        return None
+    colors = []
+    values = []
+    for mtl in obj.data.materials:
+        if not mtl.node_tree:
+            continue
+        for node in mtl.node_tree.nodes.values():
+            if node.type == "RGB" and not node.name.startswith("RGB."):
+                colors.append((node.name, node.outputs[0]))
+            elif node.type == "VALUE":
+                values.append((node.name, node.outputs[0]))
+    return collections.OrderedDict(colors + values)
+
+def update_props(obj):
+    global props
+    props = get_props(obj)
+
+class CHARMORPH_PT_Materials(bpy.types.Panel):
+    bl_label = "Materials"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 6
+
+    @classmethod
+    def poll(cls, context):
+        return bool(props)
+
+    def draw(self, context):
+        for name, prop in props.items():
+            self.layout.prop(prop, "default_value", text=name)
+
+classes = [CHARMORPH_PT_Materials]
