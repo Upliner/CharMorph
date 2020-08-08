@@ -1,0 +1,44 @@
+Art:
+  - Compare bumping with MB-Lab?
+  - Hairstyles
+
+Creation tools:
+  - Simple MB-Lab import/export tools
+  - Rigging tool
+  - Joints offsets
+  - Fix L2__Body_Size_min and export it back to MB-Lab
+
+Char creation:
+  - Asset list in creation panel
+
+Morphing:
+  - Move out shape keys to npy/npz files
+  - Apply morphs (options: Corrective smooth, Subdivision: [Render only, Viewport(slow)], rig type)
+  - Choice between materials displacement and displacement modifier
+
+Materials:
+  - Ability to disable skin features (blush, freckles)
+    and completely remove them from node tree removing unneccessary texture images too
+  - Texture layers?
+  - "Affect materials": [None/Absolute/Relative]
+
+Fitting:
+  - Mask
+  - Asset baking
+  - Ability to select MB-Lab fitting algorithm
+  - Use avg instead of max for thresh? I think no, we need to use no less than first n
+  - Bounding box transform?
+
+Assets:
+  - Asset list at creation
+  - Use default assets instead of censors
+
+Rigging:
+  - Everything :)
+  - Rigify at all
+  - Live regular rig deform
+  - Chioce between expression shape keys and Rigify face rig
+  - Rigify morphing?
+  - Import pose library from MB-Lab
+  - Muscles
+  - Blenrig
