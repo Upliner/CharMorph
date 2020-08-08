@@ -18,41 +18,74 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import numpy, time
+import time
 import bpy, mathutils
 
 dist_thresh = 0.1
+epsilon = 1e-30
 
 def do_fit(char, asset):
-    dg = bpy.context.evaluated_depsgraph_get()
-    bvh = mathutils.bvhtree.BVHTree.FromObject(char, dg, deform=False)
-    cverts = char.data.vertices
-    cfaces = char.data.polygons
-    weights = []
-    offs = asset.location
     t1 = time.monotonic()
-    for i, avert in enumerate(asset.data.vertices):
-        co = avert.co + offs
-        loc, norm, idx, dist = bvh.find_nearest(co)
+    dg = bpy.context.evaluated_depsgraph_get()
 
-        if not loc or ((co-loc).dot(norm)<=0 and dist > dist_thresh):
+    char_verts = char.data.vertices
+    char_faces = char.data.polygons
+    asset_verts = asset.data.vertices
+    asset_faces = asset.data.polygons
+
+    weights = []
+    offs = asset.location-char.location
+
+    # calculate weights based on distance from asset vertices to character faces
+    bvh_char = mathutils.bvhtree.BVHTree.FromObject(char, dg, deform=False)
+    for i, avert in enumerate(asset_verts):
+        co = avert.co + offs
+        loc, norm, idx, fdist = bvh_char.find_nearest(co)
+
+        fdist = max(fdist, epsilon)
+
+        if not loc or ((co-loc).dot(norm)<=0 and fdist > dist_thresh):
             #point is deep inside the mesh, skip it
-            weights.append(([],[]))
+            weights.append({})
             continue
 
-        f = cfaces[idx]
-        arr = numpy.empty(len(f.vertices))
-        total = 0.0
-        for i, vi in enumerate(f.vertices):
-            dist = max((co-cverts[vi].co).length, 1e-100)
-            dist = 1/dist
-            total += dist
-            arr[i] = dist
-        arr /= total
-        weights.append((f.vertices, arr))
+        weights.append({vi:1/((co-char_verts[vi].co).length * fdist) for vi in char_faces[idx].vertices})
 
     t2 = time.monotonic()
-    print("bvh: {}".format(t2-t1))
+    print("bvh direct: {}".format(t2-t1))
+
+    # calculate weights based on distance from character vertices to assset faces
+    bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg, deform=False)
+    for i, cvert in enumerate(char_verts):
+        co = cvert.co - offs
+        loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
+        if idx == None:
+            continue
+
+        fdist = max(fdist, epsilon)
+
+        verts = asset_faces[idx].vertices
+        dists = [max((co-asset_verts[vi].co).length, epsilon) for vi in verts]
+        if min(dists)*0.9999<=fdist:
+            continue
+
+        for vi, dist in zip(verts, dists):
+            d = weights[vi]
+            d[i] = d.get(i, 0) + 1/(dist*fdist)
+
+    t3 = time.monotonic()
+    print("bvh reverse: {}".format(t3-t2))
+
+    for i, d in enumerate(weights):
+        #fnorm = sum((char_verts[vi].normal*v for vi, v in d.items()), mathutils.Vector())
+        #fnorm.normalize()
+        total = sum(d.values())
+        #coeff = sum((fnorm.dot(char_verts[vi].normal) ** 2) * v  for vi, v in d.items())/total
+        #total *= coeff
+        weights[i] = [(k, v/total) for k, v in d.items()]
+
+    t4 = time.monotonic()
+    print("normalize: {}".format(t4-t3))
 
     char_shapekey = char.shape_key_add(from_mix=True)
     char_data = char_shapekey.data
@@ -64,12 +97,11 @@ def do_fit(char, asset):
         asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
     asset_data = asset_fitkey.data
     for i, avert in enumerate(asset.data.vertices):
-        verts, vweights = weights[i]
-        asset_data[i].co = avert.co + sum(((char_data[vi].co-cverts[vi].co)*vweights[j] for j, vi in enumerate(verts)),mathutils.Vector())
+        asset_data[i].co = avert.co + sum(((char_data[vi].co-char_verts[vi].co)*weight for vi, weight in weights[i]),mathutils.Vector())
 
     char.shape_key_remove(char_shapekey)
     asset_fitkey.value = 1
-    print("fit: {}".format(time.monotonic()-t2))
+    print("fit: {}".format(time.monotonic()-t4))
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Fitting"
