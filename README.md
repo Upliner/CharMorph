@@ -25,7 +25,7 @@ It is not ready for practical use yet, but if you like MB-Lab and interested in 
   No real displacement in EEVEE, but nice live preview with bumps is available.
   In Cycles skin material is set to "Displacement and bump" by default.
 * Hairstyles
-* Live asset fitting
+* Realtime asset fitting
 * Rigify support with full face rig
 
 ## Downsides

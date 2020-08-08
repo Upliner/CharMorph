@@ -21,12 +21,13 @@
 import os, json, yaml, logging
 import bpy
 
-from . import library, materials
+from . import library, materials, fitting
 
 logger = logging.getLogger(__name__)
 
 last_object = None
 cur_object = None
+asset_lock = False
 meta_lock = False
 
 # convert array of min/max binary representation
@@ -107,6 +108,12 @@ def get_morphs_L2(obj, L1):
 
     return result
 
+def refit_assets():
+    if asset_lock:
+        return
+    if "char" in bpy.data.objects and "asset" in bpy.data.objects:
+        fitting.do_fit(bpy.data.objects["char"], bpy.data.objects["asset"], mask=False)
+
 # create simple prop that drives one min and one max shapekey
 def morph_prop_simple(name, skmin, skmax):
     def setter(self, value):
@@ -117,6 +124,7 @@ def morph_prop_simple(name, skmin, skmax):
         else:
             if skmin != None: skmin.value = 0
             if skmax != None: skmax.value = value
+        refit_assets()
     return bpy.props.FloatProperty(name=name,
         soft_min = -1.0, soft_max = 1.0,
         precision = 3,
@@ -210,7 +218,7 @@ def load_presets(char, L1):
 
 def meta_props(name, data):
     def update(self, context):
-        global meta_lock
+        global asset_lock
         if meta_lock:
             return
         prev_value = getattr(self, "metaprev_" + name)
@@ -221,6 +229,7 @@ def meta_props(name, data):
         relative_meta = context.scene.charmorph_ui.relative_meta
         def calc_val(val):
             return coeffs[1]*val if val > 0 else -coeffs[0]*val
+        asset_lock = True
         for k, coeffs in data.get("morphs",{}).items():
             propname = "prop_" + k
             if not hasattr(self, propname):
@@ -244,9 +253,13 @@ def meta_props(name, data):
                 propval += val_cur-val_prev
             setattr(self, propname, propval)
 
+        asset_lock = False
+
         for k, coeffs in data.get("materials",{}).items():
             if materials.props and k in materials.props:
                 materials.props[k].default_value = calc_val(value)
+
+        refit_assets()
 
     return [("metaprev_"+name,bpy.props.FloatProperty()),
         ("meta_"+name,bpy.props.FloatProperty(name=name,
@@ -278,6 +291,8 @@ def create_charmorphs(obj):
     def update_char():
         updateL1(morphs, L1)
         materials.apply_props(char.config.get("types", {}).get(L1, {}).get("mtl_props"), mtl_props)
+        clear_old_L2(obj, L1)
+        refit_assets()
 
     if L1=="" and "default_type" in char.config:
         L1 = char.config["default_type"]
@@ -296,7 +311,6 @@ def create_charmorphs(obj):
         L1_idx = value
         L1 = items[L1_idx][0]
         update_char()
-        clear_old_L2(obj, L1)
         create_charmorphs_L2(obj, char, L1)
 
     bpy.types.Scene.chartype = bpy.props.EnumProperty(
@@ -314,10 +328,11 @@ def option_props():
     return [("version", bpy.props.IntProperty())]
 
 def apply_morph_data(charmorphs, data, preset_mix):
-    global meta_lock
+    global meta_lock, asset_lock
     morph_props = data.get("morphs", {})
     meta_props = data.get("meta", {})
     meta_lock = True
+    asset_lock = True
     for prop in dir(charmorphs):
         if prop.startswith("prop_"):
             value = morph_props.get(prop[5:], 0)
@@ -325,8 +340,11 @@ def apply_morph_data(charmorphs, data, preset_mix):
                 value = (value+getattr(charmorphs, prop))/2
             setattr(charmorphs, prop, value)
         elif prop.startswith("meta"):
+            # TODO handle preset_mix?
             setattr(charmorphs, prop, meta_props.get(prop[prop.find("_")+1:],0))
+    asset_lock = False
     meta_lock = False
+    refit_assets()
     materials.apply_props(data.get("materials"))
 
 def preset_prop(char, L1):
@@ -384,11 +402,15 @@ def reset_meta(charmorphs):
 
 # Delete morphs property group
 def del_charmorphs_L2():
+    global asset_lock, meta_lock
     if not hasattr(bpy.types.Scene, "charmorphs"):
         return
+    asset_lock = False
+    meta_lock = False
     propGroup = bpy.types.Scene.charmorphs[1]['type']
     del bpy.types.Scene.charmorphs
     bpy.utils.unregister_class(propGroup)
+    fitting.invalidate_cache()
 
 def del_charmorphs():
     global last_object, cur_object

@@ -134,6 +134,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
         char = library.obj_char(morphing.cur_object)
         typemap = { v["title"]:k for k,v in char.config.get("types",{}).items() if "title" in v }
+        morphing.asset_lock = True
         for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
             if not name:
                 continue
@@ -142,6 +143,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                 break
             except TypeError:
                 pass
+        morphing.asset_lock = False
 
         morphing.apply_morph_data(context.scene.charmorphs, data, False)
         return {"FINISHED"}
