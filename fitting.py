@@ -45,6 +45,9 @@ def do_fit(char, asset):
         total = 0.0
         for i, vi in enumerate(f.vertices):
             dist = (avert.co-cverts[vi].co).length
+            if dist < 1e-100:
+                dist = 1e-100
+            dist = 1/dist
             total += dist
             arr[i] = dist
         arr /= total
@@ -57,10 +60,10 @@ def do_fit(char, asset):
     char_data = char_shapekey.data
     t3 = time.monotonic()
     if asset.data.shape_keys:
-        asset_fitkey = asset.data.shape_keys.key_blocks["fitting"]
+        asset_fitkey = asset.data.shape_keys.key_blocks["charmorph_fitting"]
     else:
         asset.shape_key_add(name="Basis", from_mix=False)
-        asset_fitkey = asset.shape_key_add(name="fitting", from_mix=False)
+        asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
     asset_data = asset_fitkey.data
     for i, avert in enumerate(asset.data.vertices):
         verts, vweights = weights[i]
