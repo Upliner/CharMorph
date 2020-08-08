@@ -44,9 +44,7 @@ def do_fit(char, asset):
         arr = numpy.empty(len(f.vertices))
         total = 0.0
         for i, vi in enumerate(f.vertices):
-            dist = (avert.co-cverts[vi].co).length
-            if dist < 1e-100:
-                dist = 1e-100
+            dist = max((co-cverts[vi].co).length, 1e-100)
             dist = 1/dist
             total += dist
             arr[i] = dist
