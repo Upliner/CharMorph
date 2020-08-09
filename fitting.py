@@ -93,10 +93,11 @@ def calc_weights(char, asset, mask):
 
     # calculate weights based on distance from character vertices to assset faces
     bvh_asset = mathutils.bvhtree.BVHTree.FromPolygons([v.undeformed_co for v in asset_verts], [f.vertices for f in asset_faces])
+    #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
     for i, cvert in enumerate(char_verts):
         co = cvert.co - offs
         loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
-        if idx == None:
+        if idx is None:
             continue
 
         fdist = max(fdist, epsilon)
@@ -157,20 +158,22 @@ def add_mask(char, asset, bvh_asset, bvh_char, offs):
 
     bbox_center = (bbox_min+bbox_max)/2
 
-    bbox_min2 = (bbox_min-bbox_center)*2+bbox_center
-    bbox_max2 = (bbox_max-bbox_center)*2+bbox_center
+    cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min, bbox_max] for coord in range(3))
+    cube_vector = mathutils.Vector([cube_size] * 3)
 
-    bbox_points = [bbox_min2, bbox_center, bbox_max]
-    bbox_points2 = [bbox_min2, 0, bbox_max]
+    bcube_min = bbox_center-cube_vector
+    bcube_max = bbox_center+cube_vector
+
+    bbox_points = [bcube_min, bbox_center, bcube_max]
     cast_points = [ mathutils.Vector((bbox_points[x][0],bbox_points[y][1],bbox_points[z][2])) for x in range(3) for y in range(3) for z in range(3) if x!=1 or y != 1 or z != 1 ]
 
     def cast_rays(co, direction, max_dist=1e30):
         nonlocal has_cloth
         _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
-        if idx == None:
+        if idx is None:
             # Vertex is not blocked by cloth. Maybe blocked by the body itself?
             _, _, idx, _ = bvh_char.ray_cast(co+offs+direction*0.00001, direction, max_dist*0.99)
-            if idx == None:
+            if idx is None:
                 #print(i, co, direction, max_dist, cvert.normal)
                 return False # No ray hit
         else:
@@ -186,10 +189,20 @@ def add_mask(char, asset, bvh_asset, bvh_char, offs):
             continue
 
         has_cloth = False
+        normal_miss = False
         norm = cvert.normal
 
         # cast one ray along vertex normal and check is there a clothing nearby
         if not cast_rays(co, norm):
+            normal_miss = True
+
+        #if cloth is too close, mark as covered
+        _, _, idx, _ = bvh_asset.find_nearest(co, 0.0005)
+        if idx is not None:
+            #print(i, co, fhit, fdist, "too close")
+            covered_verts.add(i)
+
+        if normal_miss:
             continue
 
         # cast rays out of 26 outside points to check whether the vertex is visible from any feasible angle
