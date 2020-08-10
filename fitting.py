@@ -308,7 +308,7 @@ def refit_char_assets(char):
 
     assets = [ asset for asset in (bpy.data.objects[name] for name in children) if asset.type=="MESH" and 'charmorph_fit_id' in asset.data ]
     if assets:
-        do_fit(char, assets, False)
+        do_fit(char, assets)
 
 dummy_dict = {"data":{}}
 
