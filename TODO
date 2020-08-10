@@ -10,11 +10,13 @@ Creation tools:
 
 Char creation:
   - Asset list in creation panel
+  - Create at 3D cursor
 
 Morphing:
   - Move out shape keys to npy/npz files
-  - Apply morphs (options: Corrective smooth, Subdivision: [Render only, Viewport(slow)], rig type)
+  - Apply morphs (options: Corrective smooth (char, assets), Subdivision (char, assets): [Render only, Viewport(slow)], rig type)
   - Choice between materials displacement and displacement modifier
+  - Allow to mix L1 shapes
 
 Materials:
   - Ability to disable skin features (blush, freckles)
@@ -23,13 +25,15 @@ Materials:
   - "Affect materials": [None/Absolute/Relative]
 
 Fitting:
+  - More fitting settings? (Thresholds and so on)
   - Choice between separate and combined masks
   - Asset baking
+  - Hair fitting
   - Get fitting base from library
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
   - Bounding box transform?
-  - Force asset makers to apply transform and declare all assets that don't compy non-CharMorph-compatible?
+  - Force asset makers to apply transform and declare all assets that don't comply non-CharMorph-compatible?
   - Replace censors with default underwear
 
 Assets:

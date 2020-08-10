@@ -109,10 +109,9 @@ def get_morphs_L2(obj, L1):
     return result
 
 def refit_assets():
-    if asset_lock:
+    if asset_lock or not cur_object:
         return
-    if "char" in bpy.data.objects and "asset" in bpy.data.objects:
-        fitting.do_fit(bpy.data.objects["char"], bpy.data.objects["asset"], mask=False)
+    fitting.refit_char_assets(cur_object)
 
 # create simple prop that drives one min and one max shapekey
 def morph_prop_simple(name, skmin, skmax):

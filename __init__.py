@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 2),
+    "version": (0, 0, 3),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -63,6 +63,8 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     def draw(self, context):
         pass
 
+def get_meshes(scene, context):
+    return [(o.name,o.name,"") for o in bpy.data.objects if o.type == "MESH"]
 
 class CharMorphUIProps(bpy.types.PropertyGroup):
     # Creation
@@ -84,26 +86,25 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
 
     # Morphing
     preset_mix: bpy.props.BoolProperty(
-            name="Mix with current",
-            description="Mix selected preset with current morphs",
-            default=False)
+        name="Mix with current",
+        description="Mix selected preset with current morphs",
+        default=False)
     clamp_combos: bpy.props.BoolProperty(
-            name="Clamp combo props",
-            description="Clamp combo properties to (-1..1) so they remain in realistic range",
-            default=True)
+        name="Clamp combo props",
+        description="Clamp combo properties to (-1..1) so they remain in realistic range",
+        default=True)
     relative_meta: bpy.props.BoolProperty(
-            name="Relative meta props",
-            description="Adjust meta props relatively",
-            default=True)
-
+        name="Relative meta props",
+        description="Adjust meta props relatively",
+        default=True)
     export_format: bpy.props.EnumProperty(
-            name="Format",
-            description="Export format",
-            default="yaml",
-            items=[
-                ("yaml","CharMorph (yaml)",""),
-                ("json","MB-Lab (json)","")
-            ])
+        name="Format",
+        description="Export format",
+        default="yaml",
+        items=[
+            ("yaml","CharMorph (yaml)",""),
+            ("json","MB-Lab (json)","")
+        ])
 
     # Randomize
     randomize_morphs: bpy.props.BoolProperty(
@@ -134,6 +135,29 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         description = "Randomization mode (doesn't affect material colors)")
     randomize_strength: bpy.props.FloatProperty(
         name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
+
+    # Fitting
+    fitting_char: bpy.props.EnumProperty(
+        name="Char",
+        description="Character for fitting",
+        items=get_meshes)
+    fitting_asset: bpy.props.EnumProperty(
+        name="Local asset",
+        description="Asset for fitting",
+        items=get_meshes)
+    fitting_mask: bpy.props.EnumProperty(
+        name="Mask",
+        default = "COMB",
+        items = [
+            ("NONE", "No mask","Don't mask character at all"),
+            ("SEPR", "Separate","Use separate mask vertex groups and modifiers for each asset"),
+            ("COMB", "Combined","Use combined vertex group and modifier for all character assets"),
+        ],
+        description="Mask parts of character that are invisible under clothing")
+    fitting_weights: bpy.props.BoolProperty(
+        name="Transfer weights",
+        default=True,
+        description="Transfer armature weights to the asset")
 
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
