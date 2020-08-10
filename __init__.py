@@ -180,7 +180,18 @@ class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def on_select_object():
     obj = bpy.context.active_object
-    if obj is None or obj == morphing.last_object:
+    if obj is None:
+        return
+    if obj.type == "MESH":
+        try:
+            ui = bpy.context.scene.charmorph_ui
+            if library.obj_char(obj).name:
+                ui.fitting_char = obj.name
+            else:
+                ui.fitting_asset = obj.name
+        except:
+            pass
+    if obj == morphing.last_object:
         return
     morphing.create_charmorphs(obj)
 

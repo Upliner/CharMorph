@@ -57,7 +57,7 @@ def get_char_yaml(char, file, default={}):
 def obj_char(obj):
     if not obj:
         return empty_char
-    return chars.get(obj.get("charmorph_template"), empty_char)
+    return chars.get(obj.data.get("charmorph_template"), chars.get(obj.get("charmorph_template"), empty_char))
 
 def load_library():
     chars.clear()
@@ -124,11 +124,11 @@ class OpCreate(bpy.types.Operator):
             return {"CANCELLED"}
 
         obj = import_obj(char_file(base_model, "char.blend"), "char")
-        if obj == None:
+        if obj == None or obj.type != "MESH":
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
 
-        obj["charmorph_template"] = base_model
+        obj.data["charmorph_template"] = base_model
         materials.init_materials(obj, chars.get(base_model, empty_char))
         morphing.create_charmorphs(obj)
         return {"FINISHED"}
