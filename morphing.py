@@ -158,6 +158,7 @@ def morph_props_combo(name, arr):
             values[idx] = value
             for arr_idx, sk in enumerate(arr):
                 sk.value = sum(val*((arr_idx >> val_idx & 1)*2-1) * coeff for val_idx, val in enumerate(values))
+            refit_assets()
         return setter
 
     return [(name, bpy.props.FloatProperty(name=name,
