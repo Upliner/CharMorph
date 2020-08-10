@@ -25,6 +25,7 @@ Materials:
   - "Affect materials": [None/Absolute/Relative]
 
 Fitting:
+  - Auto-select items in ui on select
   - More fitting settings? (Thresholds and so on)
   - Choice between separate and combined masks
   - Asset baking

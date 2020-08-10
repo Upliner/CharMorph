@@ -251,6 +251,12 @@ def get_obj_weights(char, asset, mask = False):
     obj_cache[id] = weights
     return weights
 
+def get_weight(mesh, vg, idx):
+    try: #TODO: new vertex group handling
+        return vg.weight(idx)
+    except RuntimeError:
+        return 0
+
 def transfer_weights(char, asset):
     t = Timer()
     weights = get_obj_weights(char, asset)
@@ -258,34 +264,39 @@ def transfer_weights(char, asset):
     for vg_src in char.vertex_groups:
         if not vg_src.name.startswith("DEF-") or vg_src.name in asset.vertex_groups:
             continue
-        vg_dst = asset.vertex_groups.new(name = vg_src.name)
+        vg_dst = None
         for i, subweights in enumerate(weights):
-            vg_dst.add(i, sum(vg_src.weight(vi)*subweight for vi, subweight in subweights))
+            weight = sum(get_weight(char.data, vg_src,vi)*subweight for vi, subweight in subweights)
+            if weight>0:
+                if vg_dst is None:
+                    vg_dst = asset.vertex_groups.new(name = vg_src.name)
+                vg_dst.add([i], weight, type='REPLACE')
 
     t.time("weights")
 
-def do_fit(char, asset, mask = True):
+def do_fit(char, assets):
     t = Timer()
-
-    weights = get_obj_weights(char, asset, mask)
 
     char_basis = char.data.vertices
     char_shapekey = char.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
     char_morphed = char_shapekey.data
 
-    if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
-        asset.shape_key_add(name="Basis", from_mix=False)
-    if "charmorph_fitting" in asset.data.shape_keys.key_blocks:
-        asset_fitkey = asset.data.shape_keys.key_blocks["charmorph_fitting"]
-    else:
-        asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
+    for asset in assets:
+        weights = get_obj_weights(char, asset)
+        if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
+            asset.shape_key_add(name="Basis", from_mix=False)
+        if "charmorph_fitting" in asset.data.shape_keys.key_blocks:
+            asset_fitkey = asset.data.shape_keys.key_blocks["charmorph_fitting"]
+        else:
+            asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
-    asset_morphed = asset_fitkey.data
-    for i, avert in enumerate(asset.data.vertices):
-        asset_morphed[i].co = avert.co + sum(((char_morphed[vi].co-char_basis[vi].co)*weight for vi, weight in weights[i]), mathutils.Vector())
+        asset_morphed = asset_fitkey.data
+        for i, avert in enumerate(asset.data.vertices):
+            asset_morphed[i].co = avert.co + sum(((char_morphed[vi].co-char_basis[vi].co)*weight for vi, weight in weights[i]), mathutils.Vector())
+
+        asset_fitkey.value = max(asset_fitkey.value, 1)
 
     char.shape_key_remove(char_shapekey)
-    asset_fitkey.value = max(asset_fitkey.value, 1)
     t.time("fit")
 
 def refit_char_assets(char):
@@ -294,11 +305,10 @@ def refit_char_assets(char):
     else:
         children = [ obj.name for obj in bpy.data.objects if obj.type=="MESH" and obj.parent == char  and 'charmorph_fit_id' in obj.data]
         char_cache[char.name] = children
-    for name in children:
-        asset = bpy.data.objects[name]
-        if asset.type=="MESH" and 'charmorph_fit_id' in asset.data:
-            do_fit(char, asset, False)
 
+    assets = [ asset for asset in (bpy.data.objects[name] for name in children) if asset.type=="MESH" and 'charmorph_fit_id' in asset.data ]
+    if assets:
+        do_fit(char, assets, False)
 
 dummy_dict = {"data":{}}
 
@@ -353,7 +363,11 @@ class OpFit(bpy.types.Operator):
         ui = context.scene.charmorph_ui
         char = bpy.data.objects[ui.fitting_char]
         asset = bpy.data.objects[ui.fitting_asset]
-        do_fit(char, asset, ui.fitting_mask != "NONE") # TODO: implement COMB masking
+        if ui.fitting_mask != "NONE":
+            # TODO: implement COMB masking
+            get_obj_weights(char, asset, True)
+        transfer_weights(char, asset)
+        do_fit(char, [asset])
         asset.parent = char
         return {"FINISHED"}
 
