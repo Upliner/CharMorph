@@ -373,7 +373,6 @@ def morph_categories_prop(morphs):
 
 # Create a property group with all L2 morphs
 def create_charmorphs_L2(obj, char, L1):
-
     del_charmorphs_L2()
     morphs = get_morphs_L2(obj, L1)
     if not morphs:

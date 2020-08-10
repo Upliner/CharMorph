@@ -18,8 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import time, random
-import bpy, mathutils
+import os, time, random
+import bpy, bpy_extras, mathutils
+
+from . import library
 
 dist_thresh = 0.1
 epsilon = 1e-30
@@ -52,9 +54,8 @@ def neighbor_map(mesh):
     return result
 
 def invalidate_cache():
-    global obj_cache, char_cache
-    obj_cache = {}
-    char_cache = {}
+    obj_cache.clear()
+    char_cache.clear()
     print("Fitting cache is invalidated")
 
 def calc_weights(char, asset, mask):
@@ -300,6 +301,16 @@ def do_fit(char, assets):
     char.shape_key_remove(char_shapekey)
     t.time("fit")
 
+def fit_new(char, asset):
+    char_cache.clear()
+    if bpy.context.scene.charmorph_ui.fitting_mask != "NONE":
+        # TODO: implement COMB masking
+        get_obj_weights(char, asset, True)
+    transfer_weights(char, asset)
+    do_fit(char, [asset])
+    asset.parent = char
+
+
 def refit_char_assets(char):
     if char.name in char_cache:
         children = char_cache[char.name]
@@ -311,10 +322,8 @@ def refit_char_assets(char):
     if assets:
         do_fit(char, assets)
 
-dummy_dict = {"data":{}}
-
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
-    bl_label = "Fitting"
+    bl_label = "Asset fitting"
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -326,21 +335,29 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.scene.charmorph_ui
-        self.layout.prop(ui,"fitting_char")
-        self.layout.prop(ui,"fitting_asset")
-        self.layout.prop(ui,"fitting_mask")
-        self.layout.prop(ui,"fitting_weights")
+        self.layout.prop(ui, "fitting_char")
+        self.layout.prop(ui, "fitting_asset")
+        self.layout.prop(ui, "fitting_mask")
+        self.layout.prop(ui, "fitting_weights")
         self.layout.separator()
-        if 'charmorph_fit_id' in bpy.data.objects.get(ui.fitting_asset, dummy_dict).data:
+        obj = bpy.data.objects.get(ui.fitting_asset)
+        if obj and 'charmorph_fit_id' in obj.data:
             self.layout.operator("charmorph.unfit")
         else:
-            self.layout.operator("charmorph.fit")
+            self.layout.operator("charmorph.fit_local")
+        self.layout.separator()
+        self.layout.operator("charmorph.fit_external")
+        self.layout.prop(ui, "fitting_library_asset")
+        self.layout.operator("charmorph.fit_library")
+        self.layout.prop(ui, "fitting_library_dir")
+        self.layout.separator()
+        self.layout.prop(ui, "hair_color")
+        self.layout.prop(ui, "hair_style")
 
-class OpFit(bpy.types.Operator):
-    bl_idname = "charmorph.fit"
-    bl_label = "Fit"
+class OpFitLocal(bpy.types.Operator):
+    bl_idname = "charmorph.fit_local"
+    bl_label = "Fit local asset"
     bl_options = {"UNDO"}
-
 
     @classmethod
     def poll(cls, context):
@@ -359,17 +376,70 @@ class OpFit(bpy.types.Operator):
         )
 
     def execute(self, context):
-        global char_cache
-        char_cache = {}
         ui = context.scene.charmorph_ui
         char = bpy.data.objects[ui.fitting_char]
         asset = bpy.data.objects[ui.fitting_asset]
-        if ui.fitting_mask != "NONE":
-            # TODO: implement COMB masking
-            get_obj_weights(char, asset, True)
-        transfer_weights(char, asset)
-        do_fit(char, [asset])
-        asset.parent = char
+        fit_new(char, asset)
+        return {"FINISHED"}
+
+def fitExtPoll(context):
+    ui = context.scene.charmorph_ui
+    char = bpy.data.objects.get(ui.fitting_char)
+    if not char or char.type != 'MESH':
+        return False
+    return (
+        context.mode == "OBJECT" and
+        ui.fitting_char != '' and
+        'charmorph_fit_id' not in char.data
+    )
+
+
+class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    bl_idname = "charmorph.fit_external"
+    bl_label = "Fit from file"
+    bl_description = "Import and fit an asset from external .blend file"
+    bl_options = {"UNDO"}
+
+    filename_ext = ".blend"
+    filter_glob: bpy.props.StringProperty(default="*.blend", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return fitExtPoll(context)
+
+    def execute(self, context):
+        ui = context.scene.charmorph_ui
+        char = bpy.data.objects[ui.fitting_char]
+        name, _ = os.path.splitext(self.filepath)
+        asset = library.import_obj(self.filepath, name)
+        if asset is None:
+            self.report({'ERROR'}, "Import failed")
+            return {"CANCELLED"}
+        fit_new(char, asset)
+        return {"FINISHED"}
+
+class OpFitLibrary(bpy.types.Operator):
+    bl_idname = "charmorph.fit_library"
+    bl_label = "Fit from library"
+    bl_description = "Import and fit an asset from library"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return fitExtPoll(context)
+
+    def execute(self, context):
+        ui = context.scene.charmorph_ui
+        char = bpy.data.objects[ui.fitting_char]
+        asset_data = library.fitting_asset_data()
+        if asset_data is None:
+            self.report({'ERROR'},"Asset not found")
+            return {"CANCELLED"}
+        asset = library.import_obj(*asset_data)
+        if asset is None:
+            self.report({'ERROR'}, "Import failed")
+            return {"CANCELLED"}
+        fit_new(char, asset)
         return {"FINISHED"}
 
 class OpUnfit(bpy.types.Operator):
@@ -390,8 +460,7 @@ class OpUnfit(bpy.types.Operator):
         )
 
     def execute(self, context):
-        global char_cache
-        char_cache = {}
+        char_cache.clear()
         ui = context.scene.charmorph_ui
         asset_name = ui.fitting_asset
         asset = bpy.data.objects[asset_name]
@@ -416,4 +485,4 @@ class OpUnfit(bpy.types.Operator):
         del asset.data['charmorph_fit_id']
         return {"FINISHED"}
 
-classes = [OpFit, OpUnfit, CHARMORPH_PT_Fitting]
+classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Fitting]

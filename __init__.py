@@ -63,14 +63,15 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     def draw(self, context):
         pass
 
-def get_meshes(scene, context):
+def get_meshes(ui, context):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == "MESH"]
 
+#TODO: Use multiple inheritance to move props to corresponding modules?
 class CharMorphUIProps(bpy.types.PropertyGroup):
     # Creation
     base_model: bpy.props.EnumProperty(
         name = "Base",
-        items = lambda scene, context: [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
+        items = lambda ui, context: [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
         description = "Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name = "Materials",
@@ -158,6 +159,25 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Transfer weights",
         default=True,
         description="Transfer armature weights to the asset")
+    fitting_library_asset: bpy.props.EnumProperty(
+        name="Library asset",
+        description="Select asset from library",
+        items = library.get_fitting_assets)
+    fitting_library_dir: bpy.props.StringProperty(
+        name = "Library dir",
+        description = "Additional library directory",
+        update = library.update_fitting_assets,
+        subtype = 'DIR_PATH')
+
+    #Hair
+    hair_color: bpy.props.EnumProperty(
+        name="Hair color",
+        description="Hair color",
+        items = [])
+    hair_style: bpy.props.EnumProperty(
+        name="Hairstyle",
+        description="Hairstyle",
+        items = [])
 
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
@@ -183,9 +203,18 @@ def on_select_object():
     if obj is None:
         return
     if obj.type == "MESH":
+        asset = None
+        if (obj.parent and obj.parent.type == "MESH" and
+                "charmorph_fit_id" in obj.data and
+                "charmorph_template" not in obj.data):
+            asset = obj
+            obj = obj.parent
         try:
             ui = bpy.context.scene.charmorph_ui
-            if library.obj_char(obj).name:
+            if asset:
+                ui.fitting_char = obj.name
+                ui.fitting_asset = asset.name
+            elif library.obj_char(obj).name:
                 ui.fitting_char = obj.name
             else:
                 ui.fitting_asset = obj.name

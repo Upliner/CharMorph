@@ -32,14 +32,16 @@ data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 #logger.debug("Looking for the char library in the folder %s...", data_dir)
 
 chars = {}
+additional_assets = {}
 
 class Character:
     def __init__(self, name):
         self.name = name
+        self.config = {}
+        self.morphs_meta = {}
+        self.assets = {}
 
 empty_char = Character("")
-empty_char.config = {}
-empty_char.morphs_meta = {}
 
 def char_file(char, file):
     return os.path.join(os.path.join(data_dir, "characters/{}".format(char)), file)
@@ -58,6 +60,32 @@ def obj_char(obj):
     if not obj:
         return empty_char
     return chars.get(obj.data.get("charmorph_template"), chars.get(obj.get("charmorph_template"), empty_char))
+
+def get_fitting_assets(ui, context):
+    obj = bpy.data.objects.get(ui.fitting_char)
+    char = obj_char(obj)
+    return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
+
+def update_fitting_assets(ui, context):
+    additional_assets.clear()
+    dir = ui.fitting_library_dir
+    if not dir:
+        return
+    for file in os.listdir(dir):
+        name, ext = os.path.splitext(file)
+        if ext == ".blend" and os.path.isfile(os.path.join(dir, file)):
+            additional_assets[name] = (os.path.join(dir, file), name)
+
+def fitting_asset_data():
+    ui = bpy.context.scene.charmorph_ui
+    item = ui.fitting_library_asset
+    if item.startswith("char_"):
+        obj = bpy.data.objects.get(ui.fitting_char)
+        char = obj_char(obj)
+        return char.assets.get(item[5:])
+    elif item.startswith("add_"):
+        return additional_assets.get(item[4:])
+    return None
 
 def load_library():
     chars.clear()
@@ -100,10 +128,17 @@ class CHARMORPH_PT_Creation(bpy.types.Panel):
 def import_obj(file, obj):
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
-            raise(obj + " object is not found")
+            if len(data_from.objects) == 1:
+                obj = data_from.objects[0]
+            else:
+                return None
         data_to.objects = [obj]
-    bpy.context.collection.objects.link(data_to.objects[0])
-    return data_to.objects[0]
+    obj = data_to.objects[0]
+    if obj.type != 'MESH':
+        bpy.data.objects.remove(obj)
+        return None
+    bpy.context.collection.objects.link(obj)
+    return obj
 
 def is_adult_mode():
     prefs = bpy.context.preferences.addons.get(__package__, None)
