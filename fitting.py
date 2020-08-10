@@ -251,26 +251,27 @@ def get_obj_weights(char, asset, mask = False):
     obj_cache[id] = weights
     return weights
 
-def get_weight(mesh, vg, idx):
-    try: #TODO: new vertex group handling
-        return vg.weight(idx)
-    except RuntimeError:
-        return 0
-
 def transfer_weights(char, asset):
     t = Timer()
     weights = get_obj_weights(char, asset)
+    char_verts = char.data.vertices
 
-    for vg_src in char.vertex_groups:
-        if not vg_src.name.startswith("DEF-") or vg_src.name in asset.vertex_groups:
-            continue
-        vg_dst = None
-        for i, subweights in enumerate(weights):
-            weight = sum(get_weight(char.data, vg_src,vi)*subweight for vi, subweight in subweights)
-            if weight>0:
+    groups = {}
+
+    for i, subweights in enumerate(weights):
+        for vi, subweight in subweights:
+            for src in char_verts[vi].groups:
+                gid = src.group
+                group_name = char.vertex_groups[gid].name
+                if not group_name.startswith("DEF-"):
+                    continue
+                vg_dst = groups.get(gid)
                 if vg_dst is None:
-                    vg_dst = asset.vertex_groups.new(name = vg_src.name)
-                vg_dst.add([i], weight, type='REPLACE')
+                    if group_name in asset.vertex_groups:
+                        asset.vertex_groups.remove(asset.vertex_groups[group_name])
+                    vg_dst = asset.vertex_groups.new(name = group_name)
+                    groups[gid] = vg_dst
+                vg_dst.add([i], src.weight*subweight, 'ADD')
 
     t.time("weights")
 

@@ -4,7 +4,7 @@ CharMorph is a character creation tool for Blender.
 
 It uses base meshes and morphs from ManuelbastioniLAB/MB-Lab but it's designed for easy creation of new models and easy modification of existing ones.
 
-This addon includes from-scratch reimplementaion of most of MB-Lab features but it doesn't contains any MB-Lab code.
+This addon includes from-scratch reimplementaion of most of MB-Lab features but it currently doesn't contain any MB-Lab code.
 It uses radically different database format and has more internal differences.
 It uses much less hard coded features. It is planned that CharMorph won't be limited to humanoids. Animals and other creatures are welcome at CharMorph too.
 
