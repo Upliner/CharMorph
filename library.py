@@ -149,6 +149,7 @@ def is_adult_mode():
 class OpCreate(bpy.types.Operator):
     bl_idname = "charmorph.create"
     bl_label = "Create character"
+    bl_description = "Create character"
     bl_options = {"UNDO"}
 
     def execute(self, context):

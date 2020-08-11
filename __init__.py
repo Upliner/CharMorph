@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, fitting
+from . import library, morphing, randomize, file_io, materials, fitting, cmcreation
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 3),
+    "version": (0, 0, 4),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -53,6 +53,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
+    bl_order = 1
 
     @classmethod
     def poll(self, context):
@@ -170,6 +171,9 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         subtype = 'DIR_PATH')
 
     #Hair
+    hair_color: bpy.props.BoolProperty(
+        name="Use scalp mesh",
+        description="Use scalp mesh as emitter instead of whole body")
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
@@ -195,8 +199,6 @@ classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
 for module in [library, morphing, randomize, file_io, materials, fitting]:
     classes.extend(module.classes)
-
-class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def on_select_object():
     obj = bpy.context.active_object
@@ -231,6 +233,8 @@ def load_handler(dummy):
 
 bpy.app.handlers.load_post.append(load_handler)
 
+class_register, class_unregister = bpy.utils.register_classes_factory(classes)
+
 def register():
     print("Charmorph register")
     library.load_library()
@@ -242,9 +246,11 @@ def register():
         key = (bpy.types.LayerObjects, "active"),
         args=(),
         notify = on_select_object)
+    cmcreation.register()
 
 def unregister():
     print("Charmorph unregister")
+    cmcreation.unregister()
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.Scene.charmorph_ui
     morphing.del_charmorphs()

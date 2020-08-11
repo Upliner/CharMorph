@@ -18,10 +18,12 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, time, random
+import os, time, random, logging
 import bpy, bpy_extras, mathutils
 
 from . import library
+
+logger = logging.getLogger(__name__)
 
 dist_thresh = 0.1
 epsilon = 1e-30
@@ -35,7 +37,7 @@ class Timer:
         self.t = time.monotonic()
     def time(self, name):
         t2 = time.monotonic()
-        print("{}: {}".format(name, t2-self.t))
+        logger.debug("{}: {}".format(name, t2-self.t))
         self.t = t2
 
 def kdtree_from_verts(verts):
@@ -56,7 +58,7 @@ def neighbor_map(mesh):
 def invalidate_cache():
     obj_cache.clear()
     char_cache.clear()
-    print("Fitting cache is invalidated")
+    logger.debug("Fitting cache is invalidated")
 
 def calc_weights(char, asset, mask):
     t = Timer()
@@ -351,48 +353,43 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.operator("charmorph.fit_library")
         self.layout.prop(ui, "fitting_library_dir")
         self.layout.separator()
+        self.layout.prop(ui, "hair_scalp")
         self.layout.prop(ui, "hair_color")
         self.layout.prop(ui, "hair_style")
+
+def mesh_obj(name):
+    if not name:
+        return None
+    obj = bpy.data.objects.get(name)
+    if obj and obj.type == "MESH":
+        return obj
+def get_char():
+    obj = mesh_obj(bpy.context.scene.charmorph_ui.fitting_char)
+    if not obj or 'charmorph_fit_id' in obj.data:
+        return None
+    return obj
+def get_asset():
+    return mesh_obj(bpy.context.scene.charmorph_ui.fitting_asset)
 
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"
     bl_label = "Fit local asset"
+    bl_description = "Fit selected local asset to the character"
     bl_options = {"UNDO"}
 
     @classmethod
     def poll(cls, context):
-        ui = context.scene.charmorph_ui
-        char = bpy.data.objects.get(ui.fitting_char)
-        asset = bpy.data.objects.get(ui.fitting_asset)
-        if not char or char.type != 'MESH' or not asset or asset.type != 'MESH':
+        if context.mode != "OBJECT" or not get_char():
             return False
-        return (
-            context.mode == "OBJECT" and
-            ui.fitting_char != '' and
-            ui.fitting_asset != '' and
-            ui.fitting_char != ui.fitting_asset and
-            'charmorph_fit_id' not in char.data and
-            'charmorph_fit_id' not in asset.data
-        )
+        asset = get_asset()
+        return asset and 'charmorph_fit_id' not in asset.data
 
     def execute(self, context):
-        ui = context.scene.charmorph_ui
-        char = bpy.data.objects[ui.fitting_char]
-        asset = bpy.data.objects[ui.fitting_asset]
-        fit_new(char, asset)
+        fit_new(get_char(), get_asset())
         return {"FINISHED"}
 
 def fitExtPoll(context):
-    ui = context.scene.charmorph_ui
-    char = bpy.data.objects.get(ui.fitting_char)
-    if not char or char.type != 'MESH':
-        return False
-    return (
-        context.mode == "OBJECT" and
-        ui.fitting_char != '' and
-        'charmorph_fit_id' not in char.data
-    )
-
+    return context.mode == "OBJECT" and get_char()
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.fit_external"
@@ -408,14 +405,12 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         return fitExtPoll(context)
 
     def execute(self, context):
-        ui = context.scene.charmorph_ui
-        char = bpy.data.objects[ui.fitting_char]
         name, _ = os.path.splitext(self.filepath)
         asset = library.import_obj(self.filepath, name)
         if asset is None:
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
-        fit_new(char, asset)
+        fit_new(get_char(), asset)
         return {"FINISHED"}
 
 class OpFitLibrary(bpy.types.Operator):
@@ -429,8 +424,6 @@ class OpFitLibrary(bpy.types.Operator):
         return fitExtPoll(context)
 
     def execute(self, context):
-        ui = context.scene.charmorph_ui
-        char = bpy.data.objects[ui.fitting_char]
         asset_data = library.fitting_asset_data()
         if asset_data is None:
             self.report({'ERROR'},"Asset not found")
@@ -439,7 +432,7 @@ class OpFitLibrary(bpy.types.Operator):
         if asset is None:
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
-        fit_new(char, asset)
+        fit_new(get_char(), asset)
         return {"FINISHED"}
 
 class OpUnfit(bpy.types.Operator):
@@ -449,15 +442,8 @@ class OpUnfit(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        ui = context.scene.charmorph_ui
-        asset = bpy.data.objects.get(ui.fitting_asset)
-        if not asset or asset.type != 'MESH':
-            return False
-        return (
-            context.mode == "OBJECT" and
-            ui.fitting_asset != '' and
-            'charmorph_fit_id' in asset.data
-        )
+        asset = get_asset()
+        return context.mode == "OBJECT" and asset and 'charmorph_fit_id' in asset.data
 
     def execute(self, context):
         char_cache.clear()
