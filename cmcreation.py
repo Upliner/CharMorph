@@ -45,7 +45,7 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
     def draw(self, context):
         ui = context.scene.cmcreation_ui
         self.layout.prop(ui, "rig_char")
-        self.layout.prop(ui, "rig_armature")
+        #self.layout.prop(ui, "rig_armature")
         self.layout.operator("cmcreation.joints_to_vg")
 
 def obj_by_type(name, type):
@@ -74,13 +74,18 @@ def joints_to_vg(char, rig):
             witem[0] += item.weight
             witem[1] += v.co*item.weight
 
+    bones = {bone.name:bone for bone in bpy.context.selected_editable_bones}
+
     for k, v in weights.items():
         bone_name, jtype = k.rsplit("_", 1)
-        bone = rig.data.edit_bones.get(bone_name)
+        bone = bones.get(bone_name)
         if not bone:
-            logger.warn("Bone not found: " + bone_name)
+            #logger.warn("Bone not found: " + bone_name)
             continue
         pos = v[1]/v[0]
+        offs = bone.get("charmorph_offs_" + jtype)
+        if offs and len(offs) == 3:
+            pos += mathutils.Vector(tuple(offs))
         if jtype == "head":
             bone.head = pos
         elif jtype == "tail":
@@ -88,16 +93,16 @@ def joints_to_vg(char, rig):
 
 class OpJointsToVG(bpy.types.Operator):
     bl_idname = "cmcreation.joints_to_vg"
-    bl_label = "All Joints to VG"
+    bl_label = "Selected bones to VG"
     bl_description = "Move selected joints according to their vertex groups"
     bl_options = {"UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return get_char() and get_rig()
+        return context.mode=="EDIT_ARMATURE" and get_char() # and get_rig()
 
     def execute(self, context):
-        joints_to_vg(get_char(), get_rig())
+        joints_to_vg(get_char(), context.object)
         return {"FINISHED"}
 
 def objects_by_type(type):
@@ -109,15 +114,10 @@ class CMCreationUIProps(bpy.types.PropertyGroup):
         name = "Char",
         items = lambda ui, context: objects_by_type("MESH"),
         description = "Character mesh for rigging")
-    rig_armature: bpy.props.EnumProperty(
-        name = "Rig",
-        items = lambda ui, context: objects_by_type("ARMATURE"),
-        description = "Armature for rigging")
-
-    def draw(self, context):
-        ui = context.scene.cmcreation_ui
-        self.layout.prop(ui,"rig_char")
-        self.layout.prop(ui,"rig_armature")
+    #rig_armature: bpy.props.EnumProperty(
+    #    name = "Rig",
+    #    items = lambda ui, context: objects_by_type("ARMATURE"),
+    #    description = "Armature for rigging")
 
 classes = [CMCreationUIProps, OpJointsToVG, VIEW3D_PT_CMCreation, CMCREATION_PT_Rigging]
 
