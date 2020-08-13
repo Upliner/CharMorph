@@ -171,7 +171,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         subtype = 'DIR_PATH')
 
     #Hair
-    hair_color: bpy.props.BoolProperty(
+    hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
     hair_color: bpy.props.EnumProperty(
