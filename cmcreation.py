@@ -52,9 +52,9 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
         self.layout.prop(ui, "rig_vg_calc")
         self.layout.prop(ui, "rig_vg_offs")
         if ui.rig_vg_calc == "NP":
-            self.layout.prop(ui, "rig_vg_calc_n")
+            self.layout.prop(ui, "rig_vg_n")
         elif ui.rig_vg_calc == "NR":
-            self.layout.prop(ui, "rig_vg_calc_radius")
+            self.layout.prop(ui, "rig_vg_radius")
 
         self.layout.operator("cmcreation.calc_vg")
 
