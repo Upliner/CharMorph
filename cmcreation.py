@@ -45,7 +45,6 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
     def draw(self, context):
         ui = context.scene.cmcreation_ui
         self.layout.prop(ui, "rig_char")
-        #self.layout.prop(ui, "rig_armature")
         self.layout.prop(ui, "rig_heads")
         self.layout.prop(ui, "rig_tails")
         self.layout.operator("cmcreation.joints_to_vg")
@@ -57,6 +56,7 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
             self.layout.prop(ui, "rig_vg_radius")
 
         self.layout.operator("cmcreation.calc_vg")
+        self.layout.operator("cmcreation.add_rigify_deform")
 
 def obj_by_type(name, type):
     if not name:
@@ -284,6 +284,29 @@ class OpCalcVg(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class OpRigifyDeform(bpy.types.Operator):
+    bl_idname = "cmcreation.add_rigify_deform"
+    bl_label = "Add Rigify deform"
+    bl_description = "Set deform flag for neccessary rigfy bones"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_ARMATURE"
+
+    def execute(self, context):
+        char = get_char()
+        for bone in ["ORG-teeth.T", "ORG-teeth.B", "MCH-eye.L", "MCH-eye.R"] + [
+                "MCH-lid.{}.{}.00{}".format(tb, lr, n+1)
+                for tb in ("T","B")
+                for lr in ("L","R")
+                for n in range(3)]:
+            context.object.data.edit_bones[bone].use_deform = True
+            if char:
+                if bone not in char.vertex_groups:
+                    char.vertex_groups.new(name=bone)
+        return {"FINISHED"}
+
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
@@ -343,7 +366,7 @@ class CMCreationUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMCreationUIProps, OpJointsToVG, OpCalcVg, VIEW3D_PT_CMCreation, CMCREATION_PT_Rigging]
+classes = [CMCreationUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMCreation, CMCREATION_PT_Rigging]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
