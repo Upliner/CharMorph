@@ -45,11 +45,10 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
     def draw(self, context):
         ui = context.scene.cmcreation_ui
         self.layout.prop(ui, "rig_char")
-        self.layout.prop(ui, "rig_heads")
-        self.layout.prop(ui, "rig_tails")
         self.layout.operator("cmcreation.joints_to_vg")
         self.layout.prop(ui, "rig_vg_calc")
         self.layout.prop(ui, "rig_vg_offs")
+        self.layout.prop(ui, "rig_xmirror")
         if ui.rig_vg_calc == "NP":
             self.layout.prop(ui, "rig_vg_n")
         elif ui.rig_vg_calc == "NR":
@@ -91,13 +90,39 @@ def get_vg_avg(char):
 
 def joint_list():
     joints = []
-    ui = bpy.context.scene.cmcreation_ui
-    for bone in bpy.context.selected_editable_bones:
-        if ui.rig_heads:
+    for bone in bpy.context.object.data.edit_bones:
+        if bone.select_head:
             joints.append(("joint_"+bone.name+"_head", bone.head, bone, "head"))
-        if ui.rig_tails:
+        if bone.select_tail:
             joints.append(("joint_"+bone.name+"_tail", bone.tail, bone, "tail"))
     return joints
+
+def kdtree_from_bones(bones):
+    kd = mathutils.kdtree.KDTree(len(bones)*2)
+    for i, bone in enumerate(bones):
+        kd.insert(bone.head,i*2)
+        kd.insert(bone.tail,i*2+1)
+    kd.balance()
+    return kd
+
+def joint_list_extended():
+    result = joint_list()
+    bone_set = set(tup[0] for tup in result)
+    bones = bpy.context.object.data.edit_bones
+    kd = kdtree_from_bones(bones)
+    xmirror = bpy.context.scene.cmcreation_ui.rig_xmirror
+    for name, co, _, _ in result:
+        checklist = [co]
+        if xmirror:
+            checklist.append(mathutils.Vector((-co[0],co[1],co[2])))
+        for co2 in checklist:
+            for co3, jid, _ in kd.find_range(co2, 0.00001):
+                bone = bones[jid//2]
+                attr = "head" if jid&1==0 else "tail"
+                name = "joint_{}_{}".format(bone.name, attr)
+                if name not in bone_set:
+                    result.append((name, co3, bone, attr))
+    return result
 
 def joints_to_vg(char):
     avg = get_vg_avg(char)
@@ -109,7 +134,7 @@ def joints_to_vg(char):
             logger.error("No vg for joint" + name)
 
 def editable_bones_poll(context):
-    return context.selected_editable_bones and len(context.selected_editable_bones) > 0 and get_char()
+    return context.mode == "EDIT_ARMATURE" and get_char()
 
 class OpJointsToVG(bpy.types.Operator):
     bl_idname = "cmcreation.joints_to_vg"
@@ -132,35 +157,6 @@ def kdtree_from_obj(obj):
         kd.insert(vert.co, idx)
     kd.balance()
     return kd
-
-def recalc_cu(vg, lst, co):
-    if len(lst) == 0:
-        logger.error("No points")
-        return False
-    weights = mathutils.interpolate.poly_3d_calc([item[0] for item in lst], co)
-    coeff = max(weights)
-    if coeff < 1e-30:
-        logger.error("Bad coeff")
-        return False
-    coeff = 1/coeff
-    for weight, item in zip(weights, lst):
-        vg.add([item[1]], weight*coeff, 'REPLACE')
-    return True
-
-def recalc_lst(char, co, name, lst):
-    if name in char.vertex_groups:
-        char.vertex_groups.remove(char.vertex_groups[name])
-    vg = char.vertex_groups.new(name=name)
-    vg.add([item[1] for item in lst], 1, 'REPLACE')
-    return recalc_cu(vg, lst, co)
-
-def recalc_nf(char, co, name, bvh):
-    _, _, idx, _ = bvh.find_nearest(co)
-    if idx == None:
-        logger.error("Face not found")
-        return False
-    verts = char.data.vertices
-    return recalc_lst(char, co, name, [(verts[i].co, i) for i in char.data.polygons[idx].vertices])
 
 def closest_point_on_face(face, co):
     if len(face)==3:
@@ -215,6 +211,74 @@ def recalc_bb(char, co, name):
     for item, weight in zip(lst, weights):
         vg.add([item[1]], weight, 'REPLACE')
 
+def recalc_cu(vg, lst, co):
+    if len(lst) == 0:
+        logger.error("No points")
+        return False
+    weights = mathutils.interpolate.poly_3d_calc([item[0] for item in lst], co)
+    coeff = max(weights)
+    if coeff < 1e-30:
+        logger.error("Bad coeff")
+        return False
+    coeff = 1/coeff
+    for weight, item in zip(weights, lst):
+        vg.add([item[1]], weight*coeff, 'REPLACE')
+    return True
+
+def recalc_lst(char, co, name, lst):
+    if name in char.vertex_groups:
+        char.vertex_groups.remove(char.vertex_groups[name])
+    vg = char.vertex_groups.new(name=name)
+    vg.add([item[1] for item in lst], 1, 'REPLACE')
+    if len(lst) == 1:
+        return True
+    return recalc_cu(vg, lst, co)
+
+def calc_emap(char):
+    result = {}
+    for edge in char.data.edges:
+        for vert in edge.vertices:
+            item = result.get(vert)
+            if item is None:
+                item = []
+                result[vert] = item
+            item.append(edge.index)
+    return result
+
+def dist_edge(co, v1, v2):
+    co2, dist = mathutils.geometry.intersect_point_line(co, v1, v2)
+    if dist<=0:
+        return (v1-co).length
+    if dist>=1:
+        return (v2-co).length
+    return (co2-co).length
+
+def recalc_ne(char, co, name, kd, emap):
+    verts = char.data.vertices
+    edges = char.data.edges
+    lst = None
+    mindist = 1e30
+    for _, vert, _ in kd.find_n(co, 4):
+        for edge in emap[vert]:
+            v1, v2 = tuple((verts[i].co,i) for i in edges[edge].vertices)
+            dist = dist_edge(co, v1[0], v2[0])
+            if dist<mindist:
+                mindist = dist
+                lst = [v1, v2]
+                print(dist, lst)
+    if lst is None:
+        logger.error("Edge not found")
+        return False
+    return recalc_lst(char, co, name, lst)
+
+def recalc_nf(char, co, name, bvh):
+    _, _, idx, _ = bvh.find_nearest(co)
+    if idx is None:
+        logger.error("Face not found")
+        return False
+    verts = char.data.vertices
+    return recalc_lst(char, co, name, [(verts[i].co, i) for i in char.data.polygons[idx].vertices])
+
 def recalc_np(char, co, name, kd):
     return recalc_lst(char, co, name, kd.find_n(co, bpy.context.scene.cmcreation_ui.rig_vg_n))
 def recalc_nr(char, co, name, kd):
@@ -246,8 +310,10 @@ class OpCalcVg(bpy.types.Operator):
                     continue
                 recalc_cu(vg, vgroups.get(name,[]), co)
         else:
-            if typ == "NP" or typ == "NR":
+            if typ == "NP" or typ == "NR" or typ == "NE":
                 kd = kdtree_from_obj(char)
+                if typ == "NE":
+                    emap = calc_emap(char)
             elif typ == "NF":
                 bvh = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char.data.vertices], [f.vertices for f in char.data.polygons])
 
@@ -256,6 +322,8 @@ class OpCalcVg(bpy.types.Operator):
                     recalc_np(char, co, name, kd)
                 elif typ == "NR":
                     recalc_nr(char, co, name, kd)
+                elif typ == "NE":
+                    recalc_ne(char, co, name, kd, emap)
                 elif typ == "NF":
                     recalc_nf(char, co, name, bvh)
                 elif typ == "BB":
@@ -296,15 +364,9 @@ class OpRigifyDeform(bpy.types.Operator):
 
     def execute(self, context):
         char = get_char()
-        for bone in ["ORG-teeth.T", "ORG-teeth.B", "MCH-eye.L", "MCH-eye.R"] + [
-                "MCH-lid.{}.{}.00{}".format(tb, lr, n+1)
-                for tb in ("T","B")
-                for lr in ("L","R")
-                for n in range(3)]:
-            context.object.data.edit_bones[bone].use_deform = True
-            if char:
-                if bone not in char.vertex_groups:
-                    char.vertex_groups.new(name=bone)
+        for vg in char.vertex_groups:
+            if vg.name.startswith("ORG-") or vg.name.startswith("MCH-"):
+                context.object.data.edit_bones[vg.name].use_deform = True
         return {"FINISHED"}
 
 def objects_by_type(type):
@@ -317,13 +379,9 @@ class CMCreationUIProps(bpy.types.PropertyGroup):
         items = lambda ui, context: objects_by_type("MESH"),
         description = "Character mesh for rigging"
     )
-    rig_heads: bpy.props.BoolProperty(
-        name = "Heads",
-        description = "Affect bone heads for joints and vg manupulations",
-        default=True)
-    rig_tails: bpy.props.BoolProperty(
-        name = "Tails",
-        description = "Affect bone heads for joints and vg manupulations",
+    rig_xmirror: bpy.props.BoolProperty(
+        name = "X Mirror",
+        description = "Use X mirror for vertex group calculation",
         default=True,
     )
     rig_vg_calc: bpy.props.EnumProperty(
@@ -334,6 +392,7 @@ class CMCreationUIProps(bpy.types.PropertyGroup):
             ("NP", "n nearest points","Recalculate vertex group based on n nearest points"),
             ("NR", "By distance","Recalculate vertex group based on vertices within specified distance"),
             ("NF", "Nearest face","Recalculate vertex group based on nearest face"),
+            ("NE", "Nearest edge","Recalculate vertex group based on nearest edge"),
             ("BB", "Bounding box (exp)","Recalculate vertex group based on smallest bounding box vertices (experimental)"),
         ]
     )
