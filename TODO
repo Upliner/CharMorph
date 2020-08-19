@@ -27,13 +27,13 @@ Materials:
 Fitting:
   - Choice between separate and combined masks
   - MakeHuman asset support ?
+  - Bounding box transform?
   - More fitting settings? (Thresholds and so on)
   - Asset baking
   - Hair fitting
   - Get fitting base from library
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
-  - Bounding box transform?
   - Replace censors with default underwear
 
 Assets:

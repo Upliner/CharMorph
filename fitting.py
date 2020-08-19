@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, time, random, logging
-import bpy, bpy_extras, mathutils
+import bpy, bpy_extras, mathutils, bmesh
 
 from . import library
 
@@ -90,7 +90,7 @@ def calc_weights(char, asset, mask):
 
         d = weights[i]
         for vi in char_faces[idx].vertices:
-            d[vi] = d.get(vi,0) + 1/((co-char_verts[vi].co).length * fdist)
+            d[vi] = d.get(vi,0) + 1/max(((co-char_verts[vi].co).length * fdist),epsilon)
 
     t.time("bvh direct")
 
@@ -117,7 +117,7 @@ def calc_weights(char, asset, mask):
     t.time("bvh reverse")
 
     if mask:
-        add_mask(char, asset, bvh_asset, bvh_char)
+        add_mask_from_asset(char, asset, bvh_asset, bvh_char)
         t.time("mask")
 
     #neighbors = neighbor_map(asset.data)
@@ -146,16 +146,23 @@ def calc_weights(char, asset, mask):
 def mask_name(asset):
     return "cm_mask_{}_{}".format(asset.name, asset.data.get("charmorph_fit_id","xxx")[:3])
 
-def add_mask(char, asset, bvh_asset, bvh_char):
+def update_bbox(bbox_min, bbox_max, obj):
+    for v in obj.bound_box:
+        for i in range(3):
+            bbox_min[i] = min(bbox_min[i], v[i])
+            bbox_max[i] = max(bbox_max[i], v[i])
+
+def add_mask_from_asset(char, asset, bvh_asset, bvh_char):
     vg_name = mask_name(asset)
     if vg_name in char.vertex_groups:
         return
     bbox_min = mathutils.Vector(asset.bound_box[0])
     bbox_max = mathutils.Vector(asset.bound_box[0])
-    for v in asset.bound_box:
-        for i in range(3):
-            bbox_min[i] = min(bbox_min[i], v[i])
-            bbox_max[i] = max(bbox_max[i], v[i])
+    update_bbox(bbox_min, bbox_max, asset)
+
+    add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char)
+
+def add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char):
     def bbox_match(co):
         for i in range(3):
             if co[i]<bbox_min[i] or co[i]>bbox_max[i]:
@@ -232,12 +239,17 @@ def add_mask(char, asset, bvh_asset, bvh_char):
 
     covered_verts.difference_update(boundary_verts)
 
-    if covered_verts:
-        vg = char.vertex_groups.new(name = vg_name)
-        vg.add(list(covered_verts), 1, 'REPLACE')
+    if not covered_verts:
+        return
+    vg = char.vertex_groups.new(name = vg_name)
+    vg.add(list(covered_verts), 1, 'REPLACE')
+    for mod in char.modifiers:
+        if mod.name == vg_name and mod.type == "MASK":
+            break
+    else:
         mod = char.modifiers.new(vg_name, "MASK")
-        mod.invert_vertex_group = True
-        mod.vertex_group = vg.name
+    mod.invert_vertex_group = True
+    mod.vertex_group = vg.name
 
 def get_obj_weights(char, asset, mask = False):
     if "charmorph_fit_id" not in asset.data:
@@ -316,6 +328,40 @@ def do_fit(char, assets):
     char.shape_key_remove(char_shapekey)
     t.time("fit")
 
+def recalc_comb_mask(char, new_asset=None):
+    t = Timer()
+    # Cleanup old masks
+    for mod in char.modifiers:
+        # We preserve cm_mask_combined modifier to keep its position in case if user moved it
+        if mod.name != "cm_mask_combined" and mod.name.startswith("cm_mask_"):
+            char.modifiers.remove(mod)
+
+    for vg in char.vertex_groups:
+        if vg.name.startswith("cm_mask_"):
+            char.vertex_groups.remove(vg)
+
+    assets = get_assets(char)
+    if new_asset:
+        assets.append(new_asset)
+    if not assets:
+        return
+    try:
+        bm = bmesh.new()
+        bm.from_mesh(char.data)
+        bvh_char = mathutils.bvhtree.BVHTree.FromBMesh(bm)
+        bm.clear()
+        bbox_min = mathutils.Vector(assets[0].bound_box[0])
+        bbox_max = mathutils.Vector(assets[0].bound_box[0])
+        for asset in assets:
+            bm.from_mesh(asset.data)
+            update_bbox(bbox_min, bbox_max, asset)
+        bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+
+    add_mask(char, "cm_mask_combined", bbox_min, bbox_max, bvh_assets, bvh_char)
+    t.time("comb_mask")
+
 def apply_transforms(obj):
     obj.data.transform(obj.matrix_world)
     obj.location = (0,0,0)
@@ -326,29 +372,36 @@ def apply_transforms(obj):
     obj.delta_scale = (1,1,1)
 
 def fit_new(char, asset):
-    char_cache.clear()
     ui = bpy.context.scene.charmorph_ui
     if ui.fitting_transforms:
         apply_transforms(asset)
-    if ui.fitting_mask != "NONE":
-        # TODO: implement COMB masking
+
+    if ui.fitting_mask == "SEPR":
         get_obj_weights(char, asset, True)
+    elif ui.fitting_mask == "COMB":
+        recalc_comb_mask(char, asset)
+
     do_fit(char, [asset])
     asset.parent = char
+    char_cache.clear()
     if ui.fitting_weights:
         transfer_weights(char, asset)
     if ui.fitting_armature:
         transfer_armature(char, asset)
 
-
-def refit_char_assets(char):
+def get_children(char):
     if char.name in char_cache:
-        children = char_cache[char.name]
+        return char_cache[char.name]
     else:
         children = [ obj.name for obj in bpy.data.objects if obj.type=="MESH" and obj.parent == char  and 'charmorph_fit_id' in obj.data]
         char_cache[char.name] = children
+        return children
 
-    assets = [ asset for asset in (bpy.data.objects[name] for name in children) if asset.type=="MESH" and 'charmorph_fit_id' in asset.data ]
+def get_assets(char):
+    return [ asset for asset in (bpy.data.objects[name] for name in get_children(char)) if asset.type=="MESH" and 'charmorph_fit_id' in asset.data ]
+
+def refit_char_assets(char):
+    assets = get_assets(char)
     if assets:
         do_fit(char, assets)
 
@@ -411,10 +464,15 @@ class OpFitLocal(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if context.mode != "OBJECT" or not get_char():
+        if context.mode != "OBJECT":
+            return False
+        char = get_char()
+        if not char:
             return False
         asset = get_asset()
-        return asset and 'charmorph_fit_id' not in asset.data
+        if not asset or asset == char:
+            return False
+        return True
 
     def execute(self, context):
         fit_new(get_char(), get_asset())
@@ -501,6 +559,10 @@ class OpUnfit(bpy.types.Operator):
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
         del asset.data['charmorph_fit_id']
+
+        if "cm_mask_combined" in char.modifiers:
+            recalc_comb_mask(char)
+
         return {"FINISHED"}
 
 classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Fitting]
