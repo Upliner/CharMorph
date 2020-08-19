@@ -160,6 +160,10 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Transfer weights",
         default=True,
         description="Transfer armature weights to the asset")
+    fitting_armature: bpy.props.BoolProperty(
+        name="Transfer armature",
+        default=True,
+        description="Transfer character armature modifiers to the asset")
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",

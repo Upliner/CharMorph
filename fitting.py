@@ -278,6 +278,21 @@ def transfer_weights(char, asset):
 
     t.time("weights")
 
+def transfer_armature(char, asset):
+    existing = set()
+    for mod in asset.modifiers:
+        if mod.type=="ARMATURE" and mod.object:
+            existing.add(mod.object.name)
+
+    for mod in char.modifiers:
+        if mod.type=="ARMATURE" and mod.object and mod.object.name not in existing:
+            newmod = asset.modifiers.new(mod.name, "ARMATURE")
+            newmod.object = mod.object
+            newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
+            newmod.invert_vertex_group = mod.invert_vertex_group
+            newmod.use_bone_envelopes = mod.use_bone_envelopes
+            newmod.use_vertex_groups = mod.use_vertex_groups
+
 def do_fit(char, assets):
     t = Timer()
 
@@ -305,12 +320,16 @@ def do_fit(char, assets):
 
 def fit_new(char, asset):
     char_cache.clear()
-    if bpy.context.scene.charmorph_ui.fitting_mask != "NONE":
+    ui = bpy.context.scene.charmorph_ui
+    if ui.fitting_mask != "NONE":
         # TODO: implement COMB masking
         get_obj_weights(char, asset, True)
-    transfer_weights(char, asset)
     do_fit(char, [asset])
     asset.parent = char
+    if ui.fitting_weights:
+        transfer_weights(char, asset)
+    if ui.fitting_armature:
+        transfer_armature(char, asset)
 
 
 def refit_char_assets(char):
@@ -341,6 +360,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "fitting_asset")
         self.layout.prop(ui, "fitting_mask")
         self.layout.prop(ui, "fitting_weights")
+        self.layout.prop(ui, "fitting_armature")
         self.layout.separator()
         obj = bpy.data.objects.get(ui.fitting_asset)
         if obj and 'charmorph_fit_id' in obj.data:

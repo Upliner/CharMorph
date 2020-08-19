@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class VIEW3D_PT_CMCreation(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CMCreation"
-    bl_label = "Character creation"
+    bl_label = "Character editing"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
@@ -105,13 +105,12 @@ def kdtree_from_bones(bones):
     kd.balance()
     return kd
 
-def joint_list_extended():
+def joint_list_extended(xmirror):
     result = joint_list()
     bone_set = set(tup[0] for tup in result)
     bones = bpy.context.object.data.edit_bones
     kd = kdtree_from_bones(bones)
-    xmirror = bpy.context.scene.cmcreation_ui.rig_xmirror
-    for name, co, _, _ in result:
+    for name, co, _, _ in result.copy():
         checklist = [co]
         if xmirror:
             checklist.append(mathutils.Vector((-co[0],co[1],co[2])))
@@ -126,12 +125,17 @@ def joint_list_extended():
 
 def joints_to_vg(char):
     avg = get_vg_avg(char)
-    for name, _, bone, attr in joint_list():
+    #print(avg)
+    for name, _, bone, attr in joint_list_extended(False):
         item = avg.get(name)
         if item:
-            setattr(bone, attr, item[1]/item[0])
+            pos = item[1]/item[0]
+            offs = bone.get("charmorph_offs_" + attr)
+            if offs and len(offs) == 3:
+                pos += mathutils.Vector(tuple(offs))
+            setattr(bone, attr, pos)
         else:
-            logger.error("No vg for joint" + name)
+            logger.error("No vg for " + name)
 
 def editable_bones_poll(context):
     return context.mode == "EDIT_ARMATURE" and get_char()
@@ -265,7 +269,6 @@ def recalc_ne(char, co, name, kd, emap):
             if dist<mindist:
                 mindist = dist
                 lst = [v1, v2]
-                print(dist, lst)
     if lst is None:
         logger.error("Edge not found")
         return False
@@ -299,7 +302,7 @@ class OpCalcVg(bpy.types.Operator):
         ui = context.scene.cmcreation_ui
         typ = ui.rig_vg_calc
 
-        joints = joint_list()
+        joints = joint_list_extended(ui.rig_xmirror)
 
         if typ == "CU":
             vgroups = get_vg_data(char, lambda: [], lambda data_item, vid, v, gw: data_item.add((v.co, vid)))
