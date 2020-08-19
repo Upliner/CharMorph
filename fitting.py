@@ -70,11 +70,9 @@ def calc_weights(char, asset, mask):
     asset_verts = asset.data.vertices
     asset_faces = asset.data.polygons
 
-    offs = asset.location
-
     # calculate weights based on 16 nearest vertices
     kd_char = kdtree_from_verts(char_verts)
-    weights = [{ idx: dist**2 for loc, idx, dist in kd_char.find_n(avert.co + offs, 16) } for avert in asset_verts]
+    weights = [{ idx: dist**2 for loc, idx, dist in kd_char.find_n(avert.co, 16) } for avert in asset_verts]
 
     t.time("kdtree")
 
@@ -82,7 +80,7 @@ def calc_weights(char, asset, mask):
     # calculate weights based on distance from asset vertices to character faces
     bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
     for i, avert in enumerate(asset_verts):
-        co = avert.co + offs
+        co = avert.co
         loc, norm, idx, fdist = bvh_char.find_nearest(co)
 
         fdist = max(fdist, epsilon)
@@ -100,7 +98,7 @@ def calc_weights(char, asset, mask):
     bvh_asset = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in asset_verts], [f.vertices for f in asset_faces])
     #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
     for i, cvert in enumerate(char_verts):
-        co = cvert.co - offs
+        co = cvert.co
         loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
         if idx is None:
             continue
@@ -119,7 +117,7 @@ def calc_weights(char, asset, mask):
     t.time("bvh reverse")
 
     if mask:
-        add_mask(char, asset, bvh_asset, bvh_char, offs)
+        add_mask(char, asset, bvh_asset, bvh_char)
         t.time("mask")
 
     #neighbors = neighbor_map(asset.data)
@@ -148,7 +146,7 @@ def calc_weights(char, asset, mask):
 def mask_name(asset):
     return "cm_mask_{}_{}".format(asset.name, asset.data.get("charmorph_fit_id","xxx")[:3])
 
-def add_mask(char, asset, bvh_asset, bvh_char, offs):
+def add_mask(char, asset, bvh_asset, bvh_char):
     vg_name = mask_name(asset)
     if vg_name in char.vertex_groups:
         return
@@ -180,7 +178,7 @@ def add_mask(char, asset, bvh_asset, bvh_char, offs):
         _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
         if idx is None:
             # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-            _, _, idx, _ = bvh_char.ray_cast(co+offs+direction*0.00001, direction, max_dist*0.99)
+            _, _, idx, _ = bvh_char.ray_cast(co+direction*0.00001, direction, max_dist*0.99)
             if idx is None:
                 #print(i, co, direction, max_dist, cvert.normal)
                 return False # No ray hit
@@ -192,7 +190,7 @@ def add_mask(char, asset, bvh_asset, bvh_char, offs):
     covered_verts = set()
 
     for i, cvert in enumerate(char.data.vertices):
-        co = cvert.co - offs
+        co = cvert.co
         if not bbox_match(co):
             continue
 
@@ -318,9 +316,20 @@ def do_fit(char, assets):
     char.shape_key_remove(char_shapekey)
     t.time("fit")
 
+def apply_transforms(obj):
+    obj.data.transform(obj.matrix_world)
+    obj.location = (0,0,0)
+    obj.delta_location = (0,0,0)
+    obj.rotation_quaternion = (1,0,0,0)
+    obj.delta_rotation_quaternion = (1,0,0,0)
+    obj.scale = (1,1,1)
+    obj.delta_scale = (1,1,1)
+
 def fit_new(char, asset):
     char_cache.clear()
     ui = bpy.context.scene.charmorph_ui
+    if ui.fitting_transforms:
+        apply_transforms(asset)
     if ui.fitting_mask != "NONE":
         # TODO: implement COMB masking
         get_obj_weights(char, asset, True)
@@ -356,11 +365,14 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.scene.charmorph_ui
-        self.layout.prop(ui, "fitting_char")
-        self.layout.prop(ui, "fitting_asset")
+        col = self.layout.column(align=True)
+        col.prop(ui, "fitting_char")
+        col.prop(ui, "fitting_asset")
         self.layout.prop(ui, "fitting_mask")
-        self.layout.prop(ui, "fitting_weights")
-        self.layout.prop(ui, "fitting_armature")
+        col = self.layout.column(align=True)
+        col.prop(ui, "fitting_transforms")
+        col.prop(ui, "fitting_weights")
+        col.prop(ui, "fitting_armature")
         self.layout.separator()
         obj = bpy.data.objects.get(ui.fitting_asset)
         if obj and 'charmorph_fit_id' in obj.data:

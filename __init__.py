@@ -156,6 +156,10 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("COMB", "Combined","Use combined vertex group and modifier for all character assets"),
         ],
         description="Mask parts of character that are invisible under clothing")
+    fitting_transforms: bpy.props.BoolProperty(
+        name="Apply transforms",
+        default=True,
+        description="Apply object transforms before fitting")
     fitting_weights: bpy.props.BoolProperty(
         name="Transfer weights",
         default=True,

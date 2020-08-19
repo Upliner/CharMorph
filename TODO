@@ -25,16 +25,15 @@ Materials:
   - "Affect materials": [None/Absolute/Relative]
 
 Fitting:
-  - Auto-select items in ui on select
-  - More fitting settings? (Thresholds and so on)
   - Choice between separate and combined masks
+  - MakeHuman asset support ?
+  - More fitting settings? (Thresholds and so on)
   - Asset baking
   - Hair fitting
   - Get fitting base from library
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
   - Bounding box transform?
-  - Force asset makers to apply transform and declare all assets that don't comply non-CharMorph-compatible?
   - Replace censors with default underwear
 
 Assets:
