@@ -23,8 +23,8 @@ import bpy, mathutils
 
 logger = logging.getLogger(__name__)
 
-class VIEW3D_PT_CMCreation(bpy.types.Panel):
-    bl_idname = "VIEW3D_PT_CMCreation"
+class VIEW3D_PT_CMEdit(bpy.types.Panel):
+    bl_idname = "VIEW3D_PT_CMEdit"
     bl_label = "Character editing"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -35,17 +35,17 @@ class VIEW3D_PT_CMCreation(bpy.types.Panel):
     def draw(self, context):
         pass
 
-class CMCREATION_PT_Rigging(bpy.types.Panel):
+class CMEDIT_PT_Rigging(bpy.types.Panel):
     bl_label = "Rigging"
-    bl_parent_id = "VIEW3D_PT_CMCreation"
+    bl_parent_id = "VIEW3D_PT_CMEdit"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
 
     def draw(self, context):
-        ui = context.scene.cmcreation_ui
+        ui = context.scene.cmedit_ui
         self.layout.prop(ui, "rig_char")
-        self.layout.operator("cmcreation.joints_to_vg")
+        self.layout.operator("cmedit.joints_to_vg")
         self.layout.prop(ui, "rig_vg_calc")
         self.layout.prop(ui, "rig_vg_offs")
         self.layout.prop(ui, "rig_xmirror")
@@ -54,8 +54,8 @@ class CMCREATION_PT_Rigging(bpy.types.Panel):
         elif ui.rig_vg_calc == "NR":
             self.layout.prop(ui, "rig_vg_radius")
 
-        self.layout.operator("cmcreation.calc_vg")
-        self.layout.operator("cmcreation.add_rigify_deform")
+        self.layout.operator("cmedit.calc_vg")
+        self.layout.operator("cmedit.add_rigify_deform")
 
 def obj_by_type(name, type):
     if not name:
@@ -64,9 +64,9 @@ def obj_by_type(name, type):
     if obj and obj.type == type:
         return obj
 def get_char():
-    return obj_by_type(bpy.context.scene.cmcreation_ui.rig_char, "MESH")
+    return obj_by_type(bpy.context.scene.cmedit_ui.rig_char, "MESH")
 def get_rig():
-    return obj_by_type(bpy.context.scene.cmcreation_ui.rig_armature, "ARMATURE")
+    return obj_by_type(bpy.context.scene.cmedit_ui.rig_armature, "ARMATURE")
 
 def get_vg_data(char, new, accumulate):
     data = {}
@@ -141,8 +141,8 @@ def editable_bones_poll(context):
     return context.mode == "EDIT_ARMATURE" and get_char()
 
 class OpJointsToVG(bpy.types.Operator):
-    bl_idname = "cmcreation.joints_to_vg"
-    bl_label = "Selected bones to VG"
+    bl_idname = "cmedit.joints_to_vg"
+    bl_label = "Selected joints to VG"
     bl_description = "Move selected joints according to their vertex groups"
     bl_options = {"UNDO"}
 
@@ -283,12 +283,12 @@ def recalc_nf(char, co, name, bvh):
     return recalc_lst(char, co, name, [(verts[i].co, i) for i in char.data.polygons[idx].vertices])
 
 def recalc_np(char, co, name, kd):
-    return recalc_lst(char, co, name, kd.find_n(co, bpy.context.scene.cmcreation_ui.rig_vg_n))
+    return recalc_lst(char, co, name, kd.find_n(co, bpy.context.scene.cmedit_ui.rig_vg_n))
 def recalc_nr(char, co, name, kd):
-    return recalc_lst(char, co, name, kd.find_range(co, bpy.context.scene.cmcreation_ui.rig_vg_radius))
+    return recalc_lst(char, co, name, kd.find_range(co, bpy.context.scene.cmedit_ui.rig_vg_radius))
 
 class OpCalcVg(bpy.types.Operator):
-    bl_idname = "cmcreation.calc_vg"
+    bl_idname = "cmedit.calc_vg"
     bl_label = "Recalc vertex groups"
     bl_description = "Recalculate joint vertex groups according to baricentric coordinates of 3 nearest points of bone positions"
     bl_options = {"UNDO"}
@@ -299,7 +299,7 @@ class OpCalcVg(bpy.types.Operator):
 
     def execute(self, context):
         char = get_char()
-        ui = context.scene.cmcreation_ui
+        ui = context.scene.cmedit_ui
         typ = ui.rig_vg_calc
 
         joints = joint_list_extended(ui.rig_xmirror)
@@ -356,7 +356,7 @@ class OpCalcVg(bpy.types.Operator):
         return {"FINISHED"}
 
 class OpRigifyDeform(bpy.types.Operator):
-    bl_idname = "cmcreation.add_rigify_deform"
+    bl_idname = "cmedit.add_rigify_deform"
     bl_label = "Add Rigify deform"
     bl_description = "Set deform flag for neccessary rigfy bones"
     bl_options = {"UNDO"}
@@ -375,7 +375,7 @@ class OpRigifyDeform(bpy.types.Operator):
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
-class CMCreationUIProps(bpy.types.PropertyGroup):
+class CMEditUIProps(bpy.types.PropertyGroup):
     # Rigging
     rig_char: bpy.props.EnumProperty(
         name = "Char",
@@ -428,16 +428,16 @@ class CMCreationUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMCreationUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMCreation, CMCREATION_PT_Rigging]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
 def register():
     register_classes()
-    bpy.types.Scene.cmcreation_ui = bpy.props.PointerProperty(type=CMCreationUIProps, options={"SKIP_SAVE"})
+    bpy.types.Scene.cmedit_ui = bpy.props.PointerProperty(type=CMEditUIProps, options={"SKIP_SAVE"})
 
 def unregister():
-    del bpy.types.Scene.cmcreation_ui
+    del bpy.types.Scene.cmedit_ui
     unregister_classes()
 
 if __name__ == "__main__":

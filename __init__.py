@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, fitting, cmcreation
+from . import library, morphing, randomize, file_io, materials, fitting, editing
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -254,11 +254,11 @@ def register():
         key = (bpy.types.LayerObjects, "active"),
         args=(),
         notify = on_select_object)
-    cmcreation.register()
+    editing.register()
 
 def unregister():
     print("Charmorph unregister")
-    cmcreation.unregister()
+    editing.unregister()
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.Scene.charmorph_ui
     morphing.del_charmorphs()
