@@ -303,6 +303,10 @@ def transfer_armature(char, asset):
             newmod.use_bone_envelopes = mod.use_bone_envelopes
             newmod.use_vertex_groups = mod.use_vertex_groups
 
+def transfer_new_armature(char):
+    for asset in get_assets(char):
+        transfer_armature(char, asset)
+
 def do_fit(char, assets):
     t = Timer()
 

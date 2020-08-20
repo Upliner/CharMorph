@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, fitting, editing
+from . import library, morphing, randomize, file_io, materials, fitting, finalize, editing
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -118,7 +118,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     randomize_incl: bpy.props.StringProperty(
         name = "Incl. regex")
     randomize_excl: bpy.props.StringProperty(
-        name = "Excl. regex", default="^Fantasy\_")
+        name = "Excl. regex", default=r"^Fantasy\_")
     randomize_segs: bpy.props.IntProperty(
         name = "Segments",
         default=7,
@@ -178,7 +178,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         update = library.update_fitting_assets,
         subtype = 'DIR_PATH')
 
-    #Hair
+    # Hair
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
@@ -191,6 +191,42 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         description="Hairstyle",
         items = [])
 
+    # Finalize
+    fin_morph: bpy.props.EnumProperty(
+        name="Apply morphs",
+        default = "SK",
+        items = [
+            ("NO", "Don't apply","Keep all morphing shape keys"),
+            ("SK", "Keep original basis","Keep original basis shape key (recommended if you plan to fit more assets)"),
+            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
+        ],
+        description="Apply current shape key mix")
+    fin_subdivision: bpy.props.EnumProperty(
+        name="Subdivision",
+        default = "RO",
+        items = [
+            ("NO", "No", "No subdivision surface"),
+            ("RO", "Render only", "Use subdivision only for rendering"),
+            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
+        ],
+        description="Use subdivision surface for smoother look")
+    fin_csmooth: bpy.props.BoolProperty(
+        name="Corrective smooth",
+        default = True,
+        description="Use corrective smooth to fix armature deform artifacts")
+    fin_vg_cleanup: bpy.props.BoolProperty(
+        name="Cleanup vertex groups",
+        default = True,
+        description="Remove unused vertex groups after finalization")
+    fin_rig: bpy.props.EnumProperty(
+        name="Rig",
+        default = "RG",
+        items = [
+            ("NO", "None", "Don't generate armature"),
+            ("MR", "Metarig only", "Generate metarig only"),
+            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
+        ],
+        description="Rigging options")
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -205,7 +241,7 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-for module in [library, morphing, randomize, file_io, materials, fitting]:
+for module in [library, morphing, randomize, file_io, materials, fitting, finalize]:
     classes.extend(module.classes)
 
 def on_select_object():

@@ -29,7 +29,7 @@ data_dir=""
 adult_mode=False
 
 data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-#logger.debug("Looking for the char library in the folder %s...", data_dir)
+logger.debug("Looking for the char library in the folder %s...", data_dir)
 
 chars = {}
 additional_assets = {}
@@ -101,8 +101,8 @@ def load_library():
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
 
-class CHARMORPH_PT_Creation(bpy.types.Panel):
-    bl_label = "Creation"
+class CHARMORPH_PT_Library(bpy.types.Panel):
+    bl_label = "Character library"
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -123,9 +123,9 @@ class CHARMORPH_PT_Creation(bpy.types.Panel):
         self.layout.prop(ui, 'base_model')
         self.layout.prop(ui, 'material_mode')
         self.layout.prop(ui, 'material_local')
-        self.layout.operator('charmorph.create', icon='ARMATURE_DATA')
+        self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
-def import_obj(file, obj):
+def import_obj(file, obj, typ = "MESH"):
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
             if len(data_from.objects) == 1:
@@ -134,7 +134,7 @@ def import_obj(file, obj):
                 return None
         data_to.objects = [obj]
     obj = data_to.objects[0]
-    if obj.type != 'MESH':
+    if obj.type != typ:
         bpy.data.objects.remove(obj)
         return None
     bpy.context.collection.objects.link(obj)
@@ -146,10 +146,10 @@ def is_adult_mode():
         return False
     return prefs.preferences.adult_mode
 
-class OpCreate(bpy.types.Operator):
-    bl_idname = "charmorph.create"
-    bl_label = "Create character"
-    bl_description = "Create character"
+class OpImport(bpy.types.Operator):
+    bl_idname = "charmorph.import_char"
+    bl_label = "Import character"
+    bl_description = "Import character"
     bl_options = {"UNDO"}
 
     def execute(self, context):
@@ -169,4 +169,4 @@ class OpCreate(bpy.types.Operator):
         morphing.create_charmorphs(obj)
         return {"FINISHED"}
 
-classes = [OpCreate, CHARMORPH_PT_Creation]
+classes = [OpImport, CHARMORPH_PT_Library]

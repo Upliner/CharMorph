@@ -21,6 +21,8 @@
 import logging
 import bpy, mathutils
 
+from . import rigging
+
 logger = logging.getLogger(__name__)
 
 class VIEW3D_PT_CMEdit(bpy.types.Panel):
@@ -63,39 +65,8 @@ def obj_by_type(name, type):
     obj = bpy.data.objects.get(name)
     if obj and obj.type == type:
         return obj
-def get_char():
-    return obj_by_type(bpy.context.scene.cmedit_ui.rig_char, "MESH")
-def get_rig():
-    return obj_by_type(bpy.context.scene.cmedit_ui.rig_armature, "ARMATURE")
-
-def get_vg_data(char, new, accumulate):
-    data = {}
-    for vid, v in enumerate(char.data.vertices):
-        for gw in v.groups:
-            vg = char.vertex_groups[gw.group]
-            if not vg.name.startswith("joint_"):
-                continue
-            data_item = data.get(vg.name)
-            if not data_item:
-                data_item = new()
-                data[vg.name] = data_item
-            accumulate(data_item, vid, v, gw)
-    return data
-
-def get_vg_avg(char):
-    def accumulate(data_item, vid, v, gw):
-        data_item[0] += gw.weight
-        data_item[1] += v.co*gw.weight
-    return get_vg_data(char, lambda: [0, mathutils.Vector()], accumulate)
-
-def joint_list():
-    joints = []
-    for bone in bpy.context.object.data.edit_bones:
-        if bone.select_head:
-            joints.append(("joint_"+bone.name+"_head", bone.head, bone, "head"))
-        if bone.select_tail:
-            joints.append(("joint_"+bone.name+"_tail", bone.tail, bone, "tail"))
-    return joints
+def get_char(context):
+    return obj_by_type(context.scene.cmedit_ui.rig_char, "MESH")
 
 def kdtree_from_bones(bones):
     kd = mathutils.kdtree.KDTree(len(bones)*2)
@@ -105,10 +76,10 @@ def kdtree_from_bones(bones):
     kd.balance()
     return kd
 
-def joint_list_extended(xmirror):
-    result = joint_list()
+def joint_list_extended(context, xmirror):
+    result = rigging.selected_joints(context)
     bone_set = set(tup[0] for tup in result)
-    bones = bpy.context.object.data.edit_bones
+    bones = context.object.data.edit_bones
     kd = kdtree_from_bones(bones)
     for name, co, _, _ in result.copy():
         checklist = [co]
@@ -121,24 +92,11 @@ def joint_list_extended(xmirror):
                 name = "joint_{}_{}".format(bone.name, attr)
                 if name not in bone_set:
                     result.append((name, co3, bone, attr))
+                    bone_set.add(name)
     return result
 
-def joints_to_vg(char):
-    avg = get_vg_avg(char)
-    #print(avg)
-    for name, _, bone, attr in joint_list_extended(False):
-        item = avg.get(name)
-        if item:
-            pos = item[1]/item[0]
-            offs = bone.get("charmorph_offs_" + attr)
-            if offs and len(offs) == 3:
-                pos += mathutils.Vector(tuple(offs))
-            setattr(bone, attr, pos)
-        else:
-            logger.error("No vg for " + name)
-
 def editable_bones_poll(context):
-    return context.mode == "EDIT_ARMATURE" and get_char()
+    return context.mode == "EDIT_ARMATURE" and get_char(context)
 
 class OpJointsToVG(bpy.types.Operator):
     bl_idname = "cmedit.joints_to_vg"
@@ -151,7 +109,7 @@ class OpJointsToVG(bpy.types.Operator):
         return editable_bones_poll(context)
 
     def execute(self, context):
-        joints_to_vg(get_char())
+        rigging.joints_to_vg(get_char(context), joint_list_extended(context, False))
         return {"FINISHED"}
 
 def kdtree_from_obj(obj):
@@ -282,10 +240,10 @@ def recalc_nf(char, co, name, bvh):
     verts = char.data.vertices
     return recalc_lst(char, co, name, [(verts[i].co, i) for i in char.data.polygons[idx].vertices])
 
-def recalc_np(char, co, name, kd):
-    return recalc_lst(char, co, name, kd.find_n(co, bpy.context.scene.cmedit_ui.rig_vg_n))
-def recalc_nr(char, co, name, kd):
-    return recalc_lst(char, co, name, kd.find_range(co, bpy.context.scene.cmedit_ui.rig_vg_radius))
+def recalc_np(char, co, name, kd, n):
+    return recalc_lst(char, co, name, kd.find_n(co, n))
+def recalc_nr(char, co, name, kd, radius):
+    return recalc_lst(char, co, name, kd.find_range(co, radius))
 
 class OpCalcVg(bpy.types.Operator):
     bl_idname = "cmedit.calc_vg"
@@ -298,14 +256,14 @@ class OpCalcVg(bpy.types.Operator):
         return editable_bones_poll(context)
 
     def execute(self, context):
-        char = get_char()
+        char = get_char(context)
         ui = context.scene.cmedit_ui
         typ = ui.rig_vg_calc
 
-        joints = joint_list_extended(ui.rig_xmirror)
+        joints = joint_list_extended(context, ui.rig_xmirror)
 
         if typ == "CU":
-            vgroups = get_vg_data(char, lambda: [], lambda data_item, vid, v, gw: data_item.add((v.co, vid)))
+            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, vid, v, gw: data_item.add((v.co, vid)))
             for name, co, _, _ in joints:
                 vg = char.vertex_groups.get(name)
                 if not vg:
@@ -322,9 +280,9 @@ class OpCalcVg(bpy.types.Operator):
 
             for name, co, _, _ in joints:
                 if typ == "NP":
-                    recalc_np(char, co, name, kd)
+                    recalc_np(char, co, name, kd, ui.rig_vg_n)
                 elif typ == "NR":
-                    recalc_nr(char, co, name, kd)
+                    recalc_nr(char, co, name, kd, ui.rig_vg_radius)
                 elif typ == "NE":
                     recalc_ne(char, co, name, kd, emap)
                 elif typ == "NF":
@@ -335,7 +293,7 @@ class OpCalcVg(bpy.types.Operator):
                     logger.error("Inavlid typ!")
 
         if ui.rig_vg_offs == "R":
-            avg = get_vg_avg(char)
+            avg = rigging.get_vg_avg(char)
             for name, co, bone, attr in joints:
                 item = avg.get(name)
                 if item:
@@ -366,10 +324,7 @@ class OpRigifyDeform(bpy.types.Operator):
         return context.mode == "EDIT_ARMATURE"
 
     def execute(self, context):
-        char = get_char()
-        for vg in char.vertex_groups:
-            if vg.name.startswith("ORG-") or vg.name.startswith("MCH-"):
-                context.object.data.edit_bones[vg.name].use_deform = True
+        rigging.rigify_add_deform(context, get_char(context))
         return {"FINISHED"}
 
 def objects_by_type(type):
