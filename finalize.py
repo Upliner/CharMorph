@@ -29,7 +29,6 @@ def add_rig(char_name, conf, rigtype):
     if conf.get("type") != "rigify":
         raise Exception("Rig type {} is not supported".format(conf.get("type")))
     metarig = library.import_obj(library.char_file(char_name, conf["file"]), conf["obj_name"], "ARMATURE")
-    logger.debug(metarig)
     if not metarig:
         raise Exception("Rig import failed")
 
@@ -53,6 +52,7 @@ def add_rig(char_name, conf, rigtype):
     if rigtype != "RG":
         return
 
+    metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
     remove_metarig()
     bpy.ops.object.mode_set(mode="EDIT")
