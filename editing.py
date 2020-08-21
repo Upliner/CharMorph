@@ -43,6 +43,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
+    bl_order = 1
 
     def draw(self, context):
         ui = context.scene.cmedit_ui
@@ -112,8 +113,7 @@ class OpJointsToVG(bpy.types.Operator):
         rigging.joints_to_vg(get_char(context), joint_list_extended(context, False))
         return {"FINISHED"}
 
-def kdtree_from_obj(obj):
-    verts = obj.data.vertices
+def kdtree_from_verts(verts):
     kd = mathutils.kdtree.KDTree(len(verts))
     for idx, vert in enumerate(verts):
         kd.insert(vert.co, idx)
@@ -272,7 +272,7 @@ class OpCalcVg(bpy.types.Operator):
                 recalc_cu(vg, vgroups.get(name,[]), co)
         else:
             if typ == "NP" or typ == "NR" or typ == "NE":
-                kd = kdtree_from_obj(char)
+                kd = kdtree_from_verts(char.data.vertices)
                 if typ == "NE":
                     emap = calc_emap(char)
             elif typ == "NF":
@@ -326,6 +326,72 @@ class OpRigifyDeform(bpy.types.Operator):
     def execute(self, context):
         rigging.rigify_add_deform(context, get_char(context))
         return {"FINISHED"}
+
+class CMEDIT_PT_Utils(bpy.types.Panel):
+    bl_label = "Utils"
+    bl_parent_id = "VIEW3D_PT_CMEdit"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "CharMorph"
+    bl_order = 2
+
+    def draw(self, context):
+        self.layout.operator("cmedit.check_symmetry")
+
+class OpCheckSymmetry(bpy.types.Operator):
+    bl_idname = "cmedit.check_symmetry"
+    bl_label = "Check symmetry"
+    bl_description = "Check X axis symmetry and print results to system console"
+    bl_options = {"UNDO"}
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        obj = context.object
+        mesh = obj.data
+        kd = kdtree_from_verts(mesh.vertices)
+        def groups_to_list(group):
+            return [(obj.vertex_groups[g.group].name, g.weight) for g in group]
+        for v in mesh.vertices:
+            if v.co[0] == 0 or v.co[0] == -0:
+                continue
+            counterparts = kd.find_range(mathutils.Vector((-v.co[0],v.co[1],v.co[2])), 0.00001)
+            if len(counterparts) == 0:
+                print(v.index, v.co, "no counterpart")
+                continue
+            elif len(counterparts) > 1:
+                print(v.index, v.co, "multiple counterparts:", counterparts)
+                continue
+            v2 = mesh.vertices[counterparts[0][1]]
+            #if len(v.groups) != len(v2.groups):
+            #    print(v.index, v.co, "vg mismatch:", groups_to_list(v.groups), groups_to_list(v2.groups))
+            #    continue
+
+            gdict = {obj.vertex_groups[g.group].name: (obj.vertex_groups[g.group], g.weight) for g in v2.groups}
+
+            wgt = 0
+
+            for g in v.groups:
+                g1 = obj.vertex_groups[g.group]
+                if g1.name.startswith("DEF-") or g1.name.startswith("MCH-") or g1.name.startswith("ORG-"):
+                    wgt += g.weight
+                g2_name = g1.name.replace(".L",".R").replace("_L_","_R_")
+                if g2_name == g1.name:
+                    g2_name = g1.name.replace(".R",".L").replace("_R_","_L_")
+                g2, g2_weight = gdict.get(g2_name, (None, None))
+                if not g2:
+                    print(v.index, v.co, g1.name, g.weight, "vg counterpart not found")
+                    continue
+                if abs(g.weight-g2_weight) >= 0.01:
+                    print(v.index, v.co, g1.name, "vg weight mismatch:", g.weight, g2_weight)
+                    continue
+
+
+            if abs(wgt-1)>=0.1:
+                print(v.index, v.co, "not normalized:", wgt)
+        return {"FINISHED"}
+
 
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
@@ -383,7 +449,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 

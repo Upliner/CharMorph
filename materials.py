@@ -162,7 +162,7 @@ def get_props(obj):
     colors = []
     values = []
     for mtl in obj.data.materials:
-        if not mtl.node_tree:
+        if not mtl or not mtl.node_tree:
             continue
         for node in mtl.node_tree.nodes.values():
             if node.type == "RGB" and not node.name.startswith("RGB."):

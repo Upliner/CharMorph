@@ -160,9 +160,11 @@ class OpImport(bpy.types.Operator):
             return {"CANCELLED"}
 
         obj = import_obj(char_file(base_model, "char.blend"), "char")
-        if obj == None or obj.type != "MESH":
+        if obj == None:
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
+
+        obj.location = context.scene.cursor.location
 
         obj.data["charmorph_template"] = base_model
         materials.init_materials(obj, chars.get(base_model, empty_char))

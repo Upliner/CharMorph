@@ -1,5 +1,6 @@
 General:
   - Proper context override?
+
 Art:
   - Compare bumping with MB-Lab?
   - Hairstyles
@@ -12,7 +13,6 @@ Creation tools:
 
 Char creation:
   - Asset list in creation panel
-  - Create at 3D cursor
 
 Morphing:
   - Move out shape keys to npy/npz files
@@ -27,7 +27,6 @@ Materials:
   - "Affect materials": [None/Absolute/Relative]
 
 Fitting:
-  - Choice between separate and combined masks
   - MakeHuman asset support ?
   - Bounding box transform?
   - More fitting settings? (Thresholds and so on)
@@ -44,6 +43,7 @@ Assets:
 
 Rigging:
   - Everything :)
+  - Fix asymmetry
   - Rigify at all
   - Live regular rig deform
   - Chioce between expression shape keys and Rigify face rig
