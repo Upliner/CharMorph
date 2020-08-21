@@ -337,12 +337,31 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
 
     def draw(self, context):
         self.layout.operator("cmedit.check_symmetry")
+        self.layout.operator("cmedit.symmetrize_vg")
+
+def is_deform(group_name):
+    return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
+
+def swap_l_r(name):
+    new_name = name.replace(".L",".R").replace("_L_","_R_")
+    if new_name != name:
+        return new_name
+    return name.replace(".R",".L").replace("_R_","_L_")
+
+def counterpart_vertex(verts, kd, v):
+    counterparts = kd.find_range(mathutils.Vector((-v.co[0],v.co[1],v.co[2])), 0.00001)
+    if len(counterparts) == 0:
+        print(v.index, v.co, "no counterpart")
+        return None
+    elif len(counterparts) > 1:
+        print(v.index, v.co, "multiple counterparts:", counterparts)
+        return None
+    return verts[counterparts[0][1]]
 
 class OpCheckSymmetry(bpy.types.Operator):
     bl_idname = "cmedit.check_symmetry"
     bl_label = "Check symmetry"
     bl_description = "Check X axis symmetry and print results to system console"
-    bl_options = {"UNDO"}
     @classmethod
     def poll(cls, context):
         return context.object and context.object.type == "MESH"
@@ -356,17 +375,11 @@ class OpCheckSymmetry(bpy.types.Operator):
         for v in mesh.vertices:
             if v.co[0] == 0 or v.co[0] == -0:
                 continue
-            counterparts = kd.find_range(mathutils.Vector((-v.co[0],v.co[1],v.co[2])), 0.00001)
-            if len(counterparts) == 0:
-                print(v.index, v.co, "no counterpart")
+            v2 = counterpart_vertex(mesh.vertices, kd, v)
+            if v2 is None:
                 continue
-            elif len(counterparts) > 1:
-                print(v.index, v.co, "multiple counterparts:", counterparts)
-                continue
-            v2 = mesh.vertices[counterparts[0][1]]
-            #if len(v.groups) != len(v2.groups):
-            #    print(v.index, v.co, "vg mismatch:", groups_to_list(v.groups), groups_to_list(v2.groups))
-            #    continue
+            if len(v.groups) != len(v2.groups):
+                print(v.index, v.co, "vg mismatch:", groups_to_list(v.groups), groups_to_list(v2.groups))
 
             gdict = {obj.vertex_groups[g.group].name: (obj.vertex_groups[g.group], g.weight) for g in v2.groups}
 
@@ -374,11 +387,9 @@ class OpCheckSymmetry(bpy.types.Operator):
 
             for g in v.groups:
                 g1 = obj.vertex_groups[g.group]
-                if g1.name.startswith("DEF-") or g1.name.startswith("MCH-") or g1.name.startswith("ORG-"):
+                if is_deform(g1.name):
                     wgt += g.weight
-                g2_name = g1.name.replace(".L",".R").replace("_L_","_R_")
-                if g2_name == g1.name:
-                    g2_name = g1.name.replace(".R",".L").replace("_R_","_L_")
+                g2_name = swap_l_r(g1.name)
                 g2, g2_weight = gdict.get(g2_name, (None, None))
                 if not g2:
                     print(v.index, v.co, g1.name, g.weight, "vg counterpart not found")
@@ -388,8 +399,88 @@ class OpCheckSymmetry(bpy.types.Operator):
                     continue
 
 
-            if abs(wgt-1)>=0.1:
+            if abs(wgt-1)>=0.0001:
                 print(v.index, v.co, "not normalized:", wgt)
+        return {"FINISHED"}
+
+
+class OpSymmetrize(bpy.types.Operator):
+    bl_idname = "cmedit.symmetrize_vg"
+    bl_label = "Normalize+symmetrize weights"
+    bl_description = "Normalize and symmetrize selected vertices using X axis"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        obj = context.object
+        mesh = obj.data
+        kd = kdtree_from_verts(mesh.vertices)
+        for v in mesh.vertices:
+            if not v.select:
+                continue
+            def normalize():
+                groups = []
+                wgt = 0
+                for ge in v.groups:
+                    if is_deform(obj.vertex_groups[ge.group].name):
+                        wgt += ge.weight
+                        groups.append(ge)
+                if abs(wgt-1)<0.0001:
+                    return
+                for ge in groups:
+                    ge.weight /= wgt
+            if v.co[0] == 0 or v.co[0] == -0:
+                normalize()
+                continue
+            v2 = counterpart_vertex(mesh.vertices, kd, v)
+            if v2 is None:
+                continue
+            gdict = {obj.vertex_groups[g.group].name: g for g in v2.groups}
+
+            wgt2 = 0
+            #cleanup groups without counterparts before normalizing
+            for g in v.groups:
+                vg = obj.vertex_groups[g.group]
+                g2e = gdict.get(swap_l_r(vg.name))
+                if g2e:
+                    if is_deform(vg.name):
+                        wgt2 += g2e.weight
+                else:
+                    if not is_deform(vg.name):
+                        print("removing non-deform vg", v.index, v2.index, v.co, vg.name)
+                    vg.remove([v.index])
+
+            if wgt2<0.0001:
+                print(v.index,v2.index,"situation is too bad, please check")
+                continue
+            if abs(wgt2-1)<0.0001:
+                wgt2=1
+
+            normalize()
+
+            for g1e in v.groups:
+                g2name = swap_l_r(obj.vertex_groups[g1e.group].name)
+                g2e = gdict[g2name]
+                g2w = g2e.weight
+                if is_deform(g2name):
+                    g2w /= wgt2
+                if g2w>1:
+                    print(v.index,v2.index,g2name,g2e.group,g2e.weight,g2w,wgt2)
+                    self.report({'ERROR'}, "Bad g2 weight!")
+                    return {"FINISHED"}
+
+                if abs(g1e.weight-g2w)>=0.00001:
+                    if not is_deform(g2name):
+                        print("Normalizing non-deform", v.index, v2.v.index, g2name)
+                    #print("Normalizing", v.index, v2.index, g1e.weight, g2w, wgt2, g2name)
+                    wgt = (g1e.weight+g2w)/2
+                    g1e.weight = wgt
+                    g2e.weight = wgt
+
+            normalize()
         return {"FINISHED"}
 
 
@@ -449,7 +540,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 

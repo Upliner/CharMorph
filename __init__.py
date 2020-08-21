@@ -39,7 +39,7 @@ bl_info = {
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
-    "warning": "",
+    "warning": "Requires Rigify addon to rig characters!",
     'wiki_url': "",
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
