@@ -25,6 +25,19 @@ from . import library, morphing, rigging, fitting
 
 logger = logging.getLogger(__name__)
 
+class RigException(Exception):
+    pass
+
+def copy_constraint_by_target(bone, target):
+    for c in bone.constraints:
+        if c.type == "COPY_LOCATION" and c.target and c.target.name == target:
+            return c
+
+def copy_transform(target, source):
+    target.location = source.location
+    target.rotation_quaternion = source.rotation_quaternion
+    target.scale = source.scale
+
 def add_rig(char_name, conf, rigtype):
     if conf.get("type") != "rigify":
         raise Exception("Rig type {} is not supported".format(conf.get("type")))
@@ -32,7 +45,7 @@ def add_rig(char_name, conf, rigtype):
     if not metarig:
         raise Exception("Rig import failed")
 
-    # Trying to override the context leads to crash :( TODO: learn more about it
+    # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
     #override = context.copy()
     #override["object"] = metarig
     #override["active_object"] = metarig
@@ -46,10 +59,12 @@ def add_rig(char_name, conf, rigtype):
     bpy.ops.object.mode_set(mode="EDIT")
     if not rigging.joints_to_vg(char_obj, rigging.all_joints(bpy.context)):
         remove_metarig()
-        raise Exception("Metarig fitting failed")
+        raise RigException("Metarig fitting failed")
 
     bpy.ops.object.mode_set(mode="OBJECT")
+
     if rigtype != "RG":
+        copy_transform(metarig, char_obj)
         return
 
     metarig.data.rigify_generate_mode = "new"
@@ -61,9 +76,7 @@ def add_rig(char_name, conf, rigtype):
 
     rig = bpy.context.object
 
-    rig.location = char_obj.location
-    rig.rotation_quaternion = char_obj.rotation_quaternion
-    rig.scale = char_obj.scale
+    copy_transform(rig, char_obj)
 
     char_obj.location = (0,0,0)
     char_obj.rotation_quaternion = (1,0,0,0)
@@ -73,6 +86,9 @@ def add_rig(char_name, conf, rigtype):
     mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
+
+    # Strong movement of lower eyelids looks weird to me so I lower influence for it
+    # TODO!
 
     if bpy.context.scene.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)
@@ -95,26 +111,82 @@ class OpFinalize(bpy.types.Operator):
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 
-        if ui.fin_rig != "NO":
+        def do_rig():
+            if ui.fin_rig == "NO":
+                return True
+            if isinstance(char_obj.parent, bpy.types.Object) and char_obj.parent.type == "ARMATURE":
+                self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
+                return True
             rigs = char_conf.config["armature"]
             if not rigs or len(rigs) == 0:
                 self.report({"ERROR"}, "Rig is not found")
-                return {"CANCELLED"}
+                return False
             if len(rigs) > 1:
                 self.report({"ERROR"}, "Multiple rigs aren't supported yet")
-                return {"CANCELLED"}
+                return False
             rig_type = ui.fin_rig
             if rig_type == "RG" and not hasattr(bpy.ops.pose, "rigify_generate"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 rig_type = "MR"
-            if isinstance(char_obj.parent, bpy.types.Object) and char_obj.parent.type == "ARMATURE":
-                self.report({"WARNING"}, "Character is already attached to armature, skipping rig")
-                return {"CANCELLED"}
             try:
                 add_rig(char_conf.name, rigs[0], rig_type)
-            except Exception as e:
-                self.report({"ERROR"}, repr(e))
-                return {"CANCELLED"}
+            except RigException as e:
+                self.report({"ERROR"}, str(e))
+                return False
+            return True
+
+        if not do_rig():
+            return {"CANCELLED"}
+
+        def add_modifier(typ):
+            for mod in char_obj.modifiers:
+                if mod.type == typ:
+                    return mod
+            return char_obj.modifiers.new("charmorph_" + typ.lower(), typ)
+
+        unused_l1 = set()
+
+        keys = char_obj.data.shape_keys
+        if keys and keys.key_blocks:
+            if ui.fin_morph != "NO":
+                fin_sk = char_obj.shape_key_add(name="charmorph_finalized", from_mix=True)
+                fin_sk.value = 1
+                if fin_sk.name != "charmorph_finalized":
+                    char_obj.shape_key_remove(keys.key_blocks["charmorph_finalized"])
+                    fin_sk.name = "charmorph_finalized"
+
+            unknown_keys = False
+
+            for key in keys.key_blocks:
+                if key.name.startswith("L1_") and key.value<0.01:
+                    unused_l1.add(key.name[3:])
+                if ui.fin_morph != "NO" and key != keys.reference_key and key != fin_sk:
+                    if key.name.startswith("L1_")  or key.name.startswith("L2_"):
+                        char_obj.shape_key_remove(key)
+                    else:
+                        unknown_keys = True
+
+            if ui.fin_morph == "AL":
+                if unknown_keys:
+                    self.report({"WARNING"}, "Unknown shape keys found. Keeping original basis anyway")
+                else:
+                    char_obj.shape_key_remove(keys.reference_key)
+                    char_obj.shape_key_remove(fin_sk)
+
+        if ui.fin_csmooth:
+            mod = add_modifier("CORRECTIVE_SMOOTH")
+            mod.smooth_type = "LENGTH_WEIGHTED"
+
+        if ui.fin_subdivision != "NO":
+            mod = add_modifier("SUBSURF")
+            mod.show_viewport = ui.fin_subdivision == "RV"
+
+        if ui.fin_vg_cleanup:
+            for vg in char_obj.vertex_groups:
+                if vg.name.startswith("joint_") or (
+                        vg.name.startswith("hair_") and vg.name[5:] in unused_l1):
+                    char_obj.vertex_groups.remove(vg)
+
         return {"FINISHED"}
 
 
@@ -132,10 +204,10 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
     def draw(self, context):
         ui = context.scene.charmorph_ui
         self.layout.prop(ui, "fin_morph")
+        self.layout.prop(ui, "fin_rig")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")
-        self.layout.prop(ui, "fin_rig")
         self.layout.operator("charmorph.finalize")
 
 classes = [OpFinalize, CHARMORPH_PT_Finalize]

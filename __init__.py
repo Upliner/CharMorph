@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -201,6 +201,15 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
         ],
         description="Apply current shape key mix")
+    fin_rig: bpy.props.EnumProperty(
+        name="Rig",
+        default = "RG",
+        items = [
+            ("NO", "None", "Don't generate armature"),
+            ("MR", "Metarig only", "Generate metarig only"),
+            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
+        ],
+        description="Rigging options")
     fin_subdivision: bpy.props.EnumProperty(
         name="Subdivision",
         default = "RO",
@@ -218,15 +227,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Cleanup vertex groups",
         default = True,
         description="Remove unused vertex groups after finalization")
-    fin_rig: bpy.props.EnumProperty(
-        name="Rig",
-        default = "RG",
-        items = [
-            ("NO", "None", "Don't generate armature"),
-            ("MR", "Metarig only", "Generate metarig only"),
-            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
-        ],
-        description="Rigging options")
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__

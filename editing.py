@@ -338,6 +338,7 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
     def draw(self, context):
         self.layout.operator("cmedit.check_symmetry")
         self.layout.operator("cmedit.symmetrize_vg")
+        self.layout.operator("cmedit.transfer")
 
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
@@ -484,6 +485,42 @@ class OpSymmetrize(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class OpTransfer(bpy.types.Operator):
+    bl_idname = "cmedit.transfer"
+    bl_label = "VG direct transfer"
+    bl_description = "Transfer vertex groups from char to active object (must have identical vertices! If not, use Blender's transfer weights function)"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        char = get_char(context)
+        return context.object and context.object.type == "MESH" and char and context.object != char
+
+    def execute(self, context):
+        src = get_char(context)
+        dst = context.object
+        if src == dst:
+            self.report({'ERROR'}, "Source and dest are the same!")
+            return
+        if len(src.data.vertices) != len(dst.data.vertices):
+            self.report({'ERROR'}, "Incompatible meshes! Use Blender's transfer weights instead.")
+            return
+
+        while len(dst.vertex_groups) > 0:
+            dst.vertex_groups.remove(dst.vertex_groups[0])
+
+        vg_map = {}
+
+        for vg in src.vertex_groups:
+            new_vg = dst.vertex_groups.new(name = vg.name)
+            vg_map[vg.index] = new_vg
+
+        for v in src.data.vertices:
+            for g in v.groups:
+                vg_map[g.group].add([v.index],g.weight, 'REPLACE')
+
+        return {"FINISHED"}
+
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
@@ -540,7 +577,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
