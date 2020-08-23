@@ -58,9 +58,11 @@ def get_vg_avg(char):
 def joints_to_vg(char, lst):
     avg = get_vg_avg(char)
     result = True
+    bones = set()
     for name, _, bone, attr in lst:
         item = avg.get(name)
         if item:
+            bones.add(bone)
             pos = item[1]/item[0]
             offs = bone.get("charmorph_offs_" + attr)
             if offs and len(offs) == 3:
@@ -69,6 +71,19 @@ def joints_to_vg(char, lst):
         else:
             logger.error("No vg for " + name)
             result = False
+
+    # Bone roll
+    for bone in bones:
+        axis = bone.get("charmorph_axis_z")
+        flip = False
+        if not axis:
+            axis = bone.get("charmorph_axis_x")
+            flip = True
+        if axis and len(axis) == 3:
+            axis = mathutils.Vector(tuple(axis))
+            if flip:
+                axis = axis.cross(mathutils.Vector((1,0,0)))
+            bone.align_roll(axis)
     return result
 
 def rigify_add_deform(context, char):

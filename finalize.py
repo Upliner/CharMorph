@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 class RigException(Exception):
     pass
 
-def copy_constraint_by_target(bone, target):
+def copy_constraint_by_target(bone, rig, target):
     for c in bone.constraints:
-        if c.type == "COPY_LOCATION" and c.target and c.target.name == target:
+        if c.type == "COPY_LOCATION" and c.target == rig and c.subtarget == target:
             return c
 
 def copy_transform(target, source):
@@ -40,10 +40,10 @@ def copy_transform(target, source):
 
 def add_rig(char_name, conf, rigtype):
     if conf.get("type") != "rigify":
-        raise Exception("Rig type {} is not supported".format(conf.get("type")))
+        raise RigException("Rig type {} is not supported".format(conf.get("type")))
     metarig = library.import_obj(library.char_file(char_name, conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
-        raise Exception("Rig import failed")
+        raise RigException("Rig import failed")
 
     # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
     #override = context.copy()
@@ -70,11 +70,11 @@ def add_rig(char_name, conf, rigtype):
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
     remove_metarig()
+    rig = bpy.context.object
+    rig.name = char_obj.name + "_rig"
     bpy.ops.object.mode_set(mode="EDIT")
     rigging.rigify_add_deform(bpy.context, char_obj)
     bpy.ops.object.mode_set(mode="OBJECT")
-
-    rig = bpy.context.object
 
     copy_transform(rig, char_obj)
 
@@ -87,8 +87,15 @@ def add_rig(char_name, conf, rigtype):
     mod.use_vertex_groups = True
     mod.object = rig
 
+    # TODO: reorder modifiers?
+
     # Strong movement of lower eyelids looks weird to me so I lower influence for it
-    # TODO!
+    for side in ["L","R"]:
+        bone = rig.pose.bones.get("lid.B.%s.002" % side)
+        if bone:
+            c = copy_constraint_by_target(bone, rig, "MCH-eye.%s.001" % side)
+            if c:
+                c.influence = 0.25
 
     if bpy.context.scene.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)

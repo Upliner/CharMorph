@@ -7,8 +7,6 @@ Art:
 
 Creation tools:
   - Simple MB-Lab import/export tools
-  - Rigging tool
-  - Joints offsets
   - Fix L2__Body_Size_min and export it back to MB-Lab
 
 Char creation:
@@ -16,15 +14,18 @@ Char creation:
 
 Morphing:
   - Move out shape keys to npy/npz files
-  - Apply morphs (options: Corrective smooth (char, assets), Subdivision (char, assets): [Render only, Viewport(slow)], rig type)
-  - Choice between materials displacement and displacement modifier
   - Allow to mix L1 shapes
 
+Finalize:
+  - Corrective smooth: simple, length weighed
+  - Subsurf and corrective smooth for assets too
+  - Choice between materials displacement and displacement modifier
+
 Materials:
+  - "Affect materials": [None/Absolute/Relative]
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
-  - "Affect materials": [None/Absolute/Relative]
 
 Fitting:
   - MakeHuman asset support ?
@@ -35,18 +36,16 @@ Fitting:
   - Get fitting base from library
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
-  - Replace censors with default underwear
 
 Assets:
   - Asset list at creation
-  - Use default assets instead of censors
+  - Use default underwear assets instead of censors
 
 Rigging:
-  - Everything :)
-  - Fix asymmetry
-  - Rigify at all
+  - Armature modifier reorder (incorrect order may cause problems with hair)
+  - More weight paint checking
   - Live regular rig deform
-  - Chioce between expression shape keys and Rigify face rig
+  - Import MB-Lab expression shape keys alongside with Rigify
   - Rigify morphing?
   - Import pose library from MB-Lab
   - Muscles
