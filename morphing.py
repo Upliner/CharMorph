@@ -269,6 +269,8 @@ def meta_props(name, data):
 
 
 def clear_old_L2(obj, new_L1):
+    if not obj.data.shape_keys:
+        return
     for sk in obj.data.shape_keys.key_blocks:
         if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith("L2_{}_".format(new_L1)):
             sk.value = 0

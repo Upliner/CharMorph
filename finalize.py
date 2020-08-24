@@ -38,7 +38,7 @@ def copy_transform(target, source):
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
-def add_rig(char_name, conf, rigtype):
+def add_rig(char_name, conf, rigtype, verts):
     if conf.get("type") != "rigify":
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
     metarig = library.import_obj(library.char_file(char_name, conf["file"]), conf["obj_name"], "ARMATURE")
@@ -57,7 +57,7 @@ def add_rig(char_name, conf, rigtype):
     char_obj = morphing.cur_object
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
-    if not rigging.joints_to_vg(char_obj, rigging.all_joints(bpy.context)):
+    if not rigging.joints_to_vg(char_obj, rigging.all_joints(bpy.context), verts):
         remove_metarig()
         raise RigException("Metarig fitting failed")
 
@@ -118,44 +118,12 @@ class OpFinalize(bpy.types.Operator):
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 
-        def do_rig():
-            if ui.fin_rig == "NO":
-                return True
-            if isinstance(char_obj.parent, bpy.types.Object) and char_obj.parent.type == "ARMATURE":
-                self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
-                return True
-            rigs = char_conf.config["armature"]
-            if not rigs or len(rigs) == 0:
-                self.report({"ERROR"}, "Rig is not found")
-                return False
-            if len(rigs) > 1:
-                self.report({"ERROR"}, "Multiple rigs aren't supported yet")
-                return False
-            rig_type = ui.fin_rig
-            if rig_type == "RG" and not hasattr(bpy.ops.pose, "rigify_generate"):
-                self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
-                rig_type = "MR"
-            try:
-                add_rig(char_conf.name, rigs[0], rig_type)
-            except RigException as e:
-                self.report({"ERROR"}, str(e))
-                return False
-            return True
-
-        if not do_rig():
-            return {"CANCELLED"}
-
-        def add_modifier(typ):
-            for mod in char_obj.modifiers:
-                if mod.type == typ:
-                    return mod
-            return char_obj.modifiers.new("charmorph_" + typ.lower(), typ)
-
         unused_l1 = set()
 
         keys = char_obj.data.shape_keys
+        fin_sk = None
         if keys and keys.key_blocks:
-            if ui.fin_morph != "NO":
+            if ui.fin_morph != "NO" or ui.fin_rig != "NO":
                 fin_sk = char_obj.shape_key_add(name="charmorph_finalized", from_mix=True)
                 fin_sk.value = 1
                 if fin_sk.name != "charmorph_finalized":
@@ -179,6 +147,45 @@ class OpFinalize(bpy.types.Operator):
                 else:
                     char_obj.shape_key_remove(keys.reference_key)
                     char_obj.shape_key_remove(fin_sk)
+
+        def do_rig():
+            if ui.fin_rig == "NO":
+                return True
+            if isinstance(char_obj.parent, bpy.types.Object) and char_obj.parent.type == "ARMATURE":
+                self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
+                return True
+            rigs = char_conf.config["armature"]
+            if not rigs or len(rigs) == 0:
+                self.report({"ERROR"}, "Rig is not found")
+                return False
+            if len(rigs) > 1:
+                self.report({"ERROR"}, "Multiple rigs aren't supported yet")
+                return False
+            rig_type = ui.fin_rig
+            if rig_type == "RG" and not hasattr(bpy.ops.pose, "rigify_generate"):
+                self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
+                rig_type = "MR"
+            try:
+                add_rig(char_conf.name, rigs[0], rig_type, fin_sk.data if fin_sk else None)
+            except RigException as e:
+                self.report({"ERROR"}, str(e))
+                return False
+            return True
+
+        ok = do_rig()
+
+        if fin_sk and ui.fin_morph == "NO":
+            # Remove temporary mix shape key
+            char_obj.shape_key_remove(fin_sk)
+
+        if not ok:
+            return {"CANCELLED"}
+
+        def add_modifier(typ):
+            for mod in char_obj.modifiers:
+                if mod.type == typ:
+                    return mod
+            return char_obj.modifiers.new("charmorph_" + typ.lower(), typ)
 
         if ui.fin_csmooth:
             mod = add_modifier("CORRECTIVE_SMOOTH")

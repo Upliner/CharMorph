@@ -35,9 +35,11 @@ def get_joints(context, is_all):
 def all_joints(context):      return get_joints(context, True)
 def selected_joints(context): return get_joints(context, False)
 
-def get_vg_data(char, new, accumulate):
+def get_vg_data(char, new, accumulate, verts):
+    if verts is None:
+        verts = char.data.vertices
     data = {}
-    for vid, v in enumerate(char.data.vertices):
+    for v in char.data.vertices:
         for gw in v.groups:
             vg = char.vertex_groups[gw.group]
             if not vg.name.startswith("joint_"):
@@ -46,17 +48,17 @@ def get_vg_data(char, new, accumulate):
             if not data_item:
                 data_item = new()
                 data[vg.name] = data_item
-            accumulate(data_item, vid, v, gw)
+            accumulate(data_item, v, verts[v.index].co, gw)
     return data
 
-def get_vg_avg(char):
-    def accumulate(data_item, vid, v, gw):
+def get_vg_avg(char, verts):
+    def accumulate(data_item, v, co, gw):
         data_item[0] += gw.weight
-        data_item[1] += v.co*gw.weight
-    return get_vg_data(char, lambda: [0, mathutils.Vector()], accumulate)
+        data_item[1] += co*gw.weight
+    return get_vg_data(char, lambda: [0, mathutils.Vector()], accumulate, verts)
 
-def joints_to_vg(char, lst):
-    avg = get_vg_avg(char)
+def joints_to_vg(char, lst, verts):
+    avg = get_vg_avg(char, verts)
     result = True
     bones = set()
     for name, _, bone, attr in lst:

@@ -21,7 +21,7 @@
 import os, time, random, logging
 import bpy, bpy_extras, mathutils, bmesh
 
-from . import library
+from . import library, hair
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +408,7 @@ def refit_char_assets(char):
     assets = get_assets(char)
     if assets:
         do_fit(char, assets)
+    hair.refit_hair(char)
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Asset fitting"
@@ -445,6 +446,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "hair_scalp")
         self.layout.prop(ui, "hair_color")
         self.layout.prop(ui, "hair_style")
+        self.layout.operator("charmorph.create_hair")
 
 def mesh_obj(name):
     if not name:

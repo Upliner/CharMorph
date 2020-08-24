@@ -110,7 +110,7 @@ class OpJointsToVG(bpy.types.Operator):
         return editable_bones_poll(context)
 
     def execute(self, context):
-        rigging.joints_to_vg(get_char(context), joint_list_extended(context, False))
+        rigging.joints_to_vg(get_char(context), joint_list_extended(context, False), None)
         return {"FINISHED"}
 
 def kdtree_from_verts(verts):
@@ -263,7 +263,7 @@ class OpCalcVg(bpy.types.Operator):
         joints = joint_list_extended(context, ui.rig_xmirror)
 
         if typ == "CU":
-            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, vid, v, gw: data_item.add((v.co, vid)))
+            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.add((co, v.index)), None)
             for name, co, _, _ in joints:
                 vg = char.vertex_groups.get(name)
                 if not vg:
@@ -293,7 +293,7 @@ class OpCalcVg(bpy.types.Operator):
                     logger.error("Inavlid typ!")
 
         if ui.rig_vg_offs == "R":
-            avg = rigging.get_vg_avg(char)
+            avg = rigging.get_vg_avg(char, None)
             for name, co, bone, attr in joints:
                 item = avg.get(name)
                 if item:

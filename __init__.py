@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, fitting, finalize, editing
+from . import library, morphing, randomize, file_io, materials, hair, fitting, finalize, editing
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -65,7 +65,10 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
         pass
 
 def get_meshes(ui, context):
-    return [(o.name,o.name,"") for o in bpy.data.objects if o.type == "MESH"]
+    result = [(o.name,o.name,"") for o in bpy.data.objects if o.type == "MESH"]
+    if not result:
+        return [("","<None>","")]
+    return result
 
 #TODO: Use multiple inheritance to move props to corresponding modules?
 class CharMorphUIProps(bpy.types.PropertyGroup):
@@ -185,11 +188,11 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
-        items = [])
+        items = [("","<Not implemented yet>","")])
     hair_style: bpy.props.EnumProperty(
         name="Hairstyle",
         description="Hairstyle",
-        items = [])
+        items = hair.get_hairstyles)
 
     # Finalize
     fin_morph: bpy.props.EnumProperty(
@@ -241,7 +244,7 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-for module in [library, morphing, randomize, file_io, materials, fitting, finalize]:
+for module in [library, morphing, randomize, file_io, materials, hair, fitting, finalize]:
     classes.extend(module.classes)
 
 def on_select_object():

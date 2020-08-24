@@ -125,7 +125,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         self.layout.prop(ui, 'material_local')
         self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
-def import_obj(file, obj, typ = "MESH"):
+def import_obj(file, obj, typ = "MESH", link = True):
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
             if len(data_from.objects) == 1:
@@ -137,7 +137,8 @@ def import_obj(file, obj, typ = "MESH"):
     if obj.type != typ:
         bpy.data.objects.remove(obj)
         return None
-    bpy.context.collection.objects.link(obj)
+    if link:
+        bpy.context.collection.objects.link(obj)
     return obj
 
 def is_adult_mode():
