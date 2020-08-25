@@ -58,6 +58,7 @@ def neighbor_map(mesh):
 def invalidate_cache():
     obj_cache.clear()
     char_cache.clear()
+    hair.invalidate_cache()
     logger.debug("Fitting cache is invalidated")
 
 def calc_weights(char, asset, mask):
@@ -329,6 +330,7 @@ def do_fit(char, assets):
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
+    hair.fit_hair(char, char_shapekey)
     char.shape_key_remove(char_shapekey)
     t.time("fit")
 
@@ -408,7 +410,6 @@ def refit_char_assets(char):
     assets = get_assets(char)
     if assets:
         do_fit(char, assets)
-    hair.refit_hair(char)
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Asset fitting"
@@ -446,7 +447,8 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "hair_scalp")
         self.layout.prop(ui, "hair_color")
         self.layout.prop(ui, "hair_style")
-        self.layout.operator("charmorph.create_hair")
+        self.layout.operator("charmorph.hair_create")
+        self.layout.operator("charmorph.hair_refit")
 
 def mesh_obj(name):
     if not name:

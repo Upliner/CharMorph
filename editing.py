@@ -18,8 +18,8 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging
-import bpy, mathutils
+import logging, numpy
+import bpy, bpy_extras, mathutils
 
 from . import rigging
 
@@ -327,6 +327,7 @@ class OpRigifyDeform(bpy.types.Operator):
         rigging.rigify_add_deform(context, get_char(context))
         return {"FINISHED"}
 
+
 class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_label = "Utils"
     bl_parent_id = "VIEW3D_PT_CMEdit"
@@ -339,6 +340,38 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
         self.layout.operator("cmedit.check_symmetry")
         self.layout.operator("cmedit.symmetrize_vg")
         self.layout.operator("cmedit.transfer")
+        #self.layout.operator("cmedit.hair_smooth")
+        self.layout.operator("cmedit.hair_export")
+
+def np_particle_data(p):
+    result = numpy.empty(len(p.hair_keys)*3)
+    p.hair_keys.foreach_get("co_local", result)
+    if len(result)>3:
+        result = result[3:]
+    return numpy.reshape(result, (len(p.hair_keys)-1,3))
+
+class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.hair_export"
+    bl_label = "Export hair"
+    bl_description = "Export hairstyle to .npy file"
+    filename_ext = ".npy"
+
+    filter_glob: bpy.props.StringProperty(default="*.npy", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.particle_systems.active
+
+    def execute(self, context):
+        psys = context.object.particle_systems.active
+        is_global = psys.is_global_hair
+        override = context.copy()
+        if not is_global:
+            bpy.ops.particle.disconnect_hair(override)
+        numpy.save(self.filepath, [np_particle_data(p) for p in psys.particles])
+        if not is_global:
+            bpy.ops.particle.connect_hair(override)
+        return {"FINISHED"}
 
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
@@ -577,7 +610,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         min=1, soft_max=20,
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpHairExport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 

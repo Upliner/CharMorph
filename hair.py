@@ -18,12 +18,14 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging
+import logging, random, numpy
 import bpy, mathutils
 
 from . import library, fitting
 
 logger = logging.getLogger(__name__)
+
+obj_cache = {}
 
 def get_hairstyles(ui, context):
     char = fitting.get_char()
@@ -79,21 +81,92 @@ def create_default_hair(context, obj, char):
         hair.vertex_group_length = vg
     return s
 
-def refit_hair(char):
+
+def calc_weights(char, arr):
+    t = fitting.Timer()
+
+    char_verts = char.data.vertices
+    char_faces = char.data.polygons
+
+    mat = char.matrix_world.inverted()
+    # calculate weights based on 16 nearest vertices
+    kd_char = fitting.kdtree_from_verts(char_verts)
+    weights = [[{ idx: dist**2 for loc, idx, dist in kd_char.find_n(mat @ key.co_local, 16) } for key in keys ] for keys in arr]
+
+    t.time("hair_kdtree")
+
+    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
+    for i, keys in enumerate(arr):
+        for j, k in enumerate(keys):
+            co = mat @ k.co_local
+            loc, norm, idx, fdist = bvh_char.find_nearest(co)
+
+            fdist = max(fdist, fitting.epsilon)
+
+            if not loc or ((co-loc).dot(norm)<=0 and fdist > fitting.dist_thresh):
+                continue
+
+            d = weights[i][j]
+            for vi in char_faces[idx].vertices:
+                d[vi] = d.get(vi,0) + 1/max(((co-char_verts[vi].co).length * fdist), fitting.epsilon)
+
+    t.time("hair_bvh")
+
+    for arr in weights:
+        for i, d in enumerate(arr):
+            thresh = max(d.values())/16
+            d = [(k,v) for k, v in d.items() if v>thresh ] # prune small weights
+            total = sum(w[1] for w in d)
+            arr[i] = [(k, v/total) for k, v in d]
+
+    return weights
+
+def invalidate_cache():
+    obj_cache.clear()
+
+def get_weights(char, psys, new):
+    if "charmorph_fit_id" not in psys and new:
+        psys["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+
+    id = psys.get("charmorph_fit_id")
+    weights = obj_cache.get(id)
+    if weights:
+        return weights
+    if not new:
+        return None
+
+    weights = calc_weights(char, psys)
+    obj_cache[id] = weights
+    return weights
+
+def fit_hair(char, morphed_shapekey, new=False):
     override = bpy.context.copy()
     override["object"] = char
-    #bpy.ops.particle.disconnect_hair(override, all=True)
-    #bpy.ops.particle.particle_edit_toggle(override)
+    bpy.ops.particle.disconnect_hair(override, all=True)
     for psys in char.particle_systems:
-        for p in psys.particles:
-           for i, k in enumerate(p.hair_keys):
-               k.co_local += mathutils.Vector((0,0,0.01))
-               #k.co = (k.co[0],k.co[1],i*0.1)
-    #bpy.ops.particle.connect_hair(override, all=True)
-    #bpy.ops.particle.particle_edit_toggle(override)
+        weights = get_weights(char, psys, new)
+        #TODO the rest
+    bpy.ops.particle.connect_hair(override, all=True)
+
+def fit_new_hair(char):
+    morphed_shapekey = char.shape_key_add(from_mix=True)
+    fit_hair(char, morphed_shapekey, True)
+    char.shape_key_remove(morphed_shapekey)
+
+class OpRefitHair(bpy.types.Operator):
+    bl_idname = "charmorph.hair_refit"
+    bl_label = "Refit hair"
+    bl_description = "Refit hair to match changed character geometry (discards any manual grooming!)"
+    bl_options = {"UNDO"}
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and fitting.get_char()
+
+    def execute(self, context):
+        fit_new_hair(fitting.get_char())
 
 class OpCreateHair(bpy.types.Operator):
-    bl_idname = "charmorph.create_hair"
+    bl_idname = "charmorph.hair_create"
     bl_label = "Create hair"
     bl_description = "Create hair"
     bl_options = {"UNDO"}
@@ -139,6 +212,7 @@ class OpCreateHair(bpy.types.Operator):
         #        sk.co = dk.co
         #bpy.ops.particle.connect_hair(override)
         bpy.data.objects.remove(obj)
+        psys["charmorph_hairstyle"] = style
 
         return {"FINISHED"}
 

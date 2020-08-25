@@ -28,6 +28,10 @@ Materials:
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
 
+Hair:
+  - Move hair.blend to char.blend?
+  - Hair refitting after edit (don't use .npy files too?)
+
 Fitting:
   - MakeHuman asset support ?
   - Bounding box transform?
