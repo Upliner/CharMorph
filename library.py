@@ -44,7 +44,7 @@ class Character:
 empty_char = Character("")
 
 def char_file(char, file):
-    return os.path.join(os.path.join(data_dir, "characters/{}".format(char)), file)
+    return os.path.join(data_dir, "characters", char, file)
 
 def get_char_yaml(char, file, default={}):
     if char == "":

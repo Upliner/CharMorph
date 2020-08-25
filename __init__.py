@@ -185,6 +185,9 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
+    hair_deform: bpy.props.BoolProperty(
+        name="Live deform",
+        description="Refit hair in real time (slower than clothing)")
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
@@ -242,11 +245,6 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
     def draw(self, context):
         self.layout.prop(self,"adult_mode")
 
-classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
-
-for module in [library, morphing, randomize, file_io, materials, hair, fitting, finalize]:
-    classes.extend(module.classes)
-
 def on_select_object():
     obj = bpy.context.active_object
     if obj is None:
@@ -279,6 +277,11 @@ def load_handler(dummy):
     on_select_object()
 
 bpy.app.handlers.load_post.append(load_handler)
+
+classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
+
+for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize]:
+    classes.extend(module.classes)
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 

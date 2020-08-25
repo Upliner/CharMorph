@@ -27,8 +27,10 @@ It is not ready for practical use yet, but if you like MB-Lab and interested in 
 * Hairstyles
 * Realtime asset fitting
 * Rigify support with full face rig
+* Characters are created at 3D cursor location, not always at world origin
 
 ## Downsides
 
 * Library size is higher because shapekeys in .blend files take more space than morphs in .json files. I plan to fix it by moving morphs to separate npy/npz files.
 * It is mainly targeted to Rigify so rig is added only at finalization
+* Still lacking some features (Automodelling, measures) just because I don't use them in my projects. Maybe they'll come later.

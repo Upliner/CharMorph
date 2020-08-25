@@ -47,18 +47,9 @@ def kdtree_from_verts(verts):
     kd.balance()
     return kd
 
-def neighbor_map(mesh):
-    result = [[] for _ in range(len(mesh.vertices))]
-    for edge in mesh.edges:
-        verts = edge.vertices
-        result[verts[0]].append(verts[1])
-        result[verts[1]].append(verts[0])
-    return result
-
 def invalidate_cache():
     obj_cache.clear()
     char_cache.clear()
-    hair.invalidate_cache()
     logger.debug("Fitting cache is invalidated")
 
 def calc_weights(char, asset, mask):
@@ -79,6 +70,7 @@ def calc_weights(char, asset, mask):
 
     # using FromPolygons because objects can have modifiers and there is no way force FromObject to use undeformed mesh
     # calculate weights based on distance from asset vertices to character faces
+    # will using bmesh be faster?
     bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
     for i, avert in enumerate(asset_verts):
         co = avert.co
@@ -120,15 +112,6 @@ def calc_weights(char, asset, mask):
     if mask:
         add_mask_from_asset(char, asset, bvh_asset, bvh_char)
         t.time("mask")
-
-    #neighbors = neighbor_map(asset.data)
-
-    #for i, d in enumerate(weights):
-    #    for ni in neighbors[i]:
-    #        for k, v in weights[ni].items():
-    #            d[k] = d.get(k, 0) + v
-
-    #timer("smooth")
 
     for i, d in enumerate(weights):
         thresh = max(d.values())/16
@@ -308,12 +291,16 @@ def transfer_new_armature(char):
     for asset in get_assets(char):
         transfer_armature(char, asset)
 
+def diff_array(obj):
+    morphed_shapekey = obj.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
+    result = [(vmorphed.co-vbasis.co) for vbasis, vmorphed in zip(obj.data.vertices, morphed_shapekey.data)]
+    obj.shape_key_remove(morphed_shapekey)
+    return result
+
 def do_fit(char, assets):
     t = Timer()
 
-    char_basis = char.data.vertices
-    char_shapekey = char.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-    char_morphed = char_shapekey.data
+    diff_arr = diff_array(char)
 
     for asset in assets:
         weights = get_obj_weights(char, asset)
@@ -324,15 +311,14 @@ def do_fit(char, assets):
         else:
             asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
-        asset_morphed = asset_fitkey.data
-        for i, avert in enumerate(asset.data.vertices):
-            asset_morphed[i].co = avert.co + sum(((char_morphed[vi].co-char_basis[vi].co)*weight for vi, weight in weights[i]), mathutils.Vector())
+        for vmorph, vbase, weightsd in zip(asset_fitkey.data, asset.data.vertices, weights):
+            vmorph.co = vbase.co + sum((diff_arr[vi]*weight for vi, weight in weightsd), mathutils.Vector())
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
-    hair.fit_hair(char, char_shapekey)
-    char.shape_key_remove(char_shapekey)
     t.time("fit")
+    if bpy.context.scene.charmorph_ui.hair_deform:
+        hair.fit_all_hair(bpy.context, char, diff_arr, False)
 
 def recalc_comb_mask(char, new_asset=None):
     t = Timer()
@@ -408,11 +394,11 @@ def get_assets(char):
 
 def refit_char_assets(char):
     assets = get_assets(char)
-    if assets:
+    if assets or (bpy.context.scene.charmorph_ui.hair_deform and hair.has_hair(char)):
         do_fit(char, assets)
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
-    bl_label = "Asset fitting"
+    bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -420,7 +406,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT"
+        return context.mode == "OBJECT" # is it neccesary?
 
     def draw(self, context):
         ui = context.scene.charmorph_ui
@@ -444,11 +430,6 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.operator("charmorph.fit_library")
         self.layout.prop(ui, "fitting_library_dir")
         self.layout.separator()
-        self.layout.prop(ui, "hair_scalp")
-        self.layout.prop(ui, "hair_color")
-        self.layout.prop(ui, "hair_style")
-        self.layout.operator("charmorph.hair_create")
-        self.layout.operator("charmorph.hair_refit")
 
 def mesh_obj(name):
     if not name:

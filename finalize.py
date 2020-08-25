@@ -209,7 +209,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_order = 8
+    bl_order = 9
 
     @classmethod
     def poll(cls, context):

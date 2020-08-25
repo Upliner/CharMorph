@@ -88,17 +88,15 @@ def calc_weights(char, arr):
     char_verts = char.data.vertices
     char_faces = char.data.polygons
 
-    mat = char.matrix_world.inverted()
-    # calculate weights based on 16 nearest vertices
+    # calculate weights based on n nearest vertices
     kd_char = fitting.kdtree_from_verts(char_verts)
-    weights = [[{ idx: dist**2 for loc, idx, dist in kd_char.find_n(mat @ key.co_local, 16) } for key in keys ] for keys in arr]
+    weights = [[{ idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32) } for co in keys ] for keys in arr]
 
     t.time("hair_kdtree")
 
     bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
     for i, keys in enumerate(arr):
-        for j, k in enumerate(keys):
-            co = mat @ k.co_local
+        for j, co in enumerate(keys):
             loc, norm, idx, fdist = bvh_char.find_nearest(co)
 
             fdist = max(fdist, fitting.epsilon)
@@ -108,7 +106,7 @@ def calc_weights(char, arr):
 
             d = weights[i][j]
             for vi in char_faces[idx].vertices:
-                d[vi] = d.get(vi,0) + 1/max(((co-char_verts[vi].co).length * fdist), fitting.epsilon)
+                d[vi] = d.get(vi,0) + 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon)
 
     t.time("hair_bvh")
 
@@ -118,52 +116,102 @@ def calc_weights(char, arr):
             d = [(k,v) for k, v in d.items() if v>thresh ] # prune small weights
             total = sum(w[1] for w in d)
             arr[i] = [(k, v/total) for k, v in d]
+    t.time("hair_normalize")
 
     return weights
 
 def invalidate_cache():
     obj_cache.clear()
 
-def get_weights(char, psys, new):
-    if "charmorph_fit_id" not in psys and new:
-        psys["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+def get_data(char, psys, new):
+    if not psys.is_edited:
+        return False
+    if "charmorph_fit_id" not in psys.settings and new:
+        psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
 
-    id = psys.get("charmorph_fit_id")
-    weights = obj_cache.get(id)
-    if weights:
-        return weights
+    id = psys.settings.get("charmorph_fit_id")
+    data = obj_cache.get(id)
+    if data:
+        return data
+
     if not new:
-        return None
+        return None, None
 
-    weights = calc_weights(char, psys)
-    obj_cache[id] = weights
-    return weights
+    char_conf = library.obj_char(char)
+    style = psys.settings.get("charmorph_hairstyle")
+    if not char_conf or not style:
+        return None, None
 
-def fit_hair(char, morphed_shapekey, new=False):
-    override = bpy.context.copy()
-    override["object"] = char
-    bpy.ops.particle.disconnect_hair(override, all=True)
+    try:
+        arr = numpy.load(library.char_file(char_conf.name, "hair_styles/%s.npy" % style), allow_pickle=True)
+    except Exception as e:
+        logger.error(str(e))
+        return None, None
+
+    if len(arr) != len(psys.particles):
+        logger.error("Mismatch between current hairsyle and .npy!")
+        invalidate_cache()
+        return None, None
+
+    weights = calc_weights(char, arr)
+    obj_cache[id] = (arr, weights)
+    return arr, weights
+
+def fit_all_hair(context, char, diff_arr, new):
+    t = fitting.Timer()
     for psys in char.particle_systems:
-        weights = get_weights(char, psys, new)
-        #TODO the rest
-    bpy.ops.particle.connect_hair(override, all=True)
+        fit_hair(context, char, psys, diff_arr, new)
 
-def fit_new_hair(char):
-    morphed_shapekey = char.shape_key_add(from_mix=True)
-    fit_hair(char, morphed_shapekey, True)
-    char.shape_key_remove(morphed_shapekey)
+    t.time("hair_fit")
+
+def has_hair(char):
+    for psys in char.particle_systems:
+        arr, weights = get_data(char, psys, False)
+        if arr is not None and weights:
+           return True
+    return False
+
+def fit_hair(context, char, psys, diff_arr, new):
+    arr, weights = get_data(char, psys, new)
+    if arr is None or not weights:
+        return False
+
+    mat = char.matrix_world
+    override = context.copy()
+    override["object"] = char
+    override["particle_system"] = psys
+    have_mismatch = False
+    bpy.ops.particle.disconnect_hair(override)
+    #try:
+    for p, keys, pweights in zip(psys.particles, arr, weights):
+            if len(p.hair_keys)-1 != len(keys):
+                if not have_mismatch:
+                    logger.error("Particle mismatch")
+                    have_mismatch = True
+                continue
+            for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
+                vsrc = mathutils.Vector(ksrc)
+                kdst.co_local = mat @ (vsrc + sum((diff_arr[vi]*weight for vi, weight in weightsd), mathutils.Vector()))
+    #except Exception as e:
+    #    logger.error(str(e))
+    #    invalideate_cache()
+    #    pass
+    bpy.ops.particle.connect_hair(override)
+    return True
 
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
     bl_label = "Refit hair"
-    bl_description = "Refit hair to match changed character geometry (discards any manual grooming!)"
+    bl_description = "Refit hair to match changed character geometry (discards manual combing, won't work if you added/removed particles)"
     bl_options = {"UNDO"}
     @classmethod
     def poll(cls, context):
         return context.mode == "OBJECT" and fitting.get_char()
 
     def execute(self, context):
-        fit_new_hair(fitting.get_char())
+        char = fitting.get_char()
+        fit_all_hair(context, char, fitting.diff_array(char), True)
+        return {"FINISHED"}
 
 class OpCreateHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_create"
@@ -191,8 +239,6 @@ class OpCreateHair(bpy.types.Operator):
         src_psys = obj.particle_systems[ui.hair_style]
         override["particle_system"] = src_psys
         override["selected_editable_objects"] = [char]
-        #bpy.ops.particle.disconnect_hair(override)
-        #bpy.ops.particle.connect_hair(override)
         bpy.ops.particle.copy_particle_systems(override)
         dst_psys = char.particle_systems[len(char.particle_systems)-1]
         for attr in dir(src_psys):
@@ -203,17 +249,26 @@ class OpCreateHair(bpy.types.Operator):
                 if not val in char.vertex_groups:
                     val = ""
                 setattr(dst_psys, attr, val)
-        #override["object"] = char
-        #override["particle_system"] = dst_psys
-        #bpy.ops.particle.disconnect_hair(override)
-        #bpy.ops.particle.particle_edit_toggle(override)
-        #for sp, dp in zip(src_psys.particles,dst_psys.particles):
-        #   for sk, dk in zip(sp.hair_keys, dp.hair_keys):
-        #        sk.co = dk.co
-        #bpy.ops.particle.connect_hair(override)
         bpy.data.objects.remove(obj)
-        psys["charmorph_hairstyle"] = style
+        dst_psys.settings["charmorph_hairstyle"] = style
+        fit_hair(context, char, dst_psys, fitting.diff_array(char), True)
 
         return {"FINISHED"}
 
-classes = [OpCreateHair]
+class CHARMORPH_PT_Hair(bpy.types.Panel):
+    bl_label = "Hair"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 8
+
+    def draw(self, context):
+        ui = context.scene.charmorph_ui
+        self.layout.prop(ui, "hair_scalp")
+        self.layout.prop(ui, "hair_deform")
+        self.layout.prop(ui, "hair_color")
+        self.layout.prop(ui, "hair_style")
+        self.layout.operator("charmorph.hair_create")
+        self.layout.operator("charmorph.hair_refit")
+
+classes = [OpCreateHair, OpRefitHair, CHARMORPH_PT_Hair]
