@@ -33,7 +33,7 @@ def get_hairstyles(ui, context):
         return [("","<None>","")]
     result = [("default","Default hair","")]
     char_conf = library.obj_char(char)
-    result.extend([(name, name, "") for name in char_conf.config.get("hair_styles", [])])
+    result.extend([(name, name, "") for name in char_conf.config.get("hair_styles", {}).keys()])
     return result
 
 def create_hair_material(name):
@@ -52,10 +52,51 @@ def get_material_slot(obj,name):
     for i, mtl in enumerate(mats):
         if mtl.name == name or mtl.name.startswith(name+"."):
             return i
-    mats.append(create_hair_material("hair_default"))
+    mats.append(create_hair_material(name))
     return len(mats)-1
 
-def create_default_hair(context, obj, char):
+def attach_scalp(char, obj):
+    obj.data["charmorph_fit_mask"] = "false"
+    obj.show_instancer_for_viewport = False
+    obj.show_instancer_for_render = False
+    collections = char.users_collection
+    active_collection = bpy.context.collection
+    for c in collections:
+        if c is active_collection:
+            c.objects.link(obj)
+            break
+    else:
+        for c in collections:
+            c.objects.link(obj)
+    fitting.fit_new(char, obj)
+
+def create_scalp(name, char, vgi):
+    vmap = {}
+    verts = []
+    for v in char.data.vertices:
+        for g in v.groups:
+            if g.group == vgi:
+                vmap[v.index] = len(verts)
+                verts.append(v.co)
+    edges = [(v1, v2) for v1, v2 in ((vmap.get(e.vertices[0]), vmap.get(e.vertices[1])) for e in char.data.edges) if v1 is not None and v2 is not None]
+    faces = []
+    for f in char.data.polygons:
+        face = []
+        for v in f.vertices:
+            i = vmap.get(v)
+            if i is None:
+                break
+            face.append(i)
+        else:
+            faces.append(face)
+
+    m = bpy.data.meshes.new(name)
+    m.from_pydata(verts,edges,faces)
+    obj = bpy.data.objects.new(name, m)
+    attach_scalp(char, obj)
+    return obj
+
+def create_default_hair(context, obj, char, scalp):
     l1 = ""
     if hasattr(context.scene,"chartype"):
         l1 = context.scene.chartype
@@ -64,6 +105,10 @@ def create_default_hair(context, obj, char):
         vg = "hair_" + l1
     elif "hair" in obj.vertex_groups:
         vg = "hair"
+
+    if scalp and vg:
+        obj = create_scalp("hair_default", obj, obj.vertex_groups[vg].index)
+
     override = context.copy()
     override["object"] = obj
     override["active_object"] = obj
@@ -160,7 +205,11 @@ def get_data(char, psys, new):
 def fit_all_hair(context, char, diff_arr, new):
     t = fitting.Timer()
     for psys in char.particle_systems:
-        fit_hair(context, char, psys, diff_arr, new)
+        fit_hair(context, char, char, psys, diff_arr, new)
+
+    for asset in fitting.get_assets(char):
+        for psys in asset.particle_systems:
+            fit_hair(context, char, asset, psys, diff_arr, new)
 
     t.time("hair_fit")
 
@@ -171,19 +220,19 @@ def has_hair(char):
            return True
     return False
 
-def fit_hair(context, char, psys, diff_arr, new):
+def fit_hair(context, char, obj, psys, diff_arr, new):
     arr, weights = get_data(char, psys, new)
     if arr is None or not weights:
         return False
 
-    mat = char.matrix_world
+    mat = obj.matrix_world
     override = context.copy()
-    override["object"] = char
+    override["object"] = obj
     override["particle_system"] = psys
     have_mismatch = False
     bpy.ops.particle.disconnect_hair(override)
-    #try:
-    for p, keys, pweights in zip(psys.particles, arr, weights):
+    try:
+        for p, keys, pweights in zip(psys.particles, arr, weights):
             if len(p.hair_keys)-1 != len(keys):
                 if not have_mismatch:
                     logger.error("Particle mismatch")
@@ -192,10 +241,9 @@ def fit_hair(context, char, psys, diff_arr, new):
             for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
                 vsrc = mathutils.Vector(ksrc)
                 kdst.co_local = mat @ (vsrc + sum((diff_arr[vi]*weight for vi, weight in weightsd), mathutils.Vector()))
-    #except Exception as e:
-    #    logger.error(str(e))
-    #    invalideate_cache()
-    #    pass
+    except Exception as e:
+        logger.error(str(e))
+        invalidate_cache()
     bpy.ops.particle.connect_hair(override)
     return True
 
@@ -228,9 +276,13 @@ class OpCreateHair(bpy.types.Operator):
         char = fitting.get_char()
         char_conf = library.obj_char(char)
         if style=="default":
-            create_default_hair(context, char, char_conf)
+            create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")),"hair",link=False)
+        obj_name = char_conf.config.get("hair_styles", {}).get(style)
+        if not obj_name:
+            self.report({"ERROR"}, "Hairstyle is not found")
+            return {"CANCELLED"}
+        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")),obj_name,link=False)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
@@ -238,20 +290,27 @@ class OpCreateHair(bpy.types.Operator):
         override["object"] = obj
         src_psys = obj.particle_systems[ui.hair_style]
         override["particle_system"] = src_psys
-        override["selected_editable_objects"] = [char]
+        if ui.hair_scalp:
+            dst_obj = bpy.data.objects.new("hair_" + style, obj.data)
+            attach_scalp(char, dst_obj)
+        else:
+            dst_obj = char
+        override["selected_editable_objects"] = [dst_obj]
         bpy.ops.particle.copy_particle_systems(override)
-        dst_psys = char.particle_systems[len(char.particle_systems)-1]
+        dst_psys = dst_obj.particle_systems[len(char.particle_systems)-1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
                 continue
             val = getattr(src_psys, attr)
             if val:
-                if not val in char.vertex_groups:
+                if not val in dst_obj.vertex_groups:
                     val = ""
                 setattr(dst_psys, attr, val)
         bpy.data.objects.remove(obj)
-        dst_psys.settings["charmorph_hairstyle"] = style
-        fit_hair(context, char, dst_psys, fitting.diff_array(char), True)
+        s = dst_psys.settings
+        s["charmorph_hairstyle"] = style
+        s.material = get_material_slot(dst_obj, "hair_" + style)
+        fit_hair(context, char, dst_obj, dst_psys, fitting.diff_array(char), True)
 
         return {"FINISHED"}
 

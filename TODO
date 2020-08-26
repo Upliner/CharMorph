@@ -4,7 +4,7 @@ General:
 
 Art:
   - Compare bumping with MB-Lab?
-  - Hairstyles
+  - More hairstyles
 
 Creation tools:
   - Simple MB-Lab import/export tools
@@ -18,17 +18,20 @@ Morphing:
   - Allow to mix L1 shapes
 
 Finalize:
-  - Corrective smooth: simple, length weighed
-  - Subsurf and corrective smooth for assets too
   - Choice between materials displacement and displacement modifier
 
 Materials:
   - "Affect materials": [None/Absolute/Relative]
+  - Lip color control?
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
 
+Randomize:
+  - Randomize hair and skin colors
+
 Hair:
+  - Hair colors
   - Move hair.blend to char.blend?
   - Hair refitting after edit (don't use .npy files too?)
 
@@ -47,11 +50,10 @@ Assets:
   - Use default underwear assets instead of censors
 
 Rigging:
-  - Armature modifier reorder (incorrect order may cause problems with hair)
   - More weight paint checking
   - Live regular rig deform
   - Import MB-Lab expression shape keys alongside with Rigify
-  - Rigify morphing?
+  - Rigify morphing? Maybe even create an own Rigify-like rig system?
   - Import pose library from MB-Lab
   - Muscles
   - Blenrig

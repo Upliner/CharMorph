@@ -82,12 +82,12 @@ def add_rig(char_name, conf, rigtype, verts):
     char_obj.rotation_quaternion = (1,0,0,0)
     char_obj.scale = (1,1,1)
     char_obj.parent = rig
+
     mod = char_obj.modifiers.new("charmorph_rigify", "ARMATURE")
     mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
-
-    # TODO: reorder modifiers?
+    rigging.reposition_armature_modifier(bpy.context, char_obj)
 
     # Strong movement of lower eyelids looks weird to me so I lower influence for it
     for side in ["L","R"]:
@@ -148,6 +148,14 @@ class OpFinalize(bpy.types.Operator):
                     char_obj.shape_key_remove(keys.reference_key)
                     char_obj.shape_key_remove(fin_sk)
 
+        # Make sure we won't delete any vertex groups used by hair particle systems
+        for psys in char_obj.particle_systems:
+            for attr in dir(psys):
+                if attr.startswith("vertex_group_"):
+                    vg = getattr(psys, attr)
+                    if vg.startswith("hair_"):
+                        unused_l1.remove(vg[5:])
+
         def do_rig():
             if ui.fin_rig == "NO":
                 return True
@@ -181,19 +189,27 @@ class OpFinalize(bpy.types.Operator):
         if not ok:
             return {"CANCELLED"}
 
-        def add_modifier(typ):
-            for mod in char_obj.modifiers:
-                if mod.type == typ:
-                    return mod
-            return char_obj.modifiers.new("charmorph_" + typ.lower(), typ)
+        def add_modifiers(obj):
+            def add_modifier(typ):
+                for mod in obj.modifiers:
+                    if mod.type == typ:
+                        return mod
+                return obj.modifiers.new("charmorph_" + typ.lower(), typ)
 
-        if ui.fin_csmooth:
-            mod = add_modifier("CORRECTIVE_SMOOTH")
-            mod.smooth_type = "LENGTH_WEIGHTED"
+            if ui.fin_csmooth != "NO":
+                mod = add_modifier("CORRECTIVE_SMOOTH")
+                mod.smooth_type = ui.fin_csmooth
 
-        if ui.fin_subdivision != "NO":
-            mod = add_modifier("SUBSURF")
-            mod.show_viewport = ui.fin_subdivision == "RV"
+            if ui.fin_subdivision != "NO":
+                mod = add_modifier("SUBSURF")
+                mod.show_viewport = ui.fin_subdivision == "RV"
+
+        add_modifiers(char_obj)
+
+        if (ui.fin_subdivision != "NO" and ui.fin_subdiv_assets) or (ui.fin_csmooth != "NO" and ui.fin_cmooth_assets):
+            for asset in fitting.get_assets(char_obj):
+                add_modifiers(asset)
+
 
         if ui.fin_vg_cleanup:
             for vg in char_obj.vertex_groups:

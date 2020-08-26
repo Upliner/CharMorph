@@ -66,15 +66,21 @@ def get_fitting_assets(ui, context):
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
 
-def update_fitting_assets(ui, context):
-    additional_assets.clear()
-    dir = ui.fitting_library_dir
-    if not dir:
-        return
+def load_assets_dir(dir):
+    result = {}
+    if not os.path.isdir(dir):
+        return result
     for file in os.listdir(dir):
         name, ext = os.path.splitext(file)
         if ext == ".blend" and os.path.isfile(os.path.join(dir, file)):
-            additional_assets[name] = (os.path.join(dir, file), name)
+            result[name] = (os.path.join(dir, file), name)
+    return result
+
+def update_fitting_assets(ui, context):
+    dir = ui.fitting_library_dir
+    if not dir:
+        return
+    additional_assets = load_assets_dir(dir)
 
 def fitting_asset_data():
     ui = bpy.context.scene.charmorph_ui
@@ -96,6 +102,7 @@ def load_library():
         char = Character(char_name)
         char.config = get_char_yaml(char_name, "config.yaml")
         char.morphs_meta = get_char_yaml(char_name, "morphs_meta.yaml")
+        char.assets = load_assets_dir(char_file(char_name, "assets"))
         chars[char_name] = char
 
 if not os.path.isdir(data_dir):

@@ -29,6 +29,7 @@ last_object = None
 cur_object = None
 asset_lock = False
 meta_lock = False
+l1morphs = {}
 
 # convert array of min/max binary representation
 def convertSigns(signs):
@@ -38,8 +39,8 @@ def convertSigns(signs):
     except KeyError:
         return -1
 
-def updateL1(L1data, newkey):
-    for name, sk in L1data.items():
+def updateL1(newkey):
+    for name, sk in l1morphs.items():
         sk.value = 1 if name == newkey else 0
 
 # scan object shape keys and convert them to dictionary
@@ -58,8 +59,6 @@ def get_morphs_L1(obj):
             maxkey = name
             maxval = sk.value
         result[name] = sk
-
-    updateL1(result, maxkey)
 
     return (maxkey, result)
 
@@ -276,22 +275,23 @@ def clear_old_L2(obj, new_L1):
             sk.value = 0
 
 def create_charmorphs(obj):
-    global last_object, cur_object
+    global last_object, cur_object, l1morphs
     last_object = obj
     if obj.type != "MESH":
         return
 
-    L1, morphs = get_morphs_L1(obj)
+    L1, l1morphs = get_morphs_L1(obj)
+    updateL1(L1)
 
     char = library.obj_char(obj)
-    items = [(name, char.config.get("types",{}).get(name, {}).get("title",name), "") for name in morphs.keys()]
+    items = [(name, char.config.get("types",{}).get(name, {}).get("title",name), "") for name in l1morphs.keys()]
 
     cur_object = obj
     materials.update_props(obj)
     mtl_props = materials.props
 
     def update_char():
-        updateL1(morphs, L1)
+        updateL1(L1)
         materials.apply_props(char.config.get("types", {}).get(L1, {}).get("mtl_props"), mtl_props)
         clear_old_L2(obj, L1)
         refit_assets()

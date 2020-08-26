@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging
-import mathutils
+import bpy, mathutils
 
 logger = logging.getLogger(__name__)
 
@@ -92,3 +92,16 @@ def rigify_add_deform(context, char):
     for vg in char.vertex_groups:
         if vg.name.startswith("ORG-") or vg.name.startswith("MCH-"):
             context.object.data.edit_bones[vg.name].use_deform = True
+
+def reposition_armature_modifier(context, char):
+    override = context.copy()
+    override["object"] = char
+    pos = len(char.modifiers)-1
+    name = char.modifiers[pos].name
+
+    for i, mod in enumerate(char.modifiers):
+        if mod.type != "MASK":
+            break
+    for i in range(pos-i):
+        if bpy.ops.object.modifier_move_up.poll():
+            bpy.ops.object.modifier_move_up(override, modifier=name)

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 5),
+    "version": (0, 0, 6),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -225,10 +225,23 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
         ],
         description="Use subdivision surface for smoother look")
-    fin_csmooth: bpy.props.BoolProperty(
+    fin_csmooth: bpy.props.EnumProperty(
         name="Corrective smooth",
-        default = True,
+        default = "LENGTH_WEIGHTED",
+        items = [
+            ("NO", "None", "No corrective smooth"),
+            ("SIMPLE", "Simple", ""),
+            ("LENGTH_WEIGHTED", "Length weighted", ""),
+        ],
         description="Use corrective smooth to fix armature deform artifacts")
+    fin_subdiv_assets: bpy.props.BoolProperty(
+        name="Subdivide assets",
+        default = False,
+        description="Subdivide assets together with character")
+    fin_cmooth_assets: bpy.props.BoolProperty(
+        name="Corrective smooth for assets",
+        default = True,
+        description="Use corrective smooth for assets too")
     fin_vg_cleanup: bpy.props.BoolProperty(
         name="Cleanup vertex groups",
         default = True,

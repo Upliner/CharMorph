@@ -89,6 +89,7 @@ class OpRandomize(bpy.types.Operator):
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_morphs:
+            morphing.asset_lock = True
             for prop in dir(cm):
                 if not prop.startswith("prop_"):
                     continue
@@ -106,6 +107,8 @@ class OpRandomize(bpy.types.Operator):
                 elif ui.randomize_mode == "RL2":
                     val += getattr(cm, prop)
                 setattr(cm, prop, val)
+            morphing.asset_lock = False
+            morphing.refit_assets()
         if ui.randomize_mode == "RL1":
             saved_version = cm.version
         return {"FINISHED"}

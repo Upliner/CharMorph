@@ -21,7 +21,7 @@
 import os, time, random, logging
 import bpy, bpy_extras, mathutils, bmesh
 
-from . import library, hair
+from . import library, hair, rigging
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +286,7 @@ def transfer_armature(char, asset):
             newmod.invert_vertex_group = mod.invert_vertex_group
             newmod.use_bone_envelopes = mod.use_bone_envelopes
             newmod.use_vertex_groups = mod.use_vertex_groups
+            rigging.reposition_armature_modifier(bpy.context, asset)
 
 def transfer_new_armature(char):
     for asset in get_assets(char):
@@ -368,10 +369,11 @@ def fit_new(char, asset):
     if ui.fitting_transforms:
         apply_transforms(asset)
 
-    if ui.fitting_mask == "SEPR":
-        get_obj_weights(char, asset, True)
-    elif ui.fitting_mask == "COMB":
-        recalc_comb_mask(char, asset)
+    if asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']:
+        if ui.fitting_mask == "SEPR":
+            get_obj_weights(char, asset, True)
+        elif ui.fitting_mask == "COMB":
+            recalc_comb_mask(char, asset)
 
     do_fit(char, [asset])
     asset.parent = char
