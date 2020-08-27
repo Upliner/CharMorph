@@ -22,6 +22,7 @@ import logging, random, numpy
 import bpy, mathutils
 
 from . import library, fitting
+from .materials import parse_color
 
 logger = logging.getLogger(__name__)
 
@@ -36,24 +37,46 @@ def get_hairstyles(ui, context):
     result.extend([(name, name, "") for name in char_conf.config.get("hair_styles", {}).keys()])
     return result
 
-def create_hair_material(name):
+def create_hair_material(context, name):
     mat = bpy.data.materials.new(name)
+    apply_hair_color(context, mat)
+    return mat
+
+def apply_hair_color(context, mat):
+    if not mat:
+        return
     mat.use_nodes=True
     tree = mat.node_tree
     tree.nodes.clear()
     output_node = tree.nodes.new("ShaderNodeOutputMaterial")
     hair_node = tree.nodes.new("ShaderNodeBsdfHairPrincipled")
     tree.links.new(hair_node.outputs[0],output_node.inputs[0])
-    mat.diffuse_color = (0.01,0.01,0.01,1)
-    return mat
+    settings = library.hair_colors.get(context.scene.charmorph_ui.hair_color)
+    if settings and settings["type"] == "ShaderNodeBsdfHairPrincipled":
+        hair_node.parametrization = settings.get("parametrization", "MELANIN")
+        hair_node.inputs[0].default_value = parse_color(settings.get("color", [0,0,0]))
+        hair_node.inputs[1].default_value = settings.get("melanin", 0)
+        hair_node.inputs[2].default_value = settings.get("melanin_redness", 0)
+        hair_node.inputs[3].default_value = parse_color(settings.get("tint", [1,1,1]))
+        hair_node.inputs[4].default_value = settings.get("absorption_coeff", [0,0,0])
+        hair_node.inputs[5].default_value = settings.get("roughness", 0)
+        hair_node.inputs[6].default_value = settings.get("radial_roughness", 0)
+        hair_node.inputs[7].default_value = settings.get("coat", 0)
+        hair_node.inputs[8].default_value = settings.get("ior", 1)
+        hair_node.inputs[9].default_value = settings.get("offset", 0)
+        hair_node.inputs[10].default_value = settings.get("random_color", 0)
+        hair_node.inputs[11].default_value = settings.get("random_roughness", 0)
+        mat.diffuse_color = parse_color(settings.get("viewport_color", [0.01,0.01,0.01]))
+    else:
+        mat.diffuse_color = (0.01,0.01,0.01,1)
 
-def get_material_slot(obj,name):
+def get_material_slot(context, obj, name):
     mats = obj.data.materials
     for i, mtl in enumerate(mats):
         if mtl.name == name or mtl.name.startswith(name+"."):
-            return i
-    mats.append(create_hair_material(name))
-    return len(mats)-1
+            return i + 1
+    mats.append(create_hair_material(context, name))
+    return len(mats)
 
 def attach_scalp(char, obj):
     obj.data["charmorph_fit_mask"] = "false"
@@ -120,7 +143,7 @@ def create_default_hair(context, obj, char, scalp):
     s.child_type = 'INTERPOLATED'
     s.create_long_hair_children = True
     s.root_radius = 0.01
-    s.material = get_material_slot(obj, "hair_default")
+    s.material = get_material_slot(context, obj, "hair_default")
     if vg:
         hair.vertex_group_density = vg
         hair.vertex_group_length = vg
@@ -309,9 +332,30 @@ class OpCreateHair(bpy.types.Operator):
         bpy.data.objects.remove(obj)
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
-        s.material = get_material_slot(dst_obj, "hair_" + style)
+        s.material = get_material_slot(context, dst_obj, "hair_" + style)
         fit_hair(context, char, dst_obj, dst_psys, fitting.diff_array(char), True)
 
+        context.view_layer.objects.active = dst_obj
+
+        return {"FINISHED"}
+
+class OpRecolorHair(bpy.types.Operator):
+    bl_idname = "charmorph.hair_recolor"
+    bl_label = "Change hair color"
+    bl_description = "Change hair color to selected one"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.particle_systems.active
+    def execute(self, context):
+        obj = context.object
+        s = obj.particle_systems.active.settings
+        slot = s.material
+        if slot >= 0 and slot <= len(obj.data.materials):
+            apply_hair_color(context, obj.data.materials[slot-1])
+        else:
+            s.material = get_material_slot(context, obj, "hair")
         return {"FINISHED"}
 
 class CHARMORPH_PT_Hair(bpy.types.Panel):
@@ -329,5 +373,6 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         self.layout.prop(ui, "hair_style")
         self.layout.operator("charmorph.hair_create")
         self.layout.operator("charmorph.hair_refit")
+        self.layout.operator("charmorph.hair_recolor")
 
-classes = [OpCreateHair, OpRefitHair, CHARMORPH_PT_Hair]
+classes = [OpCreateHair, OpRefitHair, OpRecolorHair, CHARMORPH_PT_Hair]

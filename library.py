@@ -33,6 +33,7 @@ logger.debug("Looking for the char library in the folder %s...", data_dir)
 
 chars = {}
 additional_assets = {}
+hair_colors = {}
 
 class Character:
     def __init__(self, name):
@@ -46,15 +47,18 @@ empty_char = Character("")
 def char_file(char, file):
     return os.path.join(data_dir, "characters", char, file)
 
-def get_char_yaml(char, file, default={}):
-    if char == "":
-        return default
+def get_yaml(path, default={}):
     try:
-        with open(char_file(char, file), "r") as f:
+        with open(path, "r") as f:
             return yaml.safe_load(f)
     except Exception as e:
         logger.error(e)
         return default
+
+def get_char_yaml(char, file, default={}):
+    if char == "":
+        return default
+    return get_yaml(char_file(char, file), default)
 
 def obj_char(obj):
     if not obj:
@@ -65,6 +69,9 @@ def get_fitting_assets(ui, context):
     obj = bpy.data.objects.get(ui.fitting_char)
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
+
+def get_hair_colors(ui, context):
+    return [ (k,k,"") for k in hair_colors.keys() ]
 
 def load_assets_dir(dir):
     result = {}
@@ -77,6 +84,7 @@ def load_assets_dir(dir):
     return result
 
 def update_fitting_assets(ui, context):
+    global additional_assets
     dir = ui.fitting_library_dir
     if not dir:
         return
@@ -94,7 +102,9 @@ def fitting_asset_data():
     return None
 
 def load_library():
+    global hair_colors
     chars.clear()
+    hair_colors = get_yaml(os.path.join(data_dir,"hair_colors.yaml"))
     for char_name in os.listdir(os.path.join(data_dir,"characters")):
         if not os.path.isfile(char_file(char_name, "char.blend")):
             logger.error("Character {} doesn't have a char.blend!".format(char_name))

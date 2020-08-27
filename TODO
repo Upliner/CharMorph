@@ -31,7 +31,6 @@ Randomize:
   - Randomize hair and skin colors
 
 Hair:
-  - Hair colors
   - Move hair.blend to char.blend?
   - Hair refitting after edit (don't use .npy files too?)
 

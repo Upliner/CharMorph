@@ -191,7 +191,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
-        items = [("","<Not implemented yet>","")])
+        items = library.get_hair_colors)
     hair_style: bpy.props.EnumProperty(
         name="Hairstyle",
         description="Hairstyle",
