@@ -34,7 +34,7 @@ def get_hairstyles(ui, context):
         return [("","<None>","")]
     result = [("default","Default hair","")]
     char_conf = library.obj_char(char)
-    result.extend([(name, name, "") for name in char_conf.config.get("hair_styles", {}).keys()])
+    result.extend([(name, name, "") for name in char_conf.config.get("hairstyles", {}).keys()])
     return result
 
 def create_hair_material(context, name):
@@ -193,7 +193,7 @@ def invalidate_cache():
 
 def get_data(char, psys, new):
     if not psys.is_edited:
-        return False
+        return None, None
     if "charmorph_fit_id" not in psys.settings and new:
         psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
 
@@ -211,7 +211,7 @@ def get_data(char, psys, new):
         return None, None
 
     try:
-        arr = numpy.load(library.char_file(char_conf.name, "hair_styles/%s.npy" % style), allow_pickle=True)
+        arr = numpy.load(library.char_file(char_conf.name, "hairstyles/%s.npy" % style), allow_pickle=True)
     except Exception as e:
         logger.error(str(e))
         return None, None
@@ -227,14 +227,16 @@ def get_data(char, psys, new):
 
 def fit_all_hair(context, char, diff_arr, new):
     t = fitting.Timer()
+    has_fit = False
     for psys in char.particle_systems:
-        fit_hair(context, char, char, psys, diff_arr, new)
+        has_fit |= fit_hair(context, char, char, psys, diff_arr, new)
 
     for asset in fitting.get_assets(char):
         for psys in asset.particle_systems:
-            fit_hair(context, char, asset, psys, diff_arr, new)
+            has_fit |= fit_hair(context, char, asset, psys, diff_arr, new)
 
     t.time("hair_fit")
+    return has_fit
 
 def has_hair(char):
     for psys in char.particle_systems:
@@ -281,7 +283,9 @@ class OpRefitHair(bpy.types.Operator):
 
     def execute(self, context):
         char = fitting.get_char()
-        fit_all_hair(context, char, fitting.diff_array(char), True)
+        if not fit_all_hair(context, char, fitting.diff_array(char), True):
+            self.report({"ERROR"},"No hair fitting data found")
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 class OpCreateHair(bpy.types.Operator):
@@ -301,7 +305,7 @@ class OpCreateHair(bpy.types.Operator):
         if style=="default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj_name = char_conf.config.get("hair_styles", {}).get(style)
+        obj_name = char_conf.config.get("hairstyles", {}).get(style)
         if not obj_name:
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
