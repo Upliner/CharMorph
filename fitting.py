@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, time, random, logging
+import os, time, random, logging, numpy
 import bpy, bpy_extras, mathutils, bmesh
 
 from . import library, hair, rigging
@@ -294,15 +294,18 @@ def transfer_new_armature(char):
 
 def diff_array(obj):
     morphed_shapekey = obj.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-    result = [(vmorphed.co-vbasis.co) for vbasis, vmorphed in zip(obj.data.vertices, morphed_shapekey.data)]
+    basis = numpy.empty(len(morphed_shapekey.data)*3, numpy.float64)
+    morphed = numpy.empty(len(morphed_shapekey.data)*3, numpy.float64)
+    obj.data.vertices.foreach_get("co", basis)
+    morphed_shapekey.data.foreach_get("co", morphed)
     obj.shape_key_remove(morphed_shapekey)
-    return result
+    morphed -= basis
+    return morphed.reshape(len(obj.data.vertices), 3)
 
 def do_fit(char, assets):
     t = Timer()
 
     diff_arr = diff_array(char)
-
     for asset in assets:
         weights = get_obj_weights(char, asset)
         if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
@@ -313,7 +316,7 @@ def do_fit(char, assets):
             asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
         for vmorph, vbase, weightsd in zip(asset_fitkey.data, asset.data.vertices, weights):
-            vmorph.co = vbase.co + sum((diff_arr[vi]*weight for vi, weight in weightsd), mathutils.Vector())
+            vmorph.co = vbase.co + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3, numpy.float64)))
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
