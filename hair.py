@@ -174,7 +174,7 @@ def calc_weights(char, arr):
 
             d = weights[i][j]
             for vi in char_faces[idx].vertices:
-                d[vi] = d.get(vi,0) + 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon)
+                d[vi] = max(d.get(vi,0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
 
     t.time("hair_bvh")
 
@@ -261,7 +261,7 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
         for p, keys, pweights in zip(psys.particles, arr, weights):
             if len(p.hair_keys)-1 != len(keys):
                 if not have_mismatch:
-                    logger.error("Particle mismatch")
+                    logger.error("Particle mismatch %d %d", len(p.hair_keys), len(keys))
                     have_mismatch = True
                 continue
             for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
@@ -323,6 +323,8 @@ class OpCreateHair(bpy.types.Operator):
             attach_scalp(char, dst_obj)
         else:
             dst_obj = char
+            fitting.do_fit(char, [obj])
+            obj.parent=char
         override["selected_editable_objects"] = [dst_obj]
         bpy.ops.particle.copy_particle_systems(override, use_active=True)
         dst_psys = dst_obj.particle_systems[len(char.particle_systems)-1]
