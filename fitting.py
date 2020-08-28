@@ -83,7 +83,7 @@ def calc_weights(char, asset, mask):
 
         d = weights[i]
         for vi in char_faces[idx].vertices:
-            d[vi] = d.get(vi,0) + 1/max(((co-char_verts[vi].co).length * fdist),epsilon)
+            d[vi] = max(d.get(vi,0), 1/max(((co-char_verts[vi].co).length * fdist),epsilon))
 
     t.time("bvh direct")
 
@@ -105,7 +105,7 @@ def calc_weights(char, asset, mask):
 
         for vi, dist in zip(verts, dists):
             d = weights[vi]
-            d[i] = d.get(i, 0) + 1/(dist*fdist)
+            d[i] = max(d.get(i, 0), 1/(dist*fdist))
 
     t.time("bvh reverse")
 
@@ -294,8 +294,8 @@ def transfer_new_armature(char):
 
 def diff_array(obj):
     morphed_shapekey = obj.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-    basis = numpy.empty(len(morphed_shapekey.data)*3, numpy.float64)
-    morphed = numpy.empty(len(morphed_shapekey.data)*3, numpy.float64)
+    basis = numpy.empty(len(morphed_shapekey.data)*3)
+    morphed = numpy.empty(len(morphed_shapekey.data)*3)
     obj.data.vertices.foreach_get("co", basis)
     morphed_shapekey.data.foreach_get("co", morphed)
     obj.shape_key_remove(morphed_shapekey)
@@ -316,7 +316,7 @@ def do_fit(char, assets):
             asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
         for vmorph, vbase, weightsd in zip(asset_fitkey.data, asset.data.vertices, weights):
-            vmorph.co = vbase.co + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3, numpy.float64)))
+            vmorph.co = vbase.co + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3)))
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 

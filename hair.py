@@ -228,12 +228,12 @@ def get_data(char, psys, new):
 def fit_all_hair(context, char, diff_arr, new):
     t = fitting.Timer()
     has_fit = False
-    for psys in char.particle_systems:
-        has_fit |= fit_hair(context, char, char, psys, diff_arr, new)
+    for i, psys in enumerate(char.particle_systems):
+        has_fit |= fit_hair(context, char, char, psys, i, diff_arr, new)
 
     for asset in fitting.get_assets(char):
-        for psys in asset.particle_systems:
-            has_fit |= fit_hair(context, char, asset, psys, diff_arr, new)
+        for i, psys in enumerate(asset.particle_systems):
+            has_fit |= fit_hair(context, char, asset, psys, i, diff_arr, new)
 
     t.time("hair_fit")
     return has_fit
@@ -245,7 +245,7 @@ def has_hair(char):
            return True
     return False
 
-def fit_hair(context, char, obj, psys, diff_arr, new):
+def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     arr, weights = get_data(char, psys, new)
     if arr is None or not weights:
         return False
@@ -254,6 +254,7 @@ def fit_hair(context, char, obj, psys, diff_arr, new):
     override = context.copy()
     override["object"] = obj
     override["particle_system"] = psys
+    obj.particle_systems.active_index = idx
     have_mismatch = False
     bpy.ops.particle.disconnect_hair(override)
     try:
@@ -265,7 +266,7 @@ def fit_hair(context, char, obj, psys, diff_arr, new):
                 continue
             for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
                 vsrc = mathutils.Vector(ksrc)
-                kdst.co_local = mat @ (vsrc + sum((diff_arr[vi]*weight for vi, weight in weightsd), mathutils.Vector()))
+                kdst.co_local = mat @ (vsrc + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3))))
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()
@@ -323,7 +324,7 @@ class OpCreateHair(bpy.types.Operator):
         else:
             dst_obj = char
         override["selected_editable_objects"] = [dst_obj]
-        bpy.ops.particle.copy_particle_systems(override)
+        bpy.ops.particle.copy_particle_systems(override, use_active=True)
         dst_psys = dst_obj.particle_systems[len(char.particle_systems)-1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
@@ -337,7 +338,7 @@ class OpCreateHair(bpy.types.Operator):
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
         s.material = get_material_slot(context, dst_obj, "hair_" + style)
-        fit_hair(context, char, dst_obj, dst_psys, fitting.diff_array(char), True)
+        fit_hair(context, char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, fitting.diff_array(char), True)
 
         context.view_layer.objects.active = dst_obj
 
