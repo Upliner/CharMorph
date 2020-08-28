@@ -225,7 +225,7 @@ def meta_props(name, data):
         if value == prev_value:
             return
         setattr(self, "metaprev_" + name, value)
-        relative_meta = context.scene.charmorph_ui.relative_meta
+        ui = context.scene.charmorph_ui
         def calc_val(val):
             return coeffs[1]*val if val > 0 else -coeffs[0]*val
         asset_lock = True
@@ -234,7 +234,7 @@ def meta_props(name, data):
             if not hasattr(self, propname):
                 continue
 
-            if not relative_meta:
+            if not ui.relative_meta:
                 setattr(self, propname, calc_val(value))
                 continue
 
@@ -254,9 +254,13 @@ def meta_props(name, data):
 
         asset_lock = False
 
-        for k, coeffs in data.get("materials",{}).items():
-            if materials.props and k in materials.props:
-                materials.props[k].default_value = calc_val(value)
+        if ui.meta_materials != "N":
+            for k, coeffs in data.get("materials",{}).items():
+                if materials.props and k in materials.props:
+                    if ui.meta_materials == "R":
+                        materials.props[k].default_value += calc_val(value)-calc_val(prev_value)
+                    else:
+                        materials.props[k].default_value = calc_val(value)
 
         refit_assets()
 
@@ -450,6 +454,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         if len(meta_morphs) > 0:
             self.layout.label(text = "Meta morphs")
             col = self.layout.column(align=True)
+            col.prop(ui, "meta_materials")
             col.prop(ui, "relative_meta")
 
             for prop in meta_morphs:
