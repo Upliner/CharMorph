@@ -21,7 +21,6 @@ Finalize:
   - Choice between materials displacement and displacement modifier
 
 Materials:
-  - "Affect materials": [None/Absolute/Relative]
   - Lip color control?
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
@@ -39,7 +38,6 @@ Fitting:
   - Bounding box transform?
   - More fitting settings? (Thresholds and so on)
   - Asset baking
-  - Hair fitting
   - Get fitting base from library
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n

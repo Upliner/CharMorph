@@ -238,6 +238,8 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")
+        self.layout.prop(ui, "fin_subdiv_assets")
+        self.layout.prop(ui, "fin_cmooth_assets")
         self.layout.operator("charmorph.finalize")
 
 classes = [OpFinalize, CHARMORPH_PT_Finalize]

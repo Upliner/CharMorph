@@ -72,7 +72,7 @@ def get_meshes(ui, context):
 
 #TODO: Use multiple inheritance to move props to corresponding modules?
 class CharMorphUIProps(bpy.types.PropertyGroup):
-    # Creation
+    # Library
     base_model: bpy.props.EnumProperty(
         name = "Base",
         items = lambda ui, context: [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
@@ -80,11 +80,12 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     material_mode: bpy.props.EnumProperty(
         name = "Materials",
         default = "TS",
+        description = "Share materials between different Charmorph characters or not",
         items = [
-            ("NS", "Non-Shared","Use unique material for each character"),
-            ("TS", "Shared textures only","Use same texture for all characters"),
-            ("MS", "Shared","Use same materials for all characters")],
-        description = "Choose a base model")
+            ("NS", "Non-Shared", "Use unique material for each character"),
+            ("TS", "Shared textures only", "Use same texture for all characters"),
+            ("MS", "Shared", "Use same materials for all characters")]
+    )
     material_local: bpy.props.BoolProperty(
         name = "Use local materials", default=True,
         description = "Use local copies of materials for faster loading")
@@ -102,6 +103,16 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Relative meta props",
         description="Adjust meta props relatively",
         default=True)
+    meta_materials: bpy.props.EnumProperty(
+        name="Materials",
+        description="How changing meta properties will affect materials",
+        default="A",
+        items = [
+            ("N", "None", "Don't change materials"),
+            ("A", "Absolute", "Change materials according to absolute value of meta property"),
+            ("R", "Relative", "Change materials according to relative value of meta property")])
+
+    # Import/export
     export_format: bpy.props.EnumProperty(
         name="Format",
         description="Export format",
