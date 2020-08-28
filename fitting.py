@@ -115,13 +115,13 @@ def calc_weights(char, asset, mask):
 
     for i, d in enumerate(weights):
         thresh = max(d.values())/16
-        d = [(k,v) for k, v in d.items() if v>thresh ] # prune small weights
+        d = { k:v for k,v in d.items() if v > thresh }
         #fnorm = sum((char_verts[vi].normal*v for vi, v in d), mathutils.Vector())
         #fnorm.normalize()
-        total = sum(w[1] for w in d)
+        total = sum(d.values())
         #coeff = (sum(fnorm.dot(char_verts[vi].normal) * v  for vi, v in d)/total)
         #total *= coeff
-        weights[i] = [(k, v/total) for k, v in d]
+        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
 
     t.time("normalize")
 
@@ -255,8 +255,8 @@ def transfer_weights(char, asset):
 
     groups = {}
 
-    for i, subweights in enumerate(weights):
-        for vi, subweight in subweights:
+    for i, arrays in enumerate(weights):
+        for vi, subweight in zip(arrays[0], arrays[1]):
             for src in char_verts[vi].groups:
                 gid = src.group
                 group_name = char.vertex_groups[gid].name
@@ -315,8 +315,12 @@ def do_fit(char, assets):
         else:
             asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
-        for vmorph, vbase, weightsd in zip(asset_fitkey.data, asset.data.vertices, weights):
-            vmorph.co = vbase.co + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3)))
+        verts = numpy.empty(len(asset_fitkey.data)*3)
+        asset.data.vertices.foreach_get("co", verts)
+        verts = verts.reshape((len(asset_fitkey.data), 3))
+        for i, w in enumerate(weights):
+            verts[i] += (diff_arr[w[0]] * w[1]).sum(0)
+        asset_fitkey.data.foreach_set("co", verts.reshape(len(asset_fitkey.data)*3))
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
