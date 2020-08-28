@@ -21,7 +21,7 @@
 import os, yaml, logging
 import bpy
 
-from . import morphing, materials
+from . import morphing, materials, fitting
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
 def import_obj(file, obj, typ = "MESH", link = True):
+    fitting.invalidate_cache()
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
             if len(data_from.objects) == 1:
