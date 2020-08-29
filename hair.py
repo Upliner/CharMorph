@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random, numpy
-import bpy, mathutils
+import bpy, mathutils, bmesh
 
 from . import library, fitting
 from .materials import parse_color
@@ -34,7 +34,7 @@ def get_hairstyles(ui, context):
         return [("","<None>","")]
     result = [("default","Default hair","")]
     char_conf = library.obj_char(char)
-    result.extend([(name, name, "") for name in char_conf.config.get("hairstyles", {}).keys()])
+    result.extend([(name, name, "") for name in char_conf.config.get("hairstyles", [])])
     return result
 
 def create_hair_material(context, name):
@@ -273,6 +273,23 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     bpy.ops.particle.connect_hair(override)
     return True
 
+def make_scalp(obj, name):
+    vg = obj.vertex_groups.get("scalp_" + name)
+    if not vg:
+        vg = obj.vertex_groups.get("scalp")
+    if not vg:
+        logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
+        return
+    vgi = vg.index
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(obj.data)
+        d = bm.verts.layers.deform.active
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if vgi not in v[d]])
+        bm.to_mesh(obj.data)
+    finally:
+        bm.free()
+
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
     bl_label = "Refit hair"
@@ -306,19 +323,28 @@ class OpCreateHair(bpy.types.Operator):
         if style=="default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj_name = char_conf.config.get("hairstyles", {}).get(style)
+        obj_name = char_conf.config.get("hair_obj")
         if not obj_name:
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
-        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")),obj_name,link=False)
+        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")), obj_name, link=False)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
         override = context.copy()
         override["object"] = obj
-        src_psys = obj.particle_systems[ui.hair_style]
+        for idx, src_psys in enumerate(obj.particle_systems):
+            if src_psys.name == style:
+                break
+        else:
+            self.report({"ERROR"}, "Hairstyle is not found")
+            return {"CANCELLED"}
+
         override["particle_system"] = src_psys
         if ui.hair_scalp:
+            obj.particle_systems.active_index = idx
+            bpy.ops.particle.disconnect_hair(override)
+            make_scalp(obj, style)
             dst_obj = bpy.data.objects.new("hair_" + style, obj.data)
             attach_scalp(char, dst_obj)
         else:
