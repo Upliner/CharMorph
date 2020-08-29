@@ -181,9 +181,9 @@ def calc_weights(char, arr):
     for arr in weights:
         for i, d in enumerate(arr):
             thresh = max(d.values())/16
-            d = [(k,v) for k, v in d.items() if v>thresh ] # prune small weights
-            total = sum(w[1] for w in d)
-            arr[i] = [(k, v/total) for k, v in d]
+            d = { k:v for k,v in d.items() if v > thresh }
+            total = sum(w for w in d.values())
+            arr[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
     t.time("hair_normalize")
 
     return weights
@@ -246,17 +246,23 @@ def has_hair(char):
     return False
 
 def fit_hair(context, char, obj, psys, idx, diff_arr, new):
+    t = fitting.Timer()
     arr, weights = get_data(char, psys, new)
     if arr is None or not weights:
         return False
+    t.time("prepare")
 
     mat = obj.matrix_world
+    npy_matrix = numpy.array([mat[0][:3], mat[1][:3], mat[2][:3]]).T
+    npy_translate = numpy.array([mat[0][3], mat[1][3], mat[2][3]])
     override = context.copy()
     override["object"] = obj
     override["particle_system"] = psys
     obj.particle_systems.active_index = idx
     have_mismatch = False
+    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
     bpy.ops.particle.disconnect_hair(override)
+    t.time("disconnect")
     try:
         for p, keys, pweights in zip(psys.particles, arr, weights):
             if len(p.hair_keys)-1 != len(keys):
@@ -264,13 +270,24 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
                     logger.error("Particle mismatch %d %d", len(p.hair_keys), len(keys))
                     have_mismatch = True
                 continue
-            for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
-                vsrc = mathutils.Vector(ksrc)
-                kdst.co_local = mat @ (vsrc + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in weightsd), numpy.zeros(3))))
+            arr = numpy.empty((len(p.hair_keys),3))
+            arr[0] = p.hair_keys[0].co_local
+            arr1 = arr[1:]
+            for i, w in enumerate(pweights):
+                arr1[i] = keys[i] + (diff_arr[w[0]] * w[1]).sum(0)
+            arr1.dot(npy_matrix, arr1)
+            arr1 += npy_translate
+            p.hair_keys.foreach_set("co_local", arr.reshape(len(p.hair_keys)*3))
+            #for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
+            #    vsrc = mathutils.Vector(ksrc)
+            #    kdst.co_local = mat @ (vsrc + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in zip(weightsd[0],weightsd[1])), numpy.zeros(3))))
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()
-    bpy.ops.particle.connect_hair(override)
+    finally:
+        t.time("hfit")
+        bpy.ops.particle.connect_hair(override)
+        t.time("connect")
     return True
 
 def make_scalp(obj, name):
@@ -327,7 +344,7 @@ class OpCreateHair(bpy.types.Operator):
         if not obj_name:
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
-        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")), obj_name, link=False)
+        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")), obj_name, link=ui.hair_scalp)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
