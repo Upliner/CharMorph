@@ -28,11 +28,6 @@ logger = logging.getLogger(__name__)
 class RigException(Exception):
     pass
 
-def copy_constraint_by_target(bone, rig, target):
-    for c in bone.constraints:
-        if c.type == "COPY_LOCATION" and c.target == rig and c.subtarget == target:
-            return c
-
 def copy_transform(target, source):
     target.location = source.location
     target.rotation_quaternion = source.rotation_quaternion
@@ -89,13 +84,7 @@ def add_rig(char_name, conf, rigtype, verts):
     mod.object = rig
     rigging.reposition_armature_modifier(bpy.context, char_obj)
 
-    # Strong movement of lower eyelids looks weird to me so I lower influence for it
-    for side in ["L","R"]:
-        bone = rig.pose.bones.get("lid.B.%s.002" % side)
-        if bone:
-            c = copy_constraint_by_target(bone, rig, "MCH-eye.%s.001" % side)
-            if c:
-                c.influence = 0.25
+    rigging.apply_tweaks(char_name, rig, conf.get("tweaks",[]))
 
     if bpy.context.scene.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)

@@ -18,8 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging
+import logging, yaml
 import bpy, mathutils
+
+from . import library
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +107,40 @@ def reposition_armature_modifier(context, char):
     for i in range(pos-i):
         if bpy.ops.object.modifier_move_up.poll():
             bpy.ops.object.modifier_move_up(override, modifier=name)
+
+def apply_tweaks(char_name, rig, tweaks):
+    if isinstance(tweaks, str):
+        with open(library.char_file(char_name, tweaks)) as f:
+            tweaks = yaml.safe_load(f)
+    if not isinstance(tweaks, list):
+        if tweaks is not None:
+            logger.error("Unknown tweaks format: " + repr(tweaks))
+        return
+    for tweak in tweaks:
+        apply_tweak(rig, tweak)
+
+def constraint_by_target(bone, rig, type, target):
+    for c in bone.constraints:
+        if c.type == type and c.target == rig and c.subtarget == target:
+            return c
+
+def apply_tweak(rig, tweak):
+    if not rig.pose:
+        return
+    select = tweak.get("select")
+    if select != "constraint":
+        logger.error("Invalid tweak select: " + select)
+        return
+    bone_name = tweak.get("bone")
+    bone = rig.pose.bones.get(bone_name,"")
+    if not bone:
+        logger.error("Tweak bone not found: " + bone_name)
+        return
+    constraint = bone.constraints.get(tweak.get("name",""))
+    if not constraint:
+        constraint = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
+    if not constraint:
+        logger.error("Constraint not found: name: " + repr(tweak))
+        return
+    for attr, val in tweak.get("set").items():
+        setattr(constraint, attr, val)
