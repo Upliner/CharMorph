@@ -136,6 +136,7 @@ class OpFinalize(bpy.types.Operator):
                 else:
                     char_obj.shape_key_remove(keys.reference_key)
                     char_obj.shape_key_remove(fin_sk)
+                    fin_sk = None
 
         # Make sure we won't delete any vertex groups used by hair particle systems
         for psys in char_obj.particle_systems:
