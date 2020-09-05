@@ -72,13 +72,13 @@ def apply_pose(ui, context):
 
     # Some settings
     ik_fk = {}
-    rig.pose.bones["torso"]["neck_follow"] = 1
-    rig.pose.bones["torso"]["head_follow"] = 1
+    rig.pose.bones["torso"]["neck_follow"] = 1.0
+    rig.pose.bones["torso"]["head_follow"] = 1.0
     for side in ["L","R"]:
         for limb in ["upper_arm","thigh"]:
             bone = rig.pose.bones["{}_parent.{}".format(limb, side)]
-            bone["fk_limb_follow"] = 0
-            ik_fk[bone.name] = bone.get("IK_FK", 1)
+            bone["fk_limb_follow"] = 0.0
+            ik_fk[bone.name] = bone.get("IK_FK", 1.0)
             bone["IK_FK"] = 1.0
 
     # TODO: different mix modes
@@ -103,44 +103,44 @@ def apply_pose(ui, context):
         q = spine_fk1.rotation_quaternion
         spine_fk.rotation_quaternion = [-q[0], q[1], q[2], q[3]]
 
-    erig = rig.evaluated_get(context.view_layer.depsgraph)
-    min_z = 1
-    def check_bone(name):
-        nonlocal min_z
-        b = erig.pose.bones.get(name)
-        if not b:
-            return
-        for attr in ["head","tail"]:
-            val = getattr(b, attr)
-            print(b.name,attr,val)
-            if val[2] < min_z:
-                min_z = val[2]
-    check_bone("head")
-    for side in ["L","R"]:
-        for bone in ["ORG-heel.02","toe","hand"]:
-            check_bone("%s.%s" % (bone, side))
-    min_z = max(min_z, 0)
-    torso = rig.pose.bones.get("torso")
-    if torso:
-        torso.location = (0, 0, -min_z)
+    if hasattr(context, "evaluated_depsgraph_get"):
+        erig = rig.evaluated_get(context.evaluated_depsgraph_get())
+        min_z = 1
+        def check_bone(name):
+            nonlocal min_z
+            b = erig.pose.bones.get(name)
+            if not b:
+                return
+            for attr in ["head","tail"]:
+                val = getattr(b, attr)
+                if val[2] < min_z:
+                    min_z = val[2]
+        check_bone("head")
+        for side in ["L","R"]:
+            for bone in ["ORG-heel.02","toe","hand"]:
+                check_bone("%s.%s" % (bone, side))
+        min_z = max(min_z, 0)
+        torso = rig.pose.bones.get("torso")
+        if torso:
+            torso.location = (0, 0, -min_z)
 
-    #ik2fk_attr = "rigify_limb_ik2fk_" + rig_id
-    #if hasattr(bpy.ops.pose, ik2fk_attr):
-    #    ik2fk = getattr(bpy.ops.pose, ik2fk_attr)
-    #    for side in ["L","R"]:
-    #        ik2fk(prop_bone='upper_arm_parent.' + side,
-    #            fk_bones='["upper_arm_fk.{0}", "forearm_fk.{0}", "hand_fk.{0}"]'.format(side),
-    #            ik_bones = '["upper_arm_ik.{0}", "MCH-forearm_ik.{0}", "MCH-upper_arm_ik_target.{0}"]'.format(side),
-    #            ctrl_bones = '["upper_arm_ik.{0}", "hand_ik.{0}", "upper_arm_ik_target.{0}"]'.format(side),
-    #            extra_ctrls = '[]')
-    #        ik2fk(prop_bone='thigh_parent.' + side,
-    #            fk_bones='["thigh_fk.{0}", "shin_fk.{0}", "foot_fk.{0}", "toe.{0}"]'.format(side),
-    #            ik_bones = '["thigh_ik.{0}", "MCH-shin_ik.{0}", "MCH-thigh_ik_target.{0}"]'.format(side),
-    #            ctrl_bones = '["thigh_ik.{0}", "foot_ik.{0}", "thigh_ik_target.{0}"]'.format(side),
-    #            extra_ctrls = '["foot_heel_ik.{0}", "foot_spin_ik.{0}"]'.format(side))
+    ik2fk_attr = "rigify_limb_ik2fk_" + rig_id
+    if hasattr(bpy.ops.pose, ik2fk_attr):
+        ik2fk = getattr(bpy.ops.pose, ik2fk_attr)
+        for side in ["L","R"]:
+            ik2fk(prop_bone='upper_arm_parent.' + side,
+                fk_bones='["upper_arm_fk.{0}", "forearm_fk.{0}", "hand_fk.{0}"]'.format(side),
+                ik_bones = '["upper_arm_ik.{0}", "MCH-forearm_ik.{0}", "MCH-upper_arm_ik_target.{0}"]'.format(side),
+                ctrl_bones = '["upper_arm_ik.{0}", "hand_ik.{0}", "upper_arm_ik_target.{0}"]'.format(side),
+                extra_ctrls = '[]')
+            ik2fk(prop_bone='thigh_parent.' + side,
+                fk_bones='["thigh_fk.{0}", "shin_fk.{0}", "foot_fk.{0}", "toe.{0}"]'.format(side),
+                ik_bones = '["thigh_ik.{0}", "MCH-shin_ik.{0}", "MCH-thigh_ik_target.{0}"]'.format(side),
+                ctrl_bones = '["thigh_ik.{0}", "foot_ik.{0}", "thigh_ik_target.{0}"]'.format(side),
+                extra_ctrls = '["foot_heel_ik.{0}", "foot_spin_ik.{0}"]'.format(side))
 
-    #for k, v in ik_fk.items():
-    #    rig.pose.bones[k]["IK_FK"] = v
+    for k, v in ik_fk.items():
+        rig.pose.bones[k]["IK_FK"] = v
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):
     bl_label = "Pose"
