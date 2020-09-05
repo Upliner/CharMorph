@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, yaml
+import logging, yaml, math
 import bpy, mathutils
 
 from . import library
@@ -86,7 +86,7 @@ def joints_to_vg(char, lst, verts):
         if axis and len(axis) == 3:
             axis = mathutils.Vector(tuple(axis))
             if flip:
-                axis = axis.cross(mathutils.Vector((1,0,0)))
+                axis = mathutils.Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
             bone.align_roll(axis)
     return result
 

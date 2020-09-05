@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, yaml, logging
+import os, yaml, json, logging
 import bpy
 
 from . import morphing, materials, fitting
@@ -41,16 +41,17 @@ class Character:
         self.config = {}
         self.morphs_meta = {}
         self.assets = {}
+        self.poses = {}
 
 empty_char = Character("")
 
 def char_file(char, file):
     return os.path.join(data_dir, "characters", char, file)
 
-def get_yaml(path, default={}):
+def parse_file(path, parse_func, default={}):
     try:
         with open(path, "r") as f:
-            return yaml.safe_load(f)
+            return parse_func(f)
     except Exception as e:
         logger.error(e)
         return default
@@ -58,7 +59,7 @@ def get_yaml(path, default={}):
 def get_char_yaml(char, file, default={}):
     if char == "":
         return default
-    return get_yaml(char_file(char, file), default)
+    return parse_file(char_file(char, file), yaml.safe_load, default)
 
 def obj_char(obj):
     if not obj:
@@ -69,6 +70,9 @@ def get_fitting_assets(ui, context):
     obj = bpy.data.objects.get(ui.fitting_char)
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
+
+def get_poses(ui, context):
+    return [ (k,k,"") for k in obj_char(context.active_object).poses.keys() ]
 
 def get_hair_colors(ui, context):
     return [ (k,k,"") for k in hair_colors.keys() ]
@@ -101,10 +105,21 @@ def fitting_asset_data():
         return additional_assets.get(item[4:])
     return None
 
+def load_json_dir(dir):
+    result = {}
+    if not os.path.isdir(dir):
+        return result
+    for file in os.listdir(dir):
+        name, ext = os.path.splitext(file)
+        full_path = os.path.join(dir, file)
+        if ext == ".json" and os.path.isfile(full_path):
+            result[name] = parse_file(full_path, json.load, {})
+    return result
+
 def load_library():
     global hair_colors
     chars.clear()
-    hair_colors = get_yaml(os.path.join(data_dir,"hair_colors.yaml"))
+    hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), yaml.safe_load)
     for char_name in os.listdir(os.path.join(data_dir,"characters")):
         if not os.path.isfile(char_file(char_name, "char.blend")):
             logger.error("Character {} doesn't have a char.blend!".format(char_name))
@@ -113,6 +128,7 @@ def load_library():
         char.config = get_char_yaml(char_name, "config.yaml")
         char.morphs_meta = get_char_yaml(char_name, "morphs_meta.yaml")
         char.assets = load_assets_dir(char_file(char_name, "assets"))
+        char.poses = load_json_dir(char_file(char_name, "poses"))
         chars[char_name] = char
 
 if not os.path.isdir(data_dir):

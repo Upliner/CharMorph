@@ -58,3 +58,7 @@ Rigging:
 
 Editing:
   - Retopology
+
+Pose:
+  - Different mix modes
+  - Native pose support (not just MB-Lab)

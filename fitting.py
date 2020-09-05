@@ -366,6 +366,7 @@ def apply_transforms(obj):
     obj.data.transform(obj.matrix_world)
     obj.location = (0,0,0)
     obj.delta_location = (0,0,0)
+    obj.rotation_mode = "QUATERNION"
     obj.rotation_quaternion = (1,0,0,0)
     obj.delta_rotation_quaternion = (1,0,0,0)
     obj.scale = (1,1,1)

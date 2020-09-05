@@ -30,6 +30,8 @@ class RigException(Exception):
 
 def copy_transform(target, source):
     target.location = source.location
+    target.rotation_mode = source.rotation_mode
+    target.rotation_euler = source.rotation_euler
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
@@ -74,9 +76,12 @@ def add_rig(char_name, conf, rigtype, verts):
     copy_transform(rig, char_obj)
 
     char_obj.location = (0,0,0)
+    char_obj.rotation_mode = "QUATERNION"
     char_obj.rotation_quaternion = (1,0,0,0)
     char_obj.scale = (1,1,1)
     char_obj.parent = rig
+
+    rig.data["charmorph_template"] = char_obj.data.get("charmorph_template","")
 
     mod = char_obj.modifiers.new("charmorph_rigify", "ARMATURE")
     mod.use_deform_preserve_volume = True
@@ -88,6 +93,7 @@ def add_rig(char_name, conf, rigtype, verts):
 
     if bpy.context.scene.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)
+
 
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"

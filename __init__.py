@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, hair, fitting, finalize, editing
+from . import library, morphing, randomize, file_io, materials, hair, fitting, finalize, pose, editing
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 0, 6),
+    "version": (0, 0, 8),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -258,6 +258,13 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         default = True,
         description="Remove unused vertex groups after finalization")
 
+    # Pose
+    pose: bpy.props.EnumProperty(
+        name="Pose",
+        items = library.get_poses,
+        update = pose.apply_pose,
+        description="Select pose from library")
+
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
 
@@ -304,7 +311,7 @@ bpy.app.handlers.load_post.append(load_handler)
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
 
-for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize]:
+for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, pose]:
     classes.extend(module.classes)
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
