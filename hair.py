@@ -253,8 +253,8 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     t.time("prepare")
 
     mat = obj.matrix_world
-    npy_matrix = numpy.array([mat[0][:3], mat[1][:3], mat[2][:3]]).T
-    npy_translate = numpy.array([mat[0][3], mat[1][3], mat[2][3]])
+    npy_matrix = numpy.array(mat.to_3x3().transposed())
+    npy_translate = numpy.array(mat.translation)
     override = context.copy()
     override["object"] = obj
     override["particle_system"] = psys
@@ -278,9 +278,6 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
             arr1.dot(npy_matrix, arr1)
             arr1 += npy_translate
             p.hair_keys.foreach_set("co_local", arr.reshape(len(p.hair_keys)*3))
-            #for kdst, ksrc, weightsd in zip(p.hair_keys[1:], keys, pweights):
-            #    vsrc = mathutils.Vector(ksrc)
-            #    kdst.co_local = mat @ (vsrc + mathutils.Vector(sum((diff_arr[vi]*weight for vi, weight in zip(weightsd[0],weightsd[1])), numpy.zeros(3))))
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()

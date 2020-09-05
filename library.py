@@ -72,7 +72,7 @@ def get_fitting_assets(ui, context):
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
 
 def get_poses(ui, context):
-    return [ (k,k,"") for k in obj_char(context.active_object).poses.keys() ]
+    return [(" ","<select pose>","")] + [ (k,k,"") for k in obj_char(context.active_object).poses.keys() ]
 
 def get_hair_colors(ui, context):
     return [ (k,k,"") for k in hair_colors.keys() ]
