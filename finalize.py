@@ -89,7 +89,7 @@ def add_rig(char_name, conf, rigtype, verts):
     mod.object = rig
     rigging.reposition_armature_modifier(bpy.context, char_obj)
 
-    rigging.apply_tweaks(char_name, rig, conf.get("tweaks",[]))
+    rigging.apply_tweaks(rig, conf.get("tweaks",[]))
 
     if bpy.context.scene.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)

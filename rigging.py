@@ -108,8 +108,9 @@ def reposition_armature_modifier(context, char):
         if bpy.ops.object.modifier_move_up.poll():
             bpy.ops.object.modifier_move_up(override, modifier=name)
 
-def apply_tweaks(char_name, rig, tweaks):
+def apply_tweaks(rig, tweaks):
     if isinstance(tweaks, str):
+        char_name = rig.data["charmorph_template"]
         with open(library.char_file(char_name, tweaks)) as f:
             tweaks = yaml.safe_load(f)
     if not isinstance(tweaks, list):

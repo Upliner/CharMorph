@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, numpy
+import logging, numpy, os, yaml
 import bpy, bpy_extras, mathutils
 
 from . import rigging
@@ -59,6 +59,8 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
 
         self.layout.operator("cmedit.calc_vg")
         self.layout.operator("cmedit.add_rigify_deform")
+        self.layout.prop(ui, "rig_tweaks_file")
+        self.layout.operator("cmedit.rigify_tweaks")
 
 def obj_by_type(name, type):
     if not name:
@@ -327,6 +329,21 @@ class OpRigifyDeform(bpy.types.Operator):
         rigging.rigify_add_deform(context, get_char(context))
         return {"FINISHED"}
 
+class OpRigifyTweaks(bpy.types.Operator):
+    bl_idname = "cmedit.rigify_tweaks"
+    bl_label = "Apply rigify tweaks"
+    bl_description = "Apply rigify tweaks from yaml file"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type=="ARMATURE" and context.mode in ["OBJECT", "POSE"]
+
+    def execute(self, context):
+        with open(context.scene.cmedit_ui.rig_tweaks_file) as f:
+            tweaks = yaml.safe_load(f)
+        rigging.apply_tweaks(context.object, tweaks)
+        return {"FINISHED"}
 
 class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_label = "Utils"
@@ -557,6 +574,8 @@ class OpTransfer(bpy.types.Operator):
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
+rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/rigify_tweaks.yaml")
+
 class CMEditUIProps(bpy.types.PropertyGroup):
     # Rigging
     rig_char: bpy.props.EnumProperty(
@@ -609,8 +628,14 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         default=3,
         min=1, soft_max=20,
     )
+    rig_tweaks_file: bpy.props.StringProperty(
+        name = "Tweaks file",
+        description = "Path to rigify tweaks yaml file",
+        default = rigify_tweaks_file,
+        subtype = 'DIR_PATH',
+    )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpHairExport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
