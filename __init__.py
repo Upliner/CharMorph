@@ -284,7 +284,7 @@ def on_select_object():
             asset = obj
             obj = obj.parent
         try:
-            ui = bpy.context.scene.charmorph_ui
+            ui = bpy.context.window_manager.charmorph_ui
             if asset:
                 ui.fitting_char = obj.name
                 ui.fitting_asset = asset.name
@@ -323,7 +323,7 @@ def register():
     print("Charmorph register")
     library.load_library()
     class_register()
-    bpy.types.Scene.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
+    bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
 
     bpy.msgbus.subscribe_rna(
         owner=owner,
@@ -336,7 +336,7 @@ def unregister():
     print("Charmorph unregister")
     editing.unregister()
     bpy.msgbus.clear_by_owner(owner)
-    del bpy.types.Scene.charmorph_ui
+    del bpy.types.WindowManager.charmorph_ui
     morphing.del_charmorphs()
 
     class_unregister()

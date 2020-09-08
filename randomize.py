@@ -37,16 +37,16 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         global saved_props
-        if context.scene.charmorph_ui.randomize_mode != "RL1":
+        if context.window_manager.charmorph_ui.randomize_mode != "RL1":
             saved_props = None
-        if not hasattr(context.scene,'charmorphs'):
+        if not hasattr(context.window_manager,'charmorphs'):
             return False
-        if context.scene.charmorphs.version != saved_version:
+        if context.window_manager.charmorphs.version != saved_version:
             saved_props = None
         return True
 
     def draw(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "randomize_mode")
 
         col = self.layout.column(align=True)
@@ -78,11 +78,11 @@ class OpRandomize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs')
 
     def execute(self, context):
         global saved_version
-        scn = context.scene
+        scn = context.window_manager
         ui = scn.charmorph_ui
         cm = scn.charmorphs
         if ui.randomize_mode == "RL1":

@@ -33,10 +33,10 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene,'charmorphs')
+        return hasattr(context.window_manager,'charmorphs')
 
     def draw(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
 
         self.layout.label(text = "Export format:")
         self.layout.prop(ui, "export_format", expand=True)
@@ -49,7 +49,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
         col.operator("charmorph.import")
 
 def morphs_to_data(context):
-    cm = context.scene.charmorphs
+    cm = context.window_manager.charmorphs
     morphs={}
     meta={}
     typ = []
@@ -80,7 +80,7 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs')
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
@@ -104,7 +104,7 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs')
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
@@ -121,7 +121,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'charmorphs') and hasattr(context.scene, "chartype")
+        return hasattr(context.window_manager, 'charmorphs') and hasattr(context.window_manager, "chartype")
 
     def execute(self, context):
         data = morphing.load_morph_data(self.filepath)
@@ -140,13 +140,13 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             if not name:
                 continue
             try:
-                context.scene.chartype = name
+                context.window_manager.chartype = name
                 break
             except TypeError:
                 pass
         morphing.asset_lock = False
 
-        morphing.apply_morph_data(context.scene.charmorphs, data, False)
+        morphing.apply_morph_data(context.window_manager.charmorphs, data, False)
         return {"FINISHED"}
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]

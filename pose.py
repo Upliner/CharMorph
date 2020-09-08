@@ -174,6 +174,6 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
         return len(char.poses) > 0
 
     def draw(self, context):
-        self.layout.prop(context.scene.charmorph_ui, "pose")
+        self.layout.prop(context.window_manager.charmorph_ui, "pose")
 
 classes = [CHARMORPH_PT_Pose]

@@ -41,7 +41,7 @@ def load_materials(obj, char):
         logger.error("Material count mismatch in {}: {} != {}".format(char, len(obj.data.materials), len(mtllist)))
         return
 
-    ui = bpy.context.scene.charmorph_ui
+    ui = bpy.context.window_manager.charmorph_ui
     materials_to_load = []
     load_ids = []
     adult_mode = library.is_adult_mode()
@@ -119,7 +119,7 @@ def load_textures(obj, char_name):
     if not obj.data.materials:
         return
 
-    ui = bpy.context.scene.charmorph_ui
+    ui = bpy.context.window_manager.charmorph_ui
     texmap = None
 
     for mtl in obj.data.materials:

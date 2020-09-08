@@ -324,7 +324,7 @@ def do_fit(char, assets):
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
     t.time("fit")
-    if bpy.context.scene.charmorph_ui.hair_deform:
+    if bpy.context.window_manager.charmorph_ui.hair_deform:
         hair.fit_all_hair(bpy.context, char, diff_arr, False)
 
 def recalc_comb_mask(char, new_asset=None):
@@ -372,7 +372,7 @@ def apply_transforms(obj):
     obj.delta_scale = (1,1,1)
 
 def fit_new(char, asset):
-    ui = bpy.context.scene.charmorph_ui
+    ui = bpy.context.window_manager.charmorph_ui
     if ui.fitting_transforms:
         apply_transforms(asset)
 
@@ -403,7 +403,7 @@ def get_assets(char):
 
 def refit_char_assets(char):
     assets = get_assets(char)
-    if assets or (bpy.context.scene.charmorph_ui.hair_deform and hair.has_hair(char)):
+    if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(char)):
         do_fit(char, assets)
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
@@ -419,7 +419,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         return context.mode == "OBJECT" # is it neccesary?
 
     def draw(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         col = self.layout.column(align=True)
         col.prop(ui, "fitting_char")
         col.prop(ui, "fitting_asset")
@@ -448,12 +448,12 @@ def mesh_obj(name):
     if obj and obj.type == "MESH":
         return obj
 def get_char():
-    obj = mesh_obj(bpy.context.scene.charmorph_ui.fitting_char)
+    obj = mesh_obj(bpy.context.window_manager.charmorph_ui.fitting_char)
     if not obj or 'charmorph_fit_id' in obj.data:
         return None
     return obj
 def get_asset():
-    return mesh_obj(bpy.context.scene.charmorph_ui.fitting_asset)
+    return mesh_obj(bpy.context.window_manager.charmorph_ui.fitting_asset)
 
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"
@@ -536,7 +536,7 @@ class OpUnfit(bpy.types.Operator):
 
     def execute(self, context):
         char_cache.clear()
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         asset_name = ui.fitting_asset
         asset = bpy.data.objects[asset_name]
 
