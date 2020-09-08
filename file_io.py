@@ -28,6 +28,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 5
 
     @classmethod

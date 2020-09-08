@@ -425,6 +425,14 @@ def del_charmorphs():
         del bpy.types.Scene.chartype
     del_charmorphs_L2()
 
+def bad_object():
+    if not cur_object:
+        return False
+    try:
+        return bpy.data.objects.get(cur_object.name) is not cur_object
+    except ReferenceError:
+        return True
+
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
     bl_parent_id = "VIEW3D_PT_CharMorph"

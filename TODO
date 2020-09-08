@@ -49,6 +49,7 @@ Assets:
 
 Rigging:
   - More weight paint checking
+  - Allow to re-rig MB-Lab character?
   - Live regular rig deform
   - Import MB-Lab expression shape keys alongside with Rigify
   - Rigify morphing? Maybe even create an own Rigify-like rig system?

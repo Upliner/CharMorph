@@ -204,6 +204,7 @@ class OpImport(bpy.types.Operator):
         obj.data["charmorph_template"] = base_model
         materials.init_materials(obj, chars.get(base_model, empty_char))
         morphing.create_charmorphs(obj)
+        context.view_layer.objects.active = obj
         return {"FINISHED"}
 
 classes = [OpImport, CHARMORPH_PT_Library]

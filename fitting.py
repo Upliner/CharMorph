@@ -50,7 +50,6 @@ def kdtree_from_verts(verts):
 def invalidate_cache():
     obj_cache.clear()
     char_cache.clear()
-    logger.debug("Fitting cache is invalidated")
 
 def calc_weights(char, asset, mask):
     t = Timer()
@@ -412,6 +411,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 7
 
     @classmethod
