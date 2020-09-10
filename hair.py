@@ -51,7 +51,7 @@ def apply_hair_color(context, mat):
     output_node = tree.nodes.new("ShaderNodeOutputMaterial")
     hair_node = tree.nodes.new("ShaderNodeBsdfHairPrincipled")
     tree.links.new(hair_node.outputs[0],output_node.inputs[0])
-    settings = library.hair_colors.get(context.scene.charmorph_ui.hair_color)
+    settings = library.hair_colors.get(context.window_manager.charmorph_ui.hair_color)
     if settings and settings["type"] == "ShaderNodeBsdfHairPrincipled":
         hair_node.parametrization = settings.get("parametrization", "MELANIN")
         hair_node.inputs[0].default_value = parse_color(settings.get("color", [0,0,0]))
@@ -122,7 +122,7 @@ def create_scalp(name, char, vgi):
 def create_default_hair(context, obj, char, scalp):
     l1 = ""
     if hasattr(context.scene,"chartype"):
-        l1 = context.scene.chartype
+        l1 = context.window_manager.chartype
     vg = None
     if "hair_" + l1 in obj.vertex_groups:
         vg = "hair_" + l1
@@ -330,7 +330,7 @@ class OpCreateHair(bpy.types.Operator):
     def poll(cls, context):
         return context.mode == "OBJECT" and fitting.get_char()
     def execute(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         style = ui.hair_style
         char = fitting.get_char()
         char_conf = library.obj_char(char)
@@ -410,10 +410,11 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 8
 
     def draw(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "hair_scalp")
         self.layout.prop(ui, "hair_deform")
         self.layout.prop(ui, "hair_color")

@@ -95,7 +95,7 @@ def update_fitting_assets(ui, context):
     additional_assets = load_assets_dir(dir)
 
 def fitting_asset_data():
-    ui = bpy.context.scene.charmorph_ui
+    ui = bpy.context.window_manager.charmorph_ui
     item = ui.fitting_library_asset
     if item.startswith("char_"):
         obj = bpy.data.objects.get(ui.fitting_char)
@@ -152,7 +152,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if not chars:
             self.layout.label(text = "No characters found at {}. Nothing to create.".format(data_dir))
             return
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, 'base_model')
         self.layout.prop(ui, 'material_mode')
         self.layout.prop(ui, 'material_local')
@@ -188,7 +188,7 @@ class OpImport(bpy.types.Operator):
     bl_options = {"UNDO"}
 
     def execute(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         base_model = str(ui.base_model)
         if not base_model:
             self.report({'ERROR'}, "Please select base model")
@@ -204,6 +204,7 @@ class OpImport(bpy.types.Operator):
         obj.data["charmorph_template"] = base_model
         materials.init_materials(obj, chars.get(base_model, empty_char))
         morphing.create_charmorphs(obj)
+        context.view_layer.objects.active = obj
         return {"FINISHED"}
 
 classes = [OpImport, CHARMORPH_PT_Library]

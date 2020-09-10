@@ -46,7 +46,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
     bl_order = 1
 
     def draw(self, context):
-        ui = context.scene.cmedit_ui
+        ui = context.window_manager.cmedit_ui
         self.layout.prop(ui, "rig_char")
         self.layout.operator("cmedit.joints_to_vg")
         self.layout.prop(ui, "rig_vg_calc")
@@ -69,7 +69,7 @@ def obj_by_type(name, type):
     if obj and obj.type == type:
         return obj
 def get_char(context):
-    return obj_by_type(context.scene.cmedit_ui.rig_char, "MESH")
+    return obj_by_type(context.window_manager.cmedit_ui.rig_char, "MESH")
 
 def kdtree_from_bones(bones):
     kd = mathutils.kdtree.KDTree(len(bones)*2)
@@ -259,7 +259,7 @@ class OpCalcVg(bpy.types.Operator):
 
     def execute(self, context):
         char = get_char(context)
-        ui = context.scene.cmedit_ui
+        ui = context.window_manager.cmedit_ui
         typ = ui.rig_vg_calc
 
         joints = joint_list_extended(context, ui.rig_xmirror)
@@ -340,7 +340,7 @@ class OpRigifyTweaks(bpy.types.Operator):
         return context.object and context.object.type=="ARMATURE" and context.mode in ["OBJECT", "POSE"]
 
     def execute(self, context):
-        with open(context.scene.cmedit_ui.rig_tweaks_file) as f:
+        with open(context.window_manager.cmedit_ui.rig_tweaks_file) as f:
             tweaks = yaml.safe_load(f)
         rigging.apply_tweaks(context.object, tweaks)
         return {"FINISHED"}
@@ -641,10 +641,10 @@ register_classes, unregister_classes = bpy.utils.register_classes_factory(classe
 
 def register():
     register_classes()
-    bpy.types.Scene.cmedit_ui = bpy.props.PointerProperty(type=CMEditUIProps, options={"SKIP_SAVE"})
+    bpy.types.WindowManager.cmedit_ui = bpy.props.PointerProperty(type=CMEditUIProps, options={"SKIP_SAVE"})
 
 def unregister():
-    del bpy.types.Scene.cmedit_ui
+    del bpy.types.WindowManager.cmedit_ui
     unregister_classes()
 
 if __name__ == "__main__":

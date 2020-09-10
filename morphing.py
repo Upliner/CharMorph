@@ -151,7 +151,7 @@ def morph_props_combo(name, arr):
 
     def setterfunc(idx):
         def setter(self, value):
-            if bpy.context.scene.charmorph_ui.clamp_combos:
+            if bpy.context.window_manager.charmorph_ui.clamp_combos:
                 value = max(min(value, 1), -1)
             self.version += 1
             values[idx] = value
@@ -225,7 +225,7 @@ def meta_props(name, data):
         if value == prev_value:
             return
         setattr(self, "metaprev_" + name, value)
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         def calc_val(val):
             return coeffs[1]*val if val > 0 else -coeffs[0]*val
         asset_lock = True
@@ -319,7 +319,7 @@ def create_charmorphs(obj):
         update_char()
         create_charmorphs_L2(obj, char, L1)
 
-    bpy.types.Scene.chartype = bpy.props.EnumProperty(
+    bpy.types.WindowManager.chartype = bpy.props.EnumProperty(
         name="Type",
         items=items,
         description="Choose character type",
@@ -361,7 +361,7 @@ def preset_prop(char, L1):
     def update(self, context):
         if not self.preset:
             return
-        apply_morph_data(self, presets.get(self.preset, {}), context.scene.charmorph_ui.preset_mix)
+        apply_morph_data(self, presets.get(self.preset, {}), context.window_manager.charmorph_ui.preset_mix)
 
     return [("preset", bpy.props.EnumProperty(
         name="Presets",
@@ -393,7 +393,7 @@ def create_charmorphs_L2(obj, char, L1):
 
     bpy.utils.register_class(propGroup)
 
-    bpy.types.Scene.charmorphs = bpy.props.PointerProperty(
+    bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
         type=propGroup, options={"SKIP_SAVE"})
 
 # Reset all meta properties to 0
@@ -408,12 +408,12 @@ def reset_meta(charmorphs):
 # Delete morphs property group
 def del_charmorphs_L2():
     global asset_lock, meta_lock
-    if not hasattr(bpy.types.Scene, "charmorphs"):
+    if not hasattr(bpy.types.WindowManager, "charmorphs"):
         return
     asset_lock = False
     meta_lock = False
-    propGroup = bpy.types.Scene.charmorphs[1]['type']
-    del bpy.types.Scene.charmorphs
+    propGroup = bpy.types.WindowManager.charmorphs[1]['type']
+    del bpy.types.WindowManager.charmorphs
     bpy.utils.unregister_class(propGroup)
     fitting.invalidate_cache()
 
@@ -421,9 +421,17 @@ def del_charmorphs():
     global last_object, cur_object
     last_object = None
     cur_object = None
-    if hasattr(bpy.types.Scene, "chartype"):
-        del bpy.types.Scene.chartype
+    if hasattr(bpy.types.WindowManager, "chartype"):
+        del bpy.types.WindowManager.chartype
     del_charmorphs_L2()
+
+def bad_object():
+    if not cur_object:
+        return False
+    try:
+        return bpy.data.objects.get(cur_object.name) is not cur_object
+    except ReferenceError:
+        return True
 
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
@@ -434,16 +442,16 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene,'charmorphs')
+        return hasattr(context.window_manager,'charmorphs')
 
     def draw(self, context):
-        morphs = context.scene.charmorphs
-        ui = context.scene.charmorph_ui
+        morphs = context.window_manager.charmorphs
+        ui = context.window_manager.charmorph_ui
         propList = sorted(dir(morphs))
         self.layout.label(text= "Character type")
         col = self.layout.column(align=True)
 
-        col.prop(context.scene,"chartype")
+        col.prop(context.window_manager,"chartype")
         if hasattr(morphs,"preset"):
             col.prop(morphs, "preset")
             col.prop(ui, "preset_mix")

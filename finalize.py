@@ -91,7 +91,7 @@ def add_rig(char_name, conf, rigtype, verts):
 
     rigging.apply_tweaks(rig, conf.get("tweaks",[]))
 
-    if bpy.context.scene.charmorph_ui.fitting_armature:
+    if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(char_obj)
 
 
@@ -106,7 +106,7 @@ class OpFinalize(bpy.types.Operator):
         return context.mode=="OBJECT" and morphing.cur_object is not None
 
     def execute(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         char_obj = morphing.cur_object
         char_conf = library.obj_char(char_obj)
         if not char_conf.config:
@@ -228,7 +228,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         return context.mode == "OBJECT" and morphing.cur_object != None
 
     def draw(self, context):
-        ui = context.scene.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
         self.layout.prop(ui, "fin_subdivision")
