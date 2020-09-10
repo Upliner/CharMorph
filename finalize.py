@@ -150,7 +150,7 @@ class OpFinalize(bpy.types.Operator):
                 if attr.startswith("vertex_group_"):
                     vg = getattr(psys, attr)
                     if vg.startswith("hair_"):
-                        unused_l1.remove(vg[5:])
+                        unused_l1.difference_update([vg[5:]])
 
         def do_rig():
             if ui.fin_rig == "NO":
