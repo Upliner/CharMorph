@@ -5,10 +5,6 @@ Art:
   - Compare bumping with MB-Lab?
   - More hairstyles
 
-Creation tools:
-  - Simple MB-Lab import/export tools
-  - Fix L2__Body_Size_min and export it back to MB-Lab
-
 Char creation:
   - Asset list in creation panel
 
@@ -58,6 +54,8 @@ Rigging:
 
 Editing:
   - Retopology
+  - Simple MB-Lab import/export tools
+  - Fix L2__Body_Size_min and export it back to MB-Lab
 
 Pose:
   - Different mix modes
