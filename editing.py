@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, numpy, os, yaml
+import logging, numpy, os
 import bpy, bpy_extras, mathutils
 
-from . import rigging
+from . import yaml, rigging
 
 logger = logging.getLogger(__name__)
 

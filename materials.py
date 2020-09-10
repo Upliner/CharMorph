@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging, yaml, collections
+import os, logging, collections
 import bpy
 
-from . import library
+from . import yaml, library
 
 props = None
 

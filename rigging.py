@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, yaml, math
+import logging, math
 import bpy, mathutils
 
-from . import library
+from . import yaml, library
 
 logger = logging.getLogger(__name__)
 

@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import json, yaml
+import json
 import bpy, bpy_extras
 
-from . import library, morphing, materials
+from . import yaml, library, morphing, materials
 
 class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_label = "Import/Export"

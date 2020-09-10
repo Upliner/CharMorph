@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, yaml, logging
+import os, json, logging
 import bpy
 
-from . import library, materials, fitting
+from . import yaml, library, materials, fitting
 
 logger = logging.getLogger(__name__)
 
