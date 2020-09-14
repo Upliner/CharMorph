@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging
+import os, json, logging, re
 import bpy
 
 from . import yaml, library, materials, fitting
@@ -370,11 +370,19 @@ def preset_prop(char, L1):
         description="Choose morphing preset",
         update=update))]
 
+sep_re = re.compile("[ _]")
+
+def morph_category_name(name):
+    m = sep_re.search(name)
+    if m:
+        return name[:m.start()]
+    return name
+
 def morph_categories_prop(morphs):
     return [("category",bpy.props.EnumProperty(
         name="Category",
         items=[("<None>","<None>","Hide all morphs"), ("<All>","<All>","Show all morphs")] +
-            [(name,name,"") for name in sorted(set(morph[:morph.find("_")] for morph in morphs.keys()))],
+            [(name,name,"") for name in sorted(set(morph_category_name(morph) for morph in morphs.keys()))],
         description="Select morphing categories to show"))]
 
 # Create a property group with all L2 morphs
@@ -475,7 +483,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         self.layout.prop(morphs, "category")
         if morphs.category != "<None>":
             col = self.layout.column(align=True)
-            for prop in (p for p in propList if p.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category + "_"))):
+            for prop in (p for p in propList if p.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category))):
                 col.prop(morphs, prop, slider=True)
 
 classes = [CHARMORPH_PT_Morphing]

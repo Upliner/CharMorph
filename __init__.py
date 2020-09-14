@@ -83,6 +83,9 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     material_local: bpy.props.BoolProperty(
         name = "Use local materials", default=True,
         description = "Use local copies of materials for faster loading")
+    import_shapekeys: bpy.props.BoolProperty(
+        name = "Import shape keys", default=False,
+        description = "Import and morph character using shape keys")
 
     # Morphing
     preset_mix: bpy.props.BoolProperty(

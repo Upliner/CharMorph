@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging
+import os, json, logging, numpy
 import bpy
 
 from . import yaml, morphing, materials, fitting
@@ -49,6 +49,8 @@ def char_file(char, file):
     return os.path.join(data_dir, "characters", char, file)
 
 def parse_file(path, parse_func, default={}):
+    if not os.path.isfile(path):
+        return default
     try:
         with open(path, "r") as f:
             return parse_func(f)
@@ -134,30 +136,6 @@ def load_library():
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
 
-class CHARMORPH_PT_Library(bpy.types.Panel):
-    bl_label = "Character library"
-    bl_parent_id = "VIEW3D_PT_CharMorph"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_order = 1
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT"
-
-    def draw(self, context):
-        if data_dir == "":
-            self.layout.label(text = "Data dir is not found. Creation is not available.")
-            return
-        if not chars:
-            self.layout.label(text = "No characters found at {}. Nothing to create.".format(data_dir))
-            return
-        ui = context.window_manager.charmorph_ui
-        self.layout.prop(ui, 'base_model')
-        self.layout.prop(ui, 'material_mode')
-        self.layout.prop(ui, 'material_local')
-        self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
-
 def import_obj(file, obj, typ = "MESH", link = True):
     fitting.invalidate_cache()
     with bpy.data.libraries.load(file) as (data_from, data_to):
@@ -181,28 +159,111 @@ def is_adult_mode():
         return False
     return prefs.preferences.adult_mode
 
+def import_morph(basis, sk, file):
+    data = numpy.load(file)
+    if isinstance(data, numpy.ndarray):
+        data = data.reshape(-1)
+        if basis is not None:
+            data += basis
+    elif isinstance(data, numpy.lib.npyio.NpzFile):
+        idx = data["idx"]
+        delta = data["delta"]
+        if basis is None:
+            data = numpy.zeros((len(sk.data),3))
+        else:
+            data = basis.copy().reshape((-1,3))
+        data[idx] += delta
+        data = data.reshape(-1)
+    else:
+        logger.error("bad morph file: " + file)
+        return
+    sk.data.foreach_set("co", data)
+    return data
+
+def import_shapekeys(obj, char_name):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        obj.shape_key_add(name="Basis", from_mix=False)
+    dir = char_file(char_name, "morphs/L1")
+    L1_basis_dict = {}
+    if os.path.isdir(dir):
+        for file in sorted(os.listdir(dir)):
+            if os.path.isfile(os.path.join(dir, file)):
+                name, _ = os.path.splitext(file)
+                L1_basis_dict[name] = import_morph(None, obj.shape_key_add(name = prefix + name, from_mix = False), os.path.join(dir, file))
+
+    basis = numpy.empty(len(obj.data.vertices) * 3)
+    obj.data.vertices.foreach_get("co", basis)
+
+    dir = char_file(char_name, "morphs/L2")
+    if os.path.isdir(dir):
+        for file in sorted(os.listdir(dir)):
+            if os.path.isfile(os.path.join(dir, file)):
+                name, _ = os.path.splitext(file)
+                import_morph(basis, obj.shape_key_add(name = "L2__" + name, from_mix = False), os.path.join(dir, file))
+        for file in sorted(os.listdir(dir)):
+            if os.path.isdir(os.path.join(dir, file)):
+                L1_basis = L1_basis_dict.get(file)
+                if not L1_basis:
+                    logger.error("Unknown L1 type: " + file)
+                    continue
+                for file2 in sorted(os.listdir(os.path.join(dir, file))):
+                    name, _ = os.path.splitext(file2)
+                    sk = obj.shape_key_add(name = "L2_%s_%s" + (file, file2), from_mix = False)
+                    sk.relative_key = sk.obj.data.shape_keys.key_blocks[file]
+                    import_morph(L1_basis, sk, os.path.join(dir, file, file2))
+
+class CHARMORPH_PT_Library(bpy.types.Panel):
+    bl_label = "Character library"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 1
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def draw(self, context):
+        if data_dir == "":
+            self.layout.label(text = "Data dir is not found. Creation is not available.")
+            return
+        if not chars:
+            self.layout.label(text = "No characters found at {}. Nothing to create.".format(data_dir))
+            return
+        ui = context.window_manager.charmorph_ui
+        self.layout.prop(ui, 'base_model')
+        self.layout.prop(ui, 'material_mode')
+        self.layout.prop(ui, 'material_local')
+        self.layout.prop(ui, 'import_shapekeys')
+        self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
+
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
     bl_label = "Import character"
     bl_description = "Import character"
     bl_options = {"UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
-        base_model = str(ui.base_model)
-        if not base_model:
+        if not ui.base_model:
             self.report({'ERROR'}, "Please select base model")
             return {"CANCELLED"}
 
-        obj = import_obj(char_file(base_model, "char.blend"), "char")
+        obj = import_obj(char_file(ui.base_model, "char.blend"), "char")
         if obj == None:
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
 
         obj.location = context.scene.cursor.location
 
-        obj.data["charmorph_template"] = base_model
-        materials.init_materials(obj, chars.get(base_model, empty_char))
+        obj.data["charmorph_template"] = ui.base_model
+        materials.init_materials(obj, chars.get(ui.base_model, empty_char))
+        if ui.import_shapekeys:
+            import_shapekeys(obj, ui.base_model)
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
         return {"FINISHED"}
