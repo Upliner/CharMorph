@@ -21,9 +21,9 @@
 import logging
 import bpy
 
-from mathutils import Matrix, Vector
-
 from . import library
+
+from mathutils import Matrix, Vector
 
 logger = logging.getLogger(__name__)
 

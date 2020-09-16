@@ -34,7 +34,7 @@ def get_hairstyles(ui, context):
         return [("","<None>","")]
     result = [("default","Default hair","")]
     char_conf = library.obj_char(char)
-    result.extend([(name, name, "") for name in char_conf.config.get("hairstyles", [])])
+    result.extend([(name, name, "") for name in char_conf.hairstyles])
     return result
 
 def create_hair_material(context, name):
@@ -138,7 +138,7 @@ def create_default_hair(context, obj, char, scalp):
     hair = obj.modifiers.new("hair_default", 'PARTICLE_SYSTEM').particle_system
 
     s = hair.settings
-    s.hair_length = char.config.get("default_hair_length", 0.1)
+    s.hair_length = char.default_hair_length
     s.type = 'HAIR'
     s.child_type = 'INTERPOLATED'
     s.create_long_hair_children = True
@@ -211,7 +211,7 @@ def get_data(char, psys, new):
         return None, None
 
     try:
-        arr = numpy.load(library.char_file(char_conf.name, "hairstyles/%s.npy" % style), allow_pickle=True)
+        arr = numpy.load(char_conf.path("hairstyles/%s.npy" % style), allow_pickle=True)
     except Exception as e:
         logger.error(str(e))
         return None, None
@@ -337,11 +337,16 @@ class OpCreateHair(bpy.types.Operator):
         if style=="default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj_name = char_conf.config.get("hair_obj")
+        obj_name = char_conf.hair_obj
         if not obj_name:
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
-        obj = library.import_obj(library.char_file(char_conf.name, char_conf.config.get("hair_library","hair.blend")), obj_name, link=ui.hair_scalp)
+        lib = char_conf.hair_library
+        if not lib:
+            self.report({"ERROR"}, "Hair library is not found")
+            return {"CANCELLED"}
+
+        obj = library.import_obj(char_conf.path(lib), obj_name, link=ui.hair_scalp)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}

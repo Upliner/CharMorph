@@ -331,8 +331,10 @@ def recalc_comb_mask(char, new_asset=None):
     t = Timer()
     # Cleanup old masks
     for mod in char.modifiers:
-        # We preserve cm_mask_combined modifier to keep its position in case if user moved it
-        if mod.name != "cm_mask_combined" and mod.name.startswith("cm_mask_"):
+        if mod.name == "cm_mask_combined":
+             # We preserve cm_mask_combined modifier to keep its position in case if user moved it
+             mod.vertex_group = ""
+        elif mod.name.startswith("cm_mask_"):
             char.modifiers.remove(mod)
 
     for vg in char.vertex_groups:
@@ -480,6 +482,15 @@ class OpFitLocal(bpy.types.Operator):
 def fitExtPoll(context):
     return context.mode == "OBJECT" and get_char()
 
+def fit_import(context, file, obj):
+    char = get_char()
+    asset = library.import_obj(file, obj)
+    if asset is None:
+        return False
+    fit_new(char, asset)
+    context.window_manager.charmorph_ui.fitting_char = char.name # For some reason combo box value changes after importing, fix it
+    return True
+
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.fit_external"
     bl_label = "Fit from file"
@@ -495,12 +506,10 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        asset = library.import_obj(self.filepath, name)
-        if asset is None:
-            self.report({'ERROR'}, "Import failed")
-            return {"CANCELLED"}
-        fit_new(get_char(), asset)
-        return {"FINISHED"}
+        if fit_import(context, self.filepath, name):
+            return {"FINISHED"}
+        self.report({'ERROR'}, "Import failed")
+        return {"CANCELLED"}
 
 class OpFitLibrary(bpy.types.Operator):
     bl_idname = "charmorph.fit_library"
@@ -513,16 +522,14 @@ class OpFitLibrary(bpy.types.Operator):
         return fitExtPoll(context)
 
     def execute(self, context):
-        asset_data = library.fitting_asset_data()
+        asset_data = library.fitting_asset_data(context)
         if asset_data is None:
             self.report({'ERROR'},"Asset not found")
             return {"CANCELLED"}
-        asset = library.import_obj(*asset_data)
-        if asset is None:
-            self.report({'ERROR'}, "Import failed")
-            return {"CANCELLED"}
-        fit_new(get_char(), asset)
-        return {"FINISHED"}
+        if fit_import(context, *asset_data):
+            return {"FINISHED"}
+        self.report({'ERROR'}, "Import failed")
+        return {"CANCELLED"}
 
 class OpUnfit(bpy.types.Operator):
     bl_idname = "charmorph.unfit"

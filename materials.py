@@ -32,11 +32,7 @@ def init_materials(obj, char):
     load_textures(obj, char.name)
 
 def load_materials(obj, char):
-    if not "materials" in char.config:
-        logger.error("no material config for " + char.name)
-        return
-
-    mtllist = char.config["materials"]
+    mtllist = char.materials
     if len(obj.data.materials) != len(mtllist):
         logger.error("Material count mismatch in {}: {} != {}".format(char, len(obj.data.materials), len(mtllist)))
         return
@@ -59,8 +55,9 @@ def load_materials(obj, char):
             materials_to_load.append(mtl_name)
             load_ids.append(i)
 
-    if "material_lib" in char.config and materials_to_load:
-        with bpy.data.libraries.load(library.char_file(char.name, char.config["material_lib"])) as (_, data_to):
+    lib = char.material_lib
+    if lib and materials_to_load:
+        with bpy.data.libraries.load(char.path(lib)) as (_, data_to):
             data_to.materials = materials_to_load
         for i, mtl in enumerate(data_to.materials):
             mtl = data_to.materials[i]
@@ -212,6 +209,7 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
 
     def draw(self, context):
         for prop in props.values():
-            self.layout.prop(prop, "default_value", text=prop.node.label)
+            if prop.node:
+                self.layout.prop(prop, "default_value", text=prop.node.label)
 
 classes = [CHARMORPH_PT_Materials]

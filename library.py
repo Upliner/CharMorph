@@ -35,16 +35,6 @@ chars = {}
 additional_assets = {}
 hair_colors = {}
 
-class Character:
-    def __init__(self, name):
-        self.name = name
-        self.config = {}
-        self.morphs_meta = {}
-        self.assets = {}
-        self.poses = {}
-
-empty_char = Character("")
-
 def char_file(char, file):
     return os.path.join(data_dir, "characters", char, file)
 
@@ -58,10 +48,40 @@ def parse_file(path, parse_func, default={}):
         logger.error(e)
         return default
 
-def get_char_yaml(char, file, default={}):
-    if char == "":
-        return default
-    return parse_file(char_file(char, file), yaml.safe_load, default)
+class Character:
+    def __init__(self, name):
+        self.name = name
+        self.config = {}
+        self.morphs_meta = {}
+        self.assets = {}
+        self.poses = {}
+        self.conf_default = {
+            "title": name,
+            "char_file": "char.blend",
+            "char_obj": "char",
+            "default_type": "",
+            "default_hair_length": 0.1,
+            "hairstyles": [],
+            "armature": [],
+            "materials": [],
+            "types": {},
+        }
+
+    def __getattr__(self, item):
+        return self.config.get(item, self.conf_default.get(item))
+
+    def path(self, file):
+        return char_file(self.name, file)
+
+    def get_yaml(self, file, default={}):
+        if self.name == "":
+            return default
+        return parse_file(self.path(file), yaml.safe_load, default)
+
+    def blend_file(self):
+        return self.path(self.char_file)
+
+empty_char = Character("")
 
 def obj_char(obj):
     if not obj:
@@ -96,8 +116,8 @@ def update_fitting_assets(ui, context):
         return
     additional_assets = load_assets_dir(dir)
 
-def fitting_asset_data():
-    ui = bpy.context.window_manager.charmorph_ui
+def fitting_asset_data(context):
+    ui = context.window_manager.charmorph_ui
     item = ui.fitting_library_asset
     if item.startswith("char_"):
         obj = bpy.data.objects.get(ui.fitting_char)
@@ -123,14 +143,14 @@ def load_library():
     chars.clear()
     hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), yaml.safe_load)
     for char_name in os.listdir(os.path.join(data_dir,"characters")):
-        if not os.path.isfile(char_file(char_name, "char.blend")):
-            logger.error("Character {} doesn't have a char.blend!".format(char_name))
-            continue
         char = Character(char_name)
-        char.config = get_char_yaml(char_name, "config.yaml")
-        char.morphs_meta = get_char_yaml(char_name, "morphs_meta.yaml")
-        char.assets = load_assets_dir(char_file(char_name, "assets"))
-        char.poses = load_json_dir(char_file(char_name, "poses"))
+        char.config = char.get_yaml("config.yaml")
+        if not os.path.isfile(char.blend_file()):
+            logger.error("Character {} doesn't have char file {}.".format(char_name, char.blend_file()))
+            continue
+        char.morphs_meta = char.get_yaml("morphs_meta.yaml")
+        char.assets = load_assets_dir(char.path("assets"))
+        char.poses = load_json_dir(char.path("poses"))
         chars[char_name] = char
 
 if not os.path.isdir(data_dir):
@@ -189,7 +209,7 @@ def import_shapekeys(obj, char_name):
         for file in sorted(os.listdir(dir)):
             if os.path.isfile(os.path.join(dir, file)):
                 name, _ = os.path.splitext(file)
-                L1_basis_dict[name] = import_morph(None, obj.shape_key_add(name = prefix + name, from_mix = False), os.path.join(dir, file))
+                L1_basis_dict[name] = import_morph(None, obj.shape_key_add(name = "L1_" + name, from_mix = False), os.path.join(dir, file))
 
     basis = numpy.empty(len(obj.data.vertices) * 3)
     obj.data.vertices.foreach_get("co", basis)
@@ -253,7 +273,9 @@ class OpImport(bpy.types.Operator):
             self.report({'ERROR'}, "Please select base model")
             return {"CANCELLED"}
 
-        obj = import_obj(char_file(ui.base_model, "char.blend"), "char")
+        char = chars[ui.base_model]
+
+        obj = import_obj(char.blend_file(), char.char_obj)
         if obj == None:
             self.report({'ERROR'}, "Import failed")
             return {"CANCELLED"}
@@ -261,7 +283,7 @@ class OpImport(bpy.types.Operator):
         obj.location = context.scene.cursor.location
 
         obj.data["charmorph_template"] = ui.base_model
-        materials.init_materials(obj, chars.get(ui.base_model, empty_char))
+        materials.init_materials(obj, char)
         if ui.import_shapekeys:
             import_shapekeys(obj, ui.base_model)
         morphing.create_charmorphs(obj)

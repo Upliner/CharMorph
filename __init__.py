@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing (MB-Lab based)",
@@ -69,7 +69,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     # Library
     base_model: bpy.props.EnumProperty(
         name = "Base",
-        items = lambda ui, context: [(char[0],char[1].config.get("title",char[0] + " (no config)"),"") for char in library.chars.items()],
+        items = lambda ui, context: [(name, conf.title,"") for name, conf in library.chars.items()],
         description = "Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name = "Materials",
@@ -92,10 +92,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Mix with current",
         description="Mix selected preset with current morphs",
         default=False)
-    clamp_combos: bpy.props.BoolProperty(
-        name="Clamp combo props",
-        description="Clamp combo properties to (-1..1) so they remain in realistic range",
-        default=True)
     relative_meta: bpy.props.BoolProperty(
         name="Relative meta props",
         description="Adjust meta props relatively",

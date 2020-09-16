@@ -35,10 +35,11 @@ def copy_transform(target, source):
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
-def add_rig(char_name, conf, rigtype, verts):
+def add_rig(conf, rigtype, verts):
+    m = morphing.morpher
     if conf.get("type") != "rigify":
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
-    metarig = library.import_obj(library.char_file(char_name, conf["file"]), conf["obj_name"], "ARMATURE")
+    metarig = library.import_obj(m.char.path(conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
         raise RigException("Rig import failed")
 
@@ -51,49 +52,47 @@ def add_rig(char_name, conf, rigtype, verts):
        bpy.data.objects.remove(metarig)
        bpy.data.armatures.remove(old_armature)
 
-    char_obj = morphing.cur_object
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
-    if not rigging.joints_to_vg(char_obj, rigging.all_joints(bpy.context), verts):
+    if not rigging.joints_to_vg(m.obj, rigging.all_joints(bpy.context), verts):
         remove_metarig()
         raise RigException("Metarig fitting failed")
 
     bpy.ops.object.mode_set(mode="OBJECT")
 
     if rigtype != "RG":
-        copy_transform(metarig, char_obj)
+        copy_transform(metarig, m.obj)
         return
 
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
     remove_metarig()
     rig = bpy.context.object
-    rig.name = char_obj.name + "_rig"
+    rig.name = m.obj.name + "_rig"
     bpy.ops.object.mode_set(mode="EDIT")
-    rigging.rigify_add_deform(bpy.context, char_obj)
+    rigging.rigify_add_deform(bpy.context, m.obj)
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    copy_transform(rig, char_obj)
+    copy_transform(rig, m.obj)
 
-    char_obj.location = (0,0,0)
-    char_obj.rotation_mode = "QUATERNION"
-    char_obj.rotation_quaternion = (1,0,0,0)
-    char_obj.scale = (1,1,1)
-    char_obj.parent = rig
+    m.obj.location = (0,0,0)
+    m.obj.rotation_mode = "QUATERNION"
+    m.obj.rotation_quaternion = (1,0,0,0)
+    m.obj.scale = (1,1,1)
+    m.obj.parent = rig
 
-    rig.data["charmorph_template"] = char_obj.data.get("charmorph_template","")
+    rig.data["charmorph_template"] = m.obj.data.get("charmorph_template","")
 
-    mod = char_obj.modifiers.new("charmorph_rigify", "ARMATURE")
+    mod = m.obj.modifiers.new("charmorph_rigify", "ARMATURE")
     mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
-    rigging.reposition_armature_modifier(bpy.context, char_obj)
+    rigging.reposition_armature_modifier(bpy.context, m.obj)
 
     rigging.apply_tweaks(rig, conf.get("tweaks",[]))
 
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
-        fitting.transfer_new_armature(char_obj)
-
+        fitting.transfer_new_armature(m.obj)
 
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
@@ -103,26 +102,25 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode=="OBJECT" and morphing.cur_object is not None
+        return context.mode=="OBJECT" and morphing.morpher
 
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
-        char_obj = morphing.cur_object
-        char_conf = library.obj_char(char_obj)
-        if not char_conf.config:
+        m = morphing.morpher
+        if not m.char.config:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 
         unused_l1 = set()
 
-        keys = char_obj.data.shape_keys
+        keys = m.obj.data.shape_keys
         fin_sk = None
         if keys and keys.key_blocks:
             if ui.fin_morph != "NO" or ui.fin_rig != "NO":
-                fin_sk = char_obj.shape_key_add(name="charmorph_finalized", from_mix=True)
+                fin_sk = m.obj.shape_key_add(name="charmorph_finalized", from_mix=True)
                 fin_sk.value = 1
                 if fin_sk.name != "charmorph_finalized":
-                    char_obj.shape_key_remove(keys.key_blocks["charmorph_finalized"])
+                    m.obj.shape_key_remove(keys.key_blocks["charmorph_finalized"])
                     fin_sk.name = "charmorph_finalized"
 
             unknown_keys = False
@@ -132,7 +130,7 @@ class OpFinalize(bpy.types.Operator):
                     unused_l1.add(key.name[3:])
                 if ui.fin_morph != "NO" and key != keys.reference_key and key != fin_sk:
                     if key.name.startswith("L1_")  or key.name.startswith("L2_"):
-                        char_obj.shape_key_remove(key)
+                        m.obj.shape_key_remove(key)
                     else:
                         unknown_keys = True
 
@@ -140,12 +138,12 @@ class OpFinalize(bpy.types.Operator):
                 if unknown_keys:
                     self.report({"WARNING"}, "Unknown shape keys found. Keeping original basis anyway")
                 else:
-                    char_obj.shape_key_remove(keys.reference_key)
-                    char_obj.shape_key_remove(fin_sk)
+                    m.obj.shape_key_remove(keys.reference_key)
+                    m.obj.shape_key_remove(fin_sk)
                     fin_sk = None
 
         # Make sure we won't delete any vertex groups used by hair particle systems
-        for psys in char_obj.particle_systems:
+        for psys in m.obj.particle_systems:
             for attr in dir(psys):
                 if attr.startswith("vertex_group_"):
                     vg = getattr(psys, attr)
@@ -155,10 +153,10 @@ class OpFinalize(bpy.types.Operator):
         def do_rig():
             if ui.fin_rig == "NO":
                 return True
-            if isinstance(char_obj.parent, bpy.types.Object) and char_obj.parent.type == "ARMATURE":
+            if isinstance(m.obj.parent, bpy.types.Object) and m.obj.parent.type == "ARMATURE":
                 self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
                 return True
-            rigs = char_conf.config["armature"]
+            rigs = m.char.armature
             if not rigs or len(rigs) == 0:
                 self.report({"ERROR"}, "Rig is not found")
                 return False
@@ -170,7 +168,7 @@ class OpFinalize(bpy.types.Operator):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 rig_type = "MR"
             try:
-                add_rig(char_conf.name, rigs[0], rig_type, fin_sk.data if fin_sk else None)
+                add_rig(rigs[0], rig_type, fin_sk.data if fin_sk else None)
             except RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
@@ -180,7 +178,7 @@ class OpFinalize(bpy.types.Operator):
 
         if fin_sk and ui.fin_morph == "NO":
             # Remove temporary mix shape key
-            char_obj.shape_key_remove(fin_sk)
+            m.obj.shape_key_remove(fin_sk)
 
         if not ok:
             return {"CANCELLED"}
@@ -200,18 +198,21 @@ class OpFinalize(bpy.types.Operator):
                 mod = add_modifier("SUBSURF")
                 mod.show_viewport = ui.fin_subdivision == "RV"
 
-        add_modifiers(char_obj)
+        add_modifiers(m.obj)
 
         if (ui.fin_subdivision != "NO" and ui.fin_subdiv_assets) or (ui.fin_csmooth != "NO" and ui.fin_cmooth_assets):
-            for asset in fitting.get_assets(char_obj):
+            for asset in fitting.get_assets(m.obj):
                 add_modifiers(asset)
 
 
         if ui.fin_vg_cleanup:
-            for vg in char_obj.vertex_groups:
+            for vg in m.obj.vertex_groups:
                 if vg.name.startswith("joint_") or (
                         vg.name.startswith("hair_") and vg.name[5:] in unused_l1):
-                    char_obj.vertex_groups.remove(vg)
+                    m.obj.vertex_groups.remove(vg)
+
+        if ui.fin_morph != "NO":
+            morphing.del_charmorphs()
 
         return {"FINISHED"}
 
@@ -225,7 +226,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and morphing.cur_object != None
+        return context.mode == "OBJECT" and morphing.morpher
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui

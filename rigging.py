@@ -19,9 +19,11 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, math
-import bpy, mathutils
 
 from . import yaml, library
+
+from bpy import ops
+from mathutils import Vector, Matrix
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ def get_vg_avg(char, verts):
     def accumulate(data_item, v, co, gw):
         data_item[0] += gw.weight
         data_item[1] += co*gw.weight
-    return get_vg_data(char, lambda: [0, mathutils.Vector()], accumulate, verts)
+    return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
 
 def joints_to_vg(char, lst, verts):
     avg = get_vg_avg(char, verts)
@@ -70,7 +72,7 @@ def joints_to_vg(char, lst, verts):
             pos = item[1]/item[0]
             offs = bone.get("charmorph_offs_" + attr)
             if offs and len(offs) == 3:
-                pos += mathutils.Vector(tuple(offs))
+                pos += Vector(tuple(offs))
             setattr(bone, attr, pos)
         else:
             logger.error("No vg for " + name)
@@ -84,9 +86,9 @@ def joints_to_vg(char, lst, verts):
             axis = bone.get("charmorph_axis_x")
             flip = True
         if axis and len(axis) == 3:
-            axis = mathutils.Vector(tuple(axis))
+            axis = Vector(tuple(axis))
             if flip:
-                axis = mathutils.Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
+                axis = Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
             bone.align_roll(axis)
     return result
 
@@ -105,8 +107,8 @@ def reposition_armature_modifier(context, char):
         if mod.type != "MASK":
             break
     for i in range(pos-i):
-        if bpy.ops.object.modifier_move_up.poll():
-            bpy.ops.object.modifier_move_up(override, modifier=name)
+        if ops.object.modifier_move_up.poll():
+            ops.object.modifier_move_up(override, modifier=name)
 
 def apply_tweaks(rig, tweaks):
     if isinstance(tweaks, str):

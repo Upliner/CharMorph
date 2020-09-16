@@ -18,357 +18,15 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging, re
+import os, json, logging, re, abc
 import bpy
 
-from . import yaml, library, materials, fitting
+from . import yaml, library, materials, file_io, fitting
 
 logger = logging.getLogger(__name__)
 
 last_object = None
-cur_object = None
-asset_lock = False
-meta_lock = False
-l1morphs = {}
-
-# convert array of min/max binary representation
-def convertSigns(signs):
-    d = {"min": 0, "max": 1}
-    try:
-        return sum(d[sign] << i for i, sign in enumerate(signs))
-    except KeyError:
-        return -1
-
-def updateL1(newkey):
-    for name, sk in l1morphs.items():
-        sk.value = 1 if name == newkey else 0
-
-# scan object shape keys and convert them to dictionary
-# each morph corresponds to one or more shape keys
-def get_morphs_L1(obj):
-    if not obj.data.shape_keys:
-        return "", {}
-    maxkey = ""
-    result = {}
-    maxval = 0
-    for sk in obj.data.shape_keys.key_blocks:
-        if len(sk.name) < 4 or not sk.name.startswith("L1_"):
-            continue
-        name = sk.name[3:]
-        if sk.value > maxval:
-            maxkey = name
-            maxval = sk.value
-        result[name] = sk
-
-    return (maxkey, result)
-
-def get_morphs_L2(obj, L1):
-    if not obj.data.shape_keys:
-        return {}
-
-    result = {}
-
-    def handle_shapekey(sk, keytype):
-        if not sk.name.startswith("L2_{}_".format(keytype)):
-            return
-        nameParts = sk.name[3:].split("_")
-        if len(nameParts) != 4:
-            logger.error("Invalid L2 morph name: {}, skipping".format(sk.name))
-            return
-
-        names = nameParts[2].split("-")
-        signArr = nameParts[3].split("-")
-        signIdx = convertSigns(signArr)
-
-        if len(names) == 0 or len(names) != len(signArr):
-            logger.error("Invalid L2 morph name: {}, skipping".format(sk.name))
-            return
-
-        morph_name = nameParts[1]+"_"+nameParts[2]
-        cnt = 2 ** len(names)
-
-        if morph_name in result:
-            morph = result[morph_name]
-            if len(morph) != cnt:
-                logger.error("L2 combo morph conflict: different dimension count on {}, skipping".format(sk.name))
-                return
-        else:
-            morph = [None] * cnt
-            result[morph_name] = morph
-
-        morph[signIdx] = sk
-
-    for sk in obj.data.shape_keys.key_blocks:
-        handle_shapekey(sk, "")
-
-    if L1 != "":
-        for sk in obj.data.shape_keys.key_blocks:
-            handle_shapekey(sk, L1)
-
-    return result
-
-def refit_assets():
-    if asset_lock or not cur_object:
-        return
-    fitting.refit_char_assets(cur_object)
-
-# create simple prop that drives one min and one max shapekey
-def morph_prop_simple(name, skmin, skmax):
-    def setter(self, value):
-        self.version += 1
-        if value < 0:
-            if skmax != None: skmax.value = 0
-            if skmin != None: skmin.value = -value
-        else:
-            if skmin != None: skmin.value = 0
-            if skmax != None: skmax.value = value
-        refit_assets()
-    return bpy.props.FloatProperty(name=name,
-        soft_min = -1.0, soft_max = 1.0,
-        precision = 3,
-        get = lambda self: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
-        set = setter)
-
-def get_combo_value(arr, idx):
-    return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1)*2-1) for arr_idx, sk in enumerate(arr))
-
-# create a bunch of props from combo shape keys
-def morph_props_combo(name, arr):
-    nameParts = name.split("_")
-    names = nameParts[1].split("-")
-    dims = len(names)
-    coeff = 2 / len(arr)
-
-    values = [get_combo_value(arr, val_idx) for val_idx in range(dims)]
-
-    def getterfunc(idx):
-        def getter(self):
-            val = get_combo_value(arr, idx)
-            values[idx] = val
-            return val
-
-        return getter
-
-    def setterfunc(idx):
-        def setter(self, value):
-            if bpy.context.window_manager.charmorph_ui.clamp_combos:
-                value = max(min(value, 1), -1)
-            self.version += 1
-            values[idx] = value
-            for arr_idx, sk in enumerate(arr):
-                sk.value = sum(val*((arr_idx >> val_idx & 1)*2-1) * coeff for val_idx, val in enumerate(values))
-            refit_assets()
-        return setter
-
-    return [(name, bpy.props.FloatProperty(name=name,
-            soft_min = -1.0, soft_max = 1.0,
-            precision = 3,
-            get = getterfunc(i),
-            set = setterfunc(i),
-        )) for i, name in ((i, nameParts[0]+"_"+name) for i, name in enumerate(names))]
-
-def morph_props(name, arr):
-    if len(arr) == 2:
-        return [(name, morph_prop_simple(name, arr[0], arr[1]))]
-    else:
-        return morph_props_combo(name, arr)
-
-def mblab_to_charmorph(data):
-    return {
-        "morphs": { k:v*2-1 for k,v in data.get("structural",{}).items() },
-        "materials": data.get("materialproperties",{}),
-        "meta": { (k[10:] if k.startswith("character_") else k):v for k,v in data.get("metaproperties",{}).items() if not k.startswith("last_character_")},
-        "type": data.get("type",[]),
-    }
-
-def charmorph_to_mblab(data):
-    return {
-        "structural": { k:(v+1)/2 for k,v in data.get("morphs",{}).items() },
-        "metaproperties": { k:v for sublist, v in (([("character_"+k),("last_character_"+k)],v) for k,v in data.get("meta",{}).items()) for k in sublist },
-        "materialproperties": data.get("materials"),
-        "type": data.get("type",[]),
-    }
-
-def load_morph_data(fn):
-    with open(fn, "r") as f:
-        if fn[-5:] == ".yaml":
-            return yaml.safe_load(f)
-        elif fn[-5:] == ".json":
-            return  mblab_to_charmorph(json.load(f))
-    return None
-
-def load_presets(char, L1):
-    result = {}
-    def load_dir(path):
-        path = os.path.join(library.data_dir, path)
-        if not os.path.isdir(path):
-            return {}
-        for fn in os.listdir(path):
-            if os.path.isfile(os.path.join(path, fn)):
-                data = load_morph_data(os.path.join(path, fn))
-                if data != None:
-                    result[fn[:-5]] = data
-    try:
-        load_dir("characters/{}/presets".format(char))
-        load_dir("characters/{}/presets/{}".format(char, L1))
-    except Exception as e:
-        logger.error(e)
-    return result
-
-def meta_props(name, data):
-    def update(self, context):
-        global asset_lock
-        if meta_lock:
-            return
-        prev_value = getattr(self, "metaprev_" + name)
-        value = getattr(self, "meta_" + name)
-        if value == prev_value:
-            return
-        setattr(self, "metaprev_" + name, value)
-        ui = context.window_manager.charmorph_ui
-        def calc_val(val):
-            return coeffs[1]*val if val > 0 else -coeffs[0]*val
-        asset_lock = True
-        for k, coeffs in data.get("morphs",{}).items():
-            propname = "prop_" + k
-            if not hasattr(self, propname):
-                continue
-
-            if not ui.relative_meta:
-                setattr(self, propname, calc_val(value))
-                continue
-
-            propval = getattr(self, propname)
-
-            val_prev = calc_val(prev_value)
-            val_cur = calc_val(value)
-
-            # assign absolute prop value if current property value is out of range
-            # or add a delta if it is within (-0.999 .. 0.999)
-            sign = -1 if val_cur-val_prev < 0 else 1
-            if propval*sign<-0.999 and val_prev*sign < -1:
-                 propval = val_cur
-            else:
-                propval += val_cur-val_prev
-            setattr(self, propname, propval)
-
-        asset_lock = False
-
-        if ui.meta_materials != "N":
-            for k, coeffs in data.get("materials",{}).items():
-                if materials.props and k in materials.props:
-                    if ui.meta_materials == "R":
-                        materials.props[k].default_value += calc_val(value)-calc_val(prev_value)
-                    else:
-                        materials.props[k].default_value = calc_val(value)
-
-        refit_assets()
-
-    return [("metaprev_"+name,bpy.props.FloatProperty()),
-        ("meta_"+name,bpy.props.FloatProperty(name=name,
-        min = -1.0, max = 1.0,
-        precision = 3,
-        update = update))]
-
-
-def clear_old_L2(obj, new_L1):
-    if not obj.data.shape_keys:
-        return
-    for sk in obj.data.shape_keys.key_blocks:
-        if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith("L2_{}_".format(new_L1)):
-            sk.value = 0
-
-def create_charmorphs(obj):
-    global last_object, cur_object, l1morphs
-    last_object = obj
-    if obj.type != "MESH":
-        return
-
-    L1, l1morphs = get_morphs_L1(obj)
-    updateL1(L1)
-
-    char = library.obj_char(obj)
-    items = [(name, char.config.get("types",{}).get(name, {}).get("title",name), "") for name in l1morphs.keys()]
-
-    cur_object = obj
-    materials.update_props(obj)
-    mtl_props = materials.props
-
-    def update_char():
-        updateL1(L1)
-        materials.apply_props(char.config.get("types", {}).get(L1, {}).get("mtl_props"), mtl_props)
-        clear_old_L2(obj, L1)
-        refit_assets()
-
-    if L1=="" and "default_type" in char.config:
-        L1 = char.config["default_type"]
-        update_char()
-
-    L1_idx = 0
-    for i in range(1, len(items)-1):
-        if items[i][0] == L1:
-            L1_idx = i
-            break
-
-    def chartype_setter(self, value):
-        nonlocal L1_idx, L1
-        if value == L1_idx:
-            return
-        L1_idx = value
-        L1 = items[L1_idx][0]
-        update_char()
-        create_charmorphs_L2(obj, char, L1)
-
-    bpy.types.WindowManager.chartype = bpy.props.EnumProperty(
-        name="Type",
-        items=items,
-        description="Choose character type",
-        get=lambda self: L1_idx,
-        set=chartype_setter,
-        options={"SKIP_SAVE"})
-
-    create_charmorphs_L2(obj, char, L1)
-
-
-def option_props():
-    return [("version", bpy.props.IntProperty())]
-
-def apply_morph_data(charmorphs, data, preset_mix):
-    global meta_lock, asset_lock
-    morph_props = data.get("morphs", {})
-    meta_props = data.get("meta", {})
-    meta_lock = True
-    asset_lock = True
-    for prop in dir(charmorphs):
-        if prop.startswith("prop_"):
-            value = morph_props.get(prop[5:], 0)
-            if preset_mix:
-                value = (value+getattr(charmorphs, prop))/2
-            setattr(charmorphs, prop, value)
-        elif prop.startswith("meta"):
-            # TODO handle preset_mix?
-            setattr(charmorphs, prop, meta_props.get(prop[prop.find("_")+1:],0))
-    asset_lock = False
-    meta_lock = False
-    refit_assets()
-    materials.apply_props(data.get("materials"))
-
-def preset_prop(char, L1):
-    if char == "":
-        return []
-    presets = load_presets(char, L1)
-
-    def update(self, context):
-        if not self.preset:
-            return
-        apply_morph_data(self, presets.get(self.preset, {}), context.window_manager.charmorph_ui.preset_mix)
-
-    return [("preset", bpy.props.EnumProperty(
-        name="Presets",
-        default="_",
-        items=[("_", "(reset)", "")] + [(name, name, "") for name in sorted(presets.keys())],
-        description="Choose morphing preset",
-        update=update))]
+morpher = None
 
 sep_re = re.compile("[ _]")
 
@@ -385,59 +43,310 @@ def morph_categories_prop(morphs):
             [(name,name,"") for name in sorted(set(morph_category_name(morph) for morph in morphs.keys()))],
         description="Select morphing categories to show"))]
 
-# Create a property group with all L2 morphs
-def create_charmorphs_L2(obj, char, L1):
-    del_charmorphs_L2()
-    morphs = get_morphs_L2(obj, L1)
-    if not morphs:
+d_minmax = {"min": 0, "max": 1}
+def convertSigns(signs):
+    try:
+        return sum(d_minmax[sign] << i for i, sign in enumerate(signs))
+    except KeyError:
+        return -1
+
+class Morpher(metaclass=abc.ABCMeta):
+    def __init__(self, obj):
+        self.obj = obj
+        self.char = library.obj_char(obj)
+        self.upd_lock = False
+        self.meta_lock = False
+        self.morphs_l1 = None
+        self.morphs_l2 = None
+        self.version = 0
+        self.L1 = self.get_L1()
+        materials.update_props(obj)
+        self.mtl_props = materials.props
+
+    @abc.abstractmethod
+    def get_L1(self): pass
+    @abc.abstractmethod
+    def update_L1(self): pass
+    @abc.abstractmethod
+    def get_morphs_L2(self): pass
+    @abc.abstractmethod
+    def morph_props(self, name, data): pass
+
+    def set_L1(self, L1):
+        if L1 not in self.morphs_l1:
+            return False
+        self.L1 = L1
+        self.update_L1()
+        self.apply_materials(self.char.types.get(L1, {}).get("mtl_props"))
+        self.update()
+        return True
+
+    def do_update(self):
+        fitting.refit_char_assets(self.obj)
+
+    def update(self):
+        if self.upd_lock:
+            return
+        self.do_update()
+
+    def lock(self):
+        self.upd_lock = True
+
+    def unlock(self):
+        self.upd_lock = False
+        self.update()
+
+    def apply_materials(self, data):
+        materials.apply_props(data, self.mtl_props)
+
+    def add_morph_l2(self, name, data):
+        nameParts = name.split("_")
+        if len(nameParts) != 3 or ("min" not in nameParts[2] and "max" not in nameParts[2]):
+            self.morphs_l2[name] = (data)
+            return
+
+        names = nameParts[1].split("-")
+        signArr = nameParts[2].split("-")
+        signIdx = convertSigns(signArr)
+
+        if len(names) == 0 or len(names) != len(signArr):
+            logger.error("Invalid L2 morph name: {}, skipping".format(name))
+            return
+
+        morph_name = nameParts[0]+"_"+nameParts[1]
+        cnt = 2 ** len(names)
+
+        if morph_name in self.morphs_l2:
+            morph = self.morphs_l2[morph_name]
+            if len(morph) != cnt:
+                logger.error("L2 combo morph conflict: different dimension count on {}, skipping".format(name))
+                return
+        else:
+            morph = [None] * cnt
+            self.morphs_l2[morph_name] = morph
+
+        morph[signIdx] = data
+
+    def apply_morph_data(self, charmorphs, data, preset_mix):
+        morph_props = data.get("morphs", {})
+        meta_props = data.get("meta", {})
+        self.lock()
+        self.meta_lock = True
+        for prop in dir(charmorphs):
+            if prop.startswith("prop_"):
+                value = morph_props.get(prop[5:], 0)
+                if preset_mix:
+                    value = (value+getattr(charmorphs, prop))/2
+                setattr(charmorphs, prop, value)
+            elif prop.startswith("meta_"):
+                # TODO handle preset_mix?
+                value = meta_props.get(prop[5:],0)
+                self.meta_prev[prop[5:]] = value
+                setattr(charmorphs, prop, value)
+        self.meta_lock = False
+        self.unlock()
+        materials.apply_props(data.get("materials"))
+
+    # Reset all meta properties to 0
+    def reset_meta(self, charmorphs):
+        self.meta_lock = True
+        self.meta_prev = { k: 0.0 for k in self.char.morphs_meta.keys() }
+        for prop in dir(charmorphs):
+            if prop.startswith("meta_"):
+                setattr(charmorphs, prop, 0)
+        self.meta_lock = False
+
+    def meta_prop(self, name, data):
+        def update(cm, context):
+            if self.meta_lock:
+                return
+            prev_value = self.meta_prev.get(name, 0.0)
+            value = getattr(cm, "meta_" + name)
+            if value == prev_value:
+                return
+            self.meta_prev[name] = value
+            ui = context.window_manager.charmorph_ui
+            def calc_val(val):
+                return coeffs[1]*val if val > 0 else -coeffs[0]*val
+
+            self.lock()
+            for k, coeffs in data.get("morphs",{}).items():
+                propname = "prop_" + k
+                if not hasattr(cm, propname):
+                    continue
+
+                if not ui.relative_meta:
+                    setattr(cm, propname, calc_val(value))
+                    continue
+
+                propval = getattr(cm, propname)
+
+                val_prev = calc_val(prev_value)
+                val_cur = calc_val(value)
+
+                # assign absolute prop value if current property value is out of range
+                # or add a delta if it is within (-0.999 .. 0.999)
+                sign = -1 if val_cur-val_prev < 0 else 1
+                if propval*sign<-0.999 and val_prev*sign < -1:
+                     propval = val_cur
+                else:
+                    propval += val_cur-val_prev
+                setattr(cm, propname, propval)
+
+            self.unlock()
+
+            if ui.meta_materials != "N":
+                for k, coeffs in data.get("materials",{}).items():
+                    if materials.props and k in materials.props:
+                        if ui.meta_materials == "R":
+                            materials.props[k].default_value += calc_val(value)-calc_val(prev_value)
+                        else:
+                            materials.props[k].default_value = calc_val(value)
+
+        return ("meta_"+name,bpy.props.FloatProperty(name=name,
+            min = -1.0, max = 1.0,
+            precision = 3,
+            update = update))
+
+    def preset_prop(self):
+        presets = self.load_presets()
+        if not presets:
+            return []
+
+        def update(cm, context):
+            if not cm.preset:
+                return
+            self.apply_morph_data(cm, presets.get(cm.preset, {}), context.window_manager.charmorph_ui.preset_mix)
+
+        return [("preset", bpy.props.EnumProperty(
+            name="Presets",
+            default="_",
+            items=[("_", "(reset)", "")] + [(name, name, "") for name in sorted(presets.keys())],
+            description="Choose morphing preset",
+            update=update))]
+
+    def load_presets(self):
+        if self.char.name == "":
+            return None
+        result = {}
+        def load_dir(path):
+            path = os.path.join(library.data_dir, path)
+            if not os.path.isdir(path):
+                return {}
+            for fn in os.listdir(path):
+                if os.path.isfile(os.path.join(path, fn)):
+                    data = file_io.load_morph_data(os.path.join(path, fn))
+                    if data != None:
+                        result[fn[:-5]] = data
+        try:
+            load_dir(self.char.path("presets"))
+            load_dir(self.char.path("presets/" + self.L1))
+        except Exception as e:
+            logger.error(e)
+        return result
+
+    clamp_combos_prop = bpy.props.BoolProperty(
+        name="Clamp combo props",
+        description="Clamp combo properties to (-1..1) so they remain in realistic range",
+        default=True)
+
+    @staticmethod
+    def morph_prop(name, getter, setter, soft_min = -1):
+        return bpy.props.FloatProperty(name=name,
+            soft_min = soft_min, soft_max = 1.0,
+            precision = 3,
+            get = getter,
+            set = setter)
+
+    # Create a property group with all L2 morphs
+    def create_charmorphs_L2(self):
+        del_charmorphs_L2()
+        self.get_morphs_L2()
+        if not self.morphs_l2:
+            return
+
+        self.meta_prev = { k: 0.0 for k in self.char.morphs_meta.keys() }
+
+        propGroup = type("CharMorpher_Dyn_PropGroup",
+            (bpy.types.PropertyGroup,),
+            {"__annotations__":
+                dict([("clamp_combos", self.clamp_combos_prop)] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
+                    [("prop_"+name, prop) for sublist in (self.morph_props(k, v) for k, v in self.morphs_l2.items()) for name, prop in sublist] +
+                    [self.meta_prop(name, data) for name, data in self.char.morphs_meta.items()])})
+
+        bpy.utils.register_class(propGroup)
+
+        bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
+            type=propGroup, options={"SKIP_SAVE"})
+
+from . import morphers
+
+def create_charmorphs(obj):
+    global last_object, morpher
+    last_object = obj
+    if obj.type != "MESH":
         return
 
-    propGroup = type("CharMorpher_Dyn_PropGroup",
-        (bpy.types.PropertyGroup,),
-        {"__annotations__":
-            dict(option_props() + preset_prop(char.name, L1) + morph_categories_prop(morphs) +
-                [("prop_"+name, prop) for sublist in (morph_props(k, v) for k, v in morphs.items()) for name, prop in sublist] +
-                [item for sublist in (meta_props(name, data) for name, data in char.morphs_meta.items()) for item in sublist])})
+    if obj.data.get("cm_morpher") == "ext":
+        m = morphers.NumpyMorpher(obj)
+    else:
+        m = morphers.ShapeKeysMorpher(obj)
 
-    bpy.utils.register_class(propGroup)
+    if not m.has_morphs():
+        return
 
-    bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
-        type=propGroup, options={"SKIP_SAVE"})
+    morpher = m
 
-# Reset all meta properties to 0
-def reset_meta(charmorphs):
-    global meta_lock
-    meta_lock = True
-    for prop in dir(charmorphs):
-        if prop.startswith("meta"):
-            setattr(charmorphs, prop, 0)
-    meta_lock = False
+    items = [(name, m.char.types.get(name, {}).get("title",name), "") for name in m.morphs_l1.keys()]
+
+    if not m.L1 and "default_type" in m.char.config:
+        m.set_L1(m.char.default_type)
+
+    L1_idx = 0
+    for i in range(1, len(items)-1):
+        if items[i][0] == m.L1:
+            L1_idx = i
+            break
+
+    def chartype_setter(self, value):
+        nonlocal L1_idx
+        if value == L1_idx:
+            return
+        L1_idx = value
+        m.set_L1(items[L1_idx][0])
+
+    bpy.types.WindowManager.chartype = bpy.props.EnumProperty(
+        name="Type",
+        items=items,
+        description="Choose character type",
+        get=lambda self: L1_idx,
+        set=chartype_setter,
+        options={"SKIP_SAVE"})
+
+    m.create_charmorphs_L2()
 
 # Delete morphs property group
 def del_charmorphs_L2():
-    global asset_lock, meta_lock
     if not hasattr(bpy.types.WindowManager, "charmorphs"):
         return
-    asset_lock = False
-    meta_lock = False
     propGroup = bpy.types.WindowManager.charmorphs[1]['type']
     del bpy.types.WindowManager.charmorphs
     bpy.utils.unregister_class(propGroup)
     fitting.invalidate_cache()
 
 def del_charmorphs():
-    global last_object, cur_object
+    global last_object, morpher
     last_object = None
-    cur_object = None
+    morpher = None
     if hasattr(bpy.types.WindowManager, "chartype"):
         del bpy.types.WindowManager.chartype
     del_charmorphs_L2()
 
 def bad_object():
-    if not cur_object:
+    if not morpher:
         return False
     try:
-        return bpy.data.objects.get(cur_object.name) is not cur_object
+        return bpy.data.objects.get(morpher.obj.name) is not morpher.obj
     except ReferenceError:
         return True
 
@@ -467,7 +376,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         col.separator()
 
         meta_morphs = [p for p in propList if p.startswith("meta_")]
-        if len(meta_morphs) > 0:
+        if meta_morphs:
             self.layout.label(text = "Meta morphs")
             col = self.layout.column(align=True)
             col.prop(ui, "meta_materials")
@@ -476,7 +385,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             for prop in meta_morphs:
                 col.prop(morphs, prop, slider=True)
 
-        self.layout.prop(ui, "clamp_combos")
+        self.layout.prop(morphs, "clamp_combos")
 
         self.layout.separator()
 

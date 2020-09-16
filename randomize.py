@@ -41,7 +41,10 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
             saved_props = None
         if not hasattr(context.window_manager,'charmorphs'):
             return False
-        if context.window_manager.charmorphs.version != saved_version:
+        m = morphing.morpher
+        if not m:
+            return False
+        if m.version != saved_version:
             saved_props = None
         return True
 
@@ -63,9 +66,9 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
             self.layout.prop(ui, "randomize_strength")
         self.layout.operator('charmorph.randomize')
 
-def save_props(cm):
+def save_props(cm, version):
     global saved_props
-    if cm.version == saved_version:
+    if version == saved_version:
         return
     saved_props = {}
     for prop in dir(cm):
@@ -78,19 +81,20 @@ class OpRandomize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
 
     def execute(self, context):
         global saved_version
         scn = context.window_manager
         ui = scn.charmorph_ui
         cm = scn.charmorphs
+        m = morphing.morpher
         if ui.randomize_mode == "RL1":
-            save_props(cm)
+            save_props(cm, m.version)
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_morphs:
-            morphing.asset_lock = True
+            m.lock()
             for prop in dir(cm):
                 if not prop.startswith("prop_"):
                     continue
@@ -98,7 +102,7 @@ class OpRandomize(bpy.types.Operator):
                 if excl.search(propname) or not incl.search(propname):
                     continue
                 if ui.randomize_mode == "OVR":
-                    morphing.reset_meta(cm)
+                    m.reset_meta(cm)
                 if ui.randomize_mode == "SEG":
                     val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
                 else:
@@ -108,10 +112,9 @@ class OpRandomize(bpy.types.Operator):
                 elif ui.randomize_mode == "RL2":
                     val += getattr(cm, prop)
                 setattr(cm, prop, val)
-            morphing.asset_lock = False
-            morphing.refit_assets()
+            m.unlock()
         if ui.randomize_mode == "RL1":
-            saved_version = cm.version
+            saved_version = m.version
         return {"FINISHED"}
 
 classes = [OpRandomize, CHARMORPH_PT_Randomize]

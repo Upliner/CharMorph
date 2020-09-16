@@ -49,19 +49,17 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
         col.operator("charmorph.import")
 
 def morphs_to_data(context):
+    m = morphing.morpher
     cm = context.window_manager.charmorphs
     morphs={}
     meta={}
     typ = []
-    obj = morphing.cur_object
 
-    if obj:
-        L1, _ = morphing.get_morphs_L1(obj)
-        if L1:
-            typ.append(L1)
-            alt_name = library.obj_char(obj).config.get("types",{}).get(L1).get("title")
-            if alt_name:
-                typ.append(alt_name)
+    if m.L1:
+        typ.append(m.L1)
+        alt_name = m.char.types.get(m.L1).get("title")
+        if alt_name:
+            typ.append(alt_name)
 
     for prop in dir(cm):
         if prop.startswith("prop_"):
@@ -69,6 +67,30 @@ def morphs_to_data(context):
         elif prop.startswith("meta_"):
             meta[prop[5:]] = getattr(cm, prop)
     return {"type":typ, "morphs":morphs, "meta": meta, "materials": materials.prop_values()}
+
+def mblab_to_charmorph(data):
+    return {
+        "morphs": { k:v*2-1 for k,v in data.get("structural",{}).items() },
+        "materials": data.get("materialproperties",{}),
+        "meta": { (k[10:] if k.startswith("character_") else k):v for k,v in data.get("metaproperties",{}).items() if not k.startswith("last_character_")},
+        "type": data.get("type",[]),
+    }
+
+def charmorph_to_mblab(data):
+    return {
+        "structural": { k:(v+1)/2 for k,v in data.get("morphs",{}).items() },
+        "metaproperties": { k:v for sublist, v in (([("character_"+k),("last_character_"+k)],v) for k,v in data.get("meta",{}).items()) for k in sublist },
+        "materialproperties": data.get("materials"),
+        "type": data.get("type",[]),
+    }
+
+def load_morph_data(fn):
+    with open(fn, "r") as f:
+        if fn[-5:] == ".yaml":
+            return yaml.safe_load(f)
+        elif fn[-5:] == ".json":
+            return  mblab_to_charmorph(json.load(f))
+    return None
 
 class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_json"
@@ -80,11 +102,11 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
-            json.dump(morphing.charmorph_to_mblab(morphs_to_data(context)),f, indent=4, sort_keys=True)
+            json.dump(charmorph_to_mblab(morphs_to_data(context)),f, indent=4, sort_keys=True)
         return {"FINISHED"}
 
 
@@ -104,7 +126,7 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
@@ -121,10 +143,10 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and hasattr(context.window_manager, "chartype")
+        return hasattr(context.window_manager, 'charmorphs') and hasattr(context.window_manager, "chartype") and morphing.morpher
 
     def execute(self, context):
-        data = morphing.load_morph_data(self.filepath)
+        data = load_morph_data(self.filepath)
         if data is None:
             self.report({'ERROR'}, "Can't recognize format")
             return {"CANCELLED"}
@@ -133,20 +155,17 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         if isinstance(typenames, str):
             typenames = [typenames]
 
-        char = library.obj_char(morphing.cur_object)
-        typemap = { v["title"]:k for k,v in char.config.get("types",{}).items() if "title" in v }
-        morphing.asset_lock = True
+        m = morphing.morpher
+        char = library.obj_char(m.char)
+        typemap = { v["title"]:k for k,v in char.types.items() if "title" in v }
+        m.lock()
         for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
             if not name:
                 continue
-            try:
-                context.window_manager.chartype = name
+            if m.set_L1(name):
                 break
-            except TypeError:
-                pass
-        morphing.asset_lock = False
 
-        morphing.apply_morph_data(context.window_manager.charmorphs, data, False)
+        m.apply_morph_data(context.window_manager.charmorphs, data, False)
         return {"FINISHED"}
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]
