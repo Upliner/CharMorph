@@ -9,7 +9,6 @@ Char creation:
   - Asset list in creation panel
 
 Morphing:
-  - Move out shape keys to npy/npz files
   - Allow to mix L1 shapes
 
 Finalize:
