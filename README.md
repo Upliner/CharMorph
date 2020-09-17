@@ -26,9 +26,9 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 * Realtime asset fitting with combined masks
 * Rigify support with full face rig
 * Characters are created at 3D cursor location, not always at world origin
+* Performance is noticably better
 
 ## Downsides
 
-* Library size is higher because shapekeys in .blend files take more space than morphs in .json files. I plan to fix it by moving morphs to separate npy/npz files.
 * Rig is added only at finalization, because it takes quite a long time for Rigify to generate a rig and I have no idea if it's possible to morph such rig in real time.
 * Still lacking some features (Automodelling, measures) just because I don't use them in my projects. Maybe they'll come later.
