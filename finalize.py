@@ -117,11 +117,10 @@ class OpFinalize(bpy.types.Operator):
         fin_sk = None
         if keys and keys.key_blocks:
             if ui.fin_morph != "NO" or ui.fin_rig != "NO":
-                fin_sk = m.obj.shape_key_add(name="charmorph_finalized", from_mix=True)
+                fin_sk = m.obj.data.shape_keys.key_blocks["charmorph_final"]
+                if not fin_sk:
+                    fin_sk = m.obj.shape_key_add(name="charmorph_final", from_mix=True)
                 fin_sk.value = 1
-                if fin_sk.name != "charmorph_finalized":
-                    m.obj.shape_key_remove(keys.key_blocks["charmorph_finalized"])
-                    fin_sk.name = "charmorph_finalized"
 
             unknown_keys = False
 
@@ -141,6 +140,11 @@ class OpFinalize(bpy.types.Operator):
                     m.obj.shape_key_remove(keys.reference_key)
                     m.obj.shape_key_remove(fin_sk)
                     fin_sk = None
+
+        if ui.fin_morph != "NO" and "cm_morpher" in m.obj.data:
+            del m.obj.data["cm_morpher"]
+            for k in [k for k in m.obj.data.keys() if k.startswith("cmorph_L")]:
+                del m.obj.data[k]
 
         # Make sure we won't delete any vertex groups used by hair particle systems
         for psys in m.obj.particle_systems:

@@ -30,6 +30,7 @@ epsilon = 1e-30
 
 obj_cache = {}
 char_cache = {}
+basis_cache = {}
 
 # As realtime fitting is performance-critical I use timers for performance debugging
 class Timer:
@@ -50,6 +51,7 @@ def kdtree_from_verts(verts):
 def invalidate_cache():
     obj_cache.clear()
     char_cache.clear()
+    basis_cache.clear()
 
 def calc_weights(char, asset, mask):
     t = Timer()
@@ -291,15 +293,29 @@ def transfer_new_armature(char):
     for asset in get_assets(char):
         transfer_armature(char, asset)
 
+def get_morphed_shape_key(obj):
+    k = obj.data.shape_keys
+    if k and k.key_blocks:
+        result = k.key_blocks.get("charmorph_final")
+        if result:
+            return result, False
+
+    # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
+    return obj.shape_key_add(from_mix=True), True
+
 def diff_array(obj):
-    morphed_shapekey = obj.shape_key_add(from_mix=True) # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-    basis = numpy.empty(len(morphed_shapekey.data)*3)
+    morphed_shapekey, temporary = get_morphed_shape_key(obj)
     morphed = numpy.empty(len(morphed_shapekey.data)*3)
-    obj.data.vertices.foreach_get("co", basis)
     morphed_shapekey.data.foreach_get("co", morphed)
-    obj.shape_key_remove(morphed_shapekey)
+    if temporary:
+        obj.shape_key_remove(morphed_shapekey)
+    basis = basis_cache.get(obj.name)
+    if basis is None:
+        basis = numpy.empty(len(morphed))
+        obj.data.vertices.foreach_get("co", basis)
+        basis_cache[obj.name] = basis
     morphed -= basis
-    return morphed.reshape(len(obj.data.vertices), 3)
+    return morphed.reshape(-1, 3)
 
 def do_fit(char, assets):
     t = Timer()
@@ -309,9 +325,8 @@ def do_fit(char, assets):
         weights = get_obj_weights(char, asset)
         if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
             asset.shape_key_add(name="Basis", from_mix=False)
-        if "charmorph_fitting" in asset.data.shape_keys.key_blocks:
-            asset_fitkey = asset.data.shape_keys.key_blocks["charmorph_fitting"]
-        else:
+        asset_fitkey = asset.data.shape_keys.key_blocks.get("charmorph_fitting")
+        if not asset_fitkey:
             asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
         verts = numpy.empty(len(asset_fitkey.data)*3)

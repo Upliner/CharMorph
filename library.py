@@ -36,6 +36,8 @@ additional_assets = {}
 hair_colors = {}
 
 def char_file(char, file):
+    if not char:
+        return ""
     return os.path.join(data_dir, "characters", char, file)
 
 def parse_file(path, parse_func, default={}):

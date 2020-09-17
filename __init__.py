@@ -293,6 +293,11 @@ def on_select_object():
                 ui.fitting_asset = obj.name
         except:
             pass
+
+        # Prevent morphing of rigged characters
+        if obj.parent and obj.parent.type == "ARMATURE":
+            obj = obj.parent
+
     if obj == morphing.last_object:
         return
     morphing.create_charmorphs(obj)

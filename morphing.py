@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 last_object = None
 morpher = None
 
-sep_re = re.compile("[ _]")
+sep_re = re.compile(r"[ _-]")
 
 def morph_category_name(name):
     m = sep_re.search(name)
@@ -102,7 +102,7 @@ class Morpher(metaclass=abc.ABCMeta):
     def add_morph_l2(self, name, data):
         nameParts = name.split("_")
         if len(nameParts) != 3 or ("min" not in nameParts[2] and "max" not in nameParts[2]):
-            self.morphs_l2[name] = (data)
+            self.morphs_l2[name] = [data]
             return
 
         names = nameParts[1].split("-")
@@ -226,7 +226,7 @@ class Morpher(metaclass=abc.ABCMeta):
             update=update))]
 
     def load_presets(self):
-        if self.char.name == "":
+        if not self.char.name:
             return None
         result = {}
         def load_dir(path):
