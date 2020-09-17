@@ -143,7 +143,7 @@ class OpFinalize(bpy.types.Operator):
 
         if ui.fin_morph != "NO" and "cm_morpher" in m.obj.data:
             del m.obj.data["cm_morpher"]
-            for k in [k for k in m.obj.data.keys() if k.startswith("cmorph_L")]:
+            for k in [k for k in m.obj.data.keys() if k.startswith("cmorph_")]:
                 del m.obj.data[k]
 
         # Make sure we won't delete any vertex groups used by hair particle systems

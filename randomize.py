@@ -102,7 +102,7 @@ class OpRandomize(bpy.types.Operator):
                 if excl.search(propname) or not incl.search(propname):
                     continue
                 if ui.randomize_mode == "OVR":
-                    m.reset_meta(cm)
+                    m.reset_meta()
                 if ui.randomize_mode == "SEG":
                     val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
                 else:

@@ -70,7 +70,7 @@ class ShapeKeysMorpher(morphing.Morpher):
         return False
 
     def get_morphs_L2(self):
-        self.morphs_l2 = {}
+        self.morphs_l2.clear()
         if not self.obj.data.shape_keys:
             return
 
@@ -118,7 +118,7 @@ class ShapeKeysMorpher(morphing.Morpher):
 
         def setterfunc(idx):
             def setter(cm, value):
-                if cm.clamp_combos:
+                if self.clamp:
                     value = max(min(value, 1), -1)
                 self.version += 1
                 values[idx] = value
@@ -150,7 +150,7 @@ class NumpyMorpher(morphing.Morpher):
     def update_L1(self):
         file = self.morphs_l1.get(self.L1, "")
         if os.path.isfile(file):
-            self.basis = numpy.load(file)
+            self.basis = numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
             self.obj.data["cmorph_L1"] = self.L1
         else:
             verts = self.obj.data.vertices
@@ -173,7 +173,7 @@ class NumpyMorpher(morphing.Morpher):
         return L1
 
     def get_morphs_L2(self):
-        self.morphs_l2 = {}
+        self.morphs_l2.clear()
         def load_dir(dir):
             dir = self.char.path(dir)
             if not os.path.isdir(dir):
@@ -186,25 +186,12 @@ class NumpyMorpher(morphing.Morpher):
         if self.L1:
             load_dir("morphs/L2/"+self.L1)
 
-    def morph_prop_simple(self, name, soft_min = -1):
-        pname = "cmorph_L2_"+name
-        def setter(_, value):
-            self.version += 1
-            self.obj[pname] = value
-            self.update()
-        return [(name, self.morph_prop(name,
-            lambda _: self.obj.get(pname, 0.0),
-            setter, soft_min))]
-
     @staticmethod
     def enum_combo_names(name):
         nameParts = name.split("_")
         return (nameParts[0]+"_"+name for name in nameParts[1].split("-"))
 
-    def morph_prop_combo(self, name):
-        return [(name, self.morph_prop_simple(name)) for name in self.enum_combo_names(name)]
-
-    def update(self):
+    def do_update(self):
         if self.basis is None:
             self.update_L1()
         morph_data = None
@@ -212,6 +199,8 @@ class NumpyMorpher(morphing.Morpher):
             nonlocal morph_data
             if value < 0.001:
                 return
+            if self.clamp:
+                value = min(value, 1)
             item = data[idx]
             if item is None:
                 return
@@ -225,7 +214,7 @@ class NumpyMorpher(morphing.Morpher):
 
         for name, data in self.morphs_l2.items():
             if len(data)<=2:
-                val = self.obj.get("cmorph_L2_"+name)
+                val = self.obj.data.get("cmorph_L2_"+name)
                 if val:
                     if len(data) == 1:
                         do_morph(data, 0, val)
@@ -249,10 +238,22 @@ class NumpyMorpher(morphing.Morpher):
         sk.data.foreach_set("co", morph_data.reshape(-1))
         sk.value = 1
 
-        super().update()
+        super().do_update()
+
+    def morph_prop_simple(self, name, soft_min = -1):
+        pname = "cmorph_L2_"+name
+        def setter(cm, value):
+            if self.clamp:
+                value = max(min(value, 1), -1)
+            self.version += 1
+            self.obj.data[pname] = value
+            self.update()
+        return self.morph_prop(name,
+            lambda _: self.obj.data.get(pname, 0.0),
+            setter, soft_min)
 
     def morph_props(self, name, data):
         if len(data) <= 2:
-            return self.morph_prop_simple(name, 0.0 if len(data) == 1 else -1.0)
+            return [(name, self.morph_prop_simple(name, 0.0 if len(data) == 1 else -1.0))]
         else:
-            return self.morph_prop_combo(name)
+            return [(name, self.morph_prop_simple(name)) for name in self.enum_combo_names(name)]

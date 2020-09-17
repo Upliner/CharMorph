@@ -55,9 +55,9 @@ class Morpher(metaclass=abc.ABCMeta):
         self.obj = obj
         self.char = library.obj_char(obj)
         self.upd_lock = False
-        self.meta_lock = False
+        self.clamp = False
         self.morphs_l1 = None
-        self.morphs_l2 = None
+        self.morphs_l2 = {}
         self.version = 0
         self.L1 = self.get_L1()
         materials.update_props(obj)
@@ -131,7 +131,6 @@ class Morpher(metaclass=abc.ABCMeta):
         morph_props = data.get("morphs", {})
         meta_props = data.get("meta", {})
         self.lock()
-        self.meta_lock = True
         for prop in dir(charmorphs):
             if prop.startswith("prop_"):
                 value = morph_props.get(prop[5:], 0)
@@ -142,26 +141,32 @@ class Morpher(metaclass=abc.ABCMeta):
                 # TODO handle preset_mix?
                 value = meta_props.get(prop[5:],0)
                 self.meta_prev[prop[5:]] = value
-                setattr(charmorphs, prop, value)
-        self.meta_lock = False
+                self.obj.data["cmorph_" + prop] = value
         self.unlock()
         materials.apply_props(data.get("materials"))
 
     # Reset all meta properties to 0
-    def reset_meta(self, charmorphs):
-        self.meta_lock = True
-        self.meta_prev = { k: 0.0 for k in self.char.morphs_meta.keys() }
-        for prop in dir(charmorphs):
-            if prop.startswith("meta_"):
-                setattr(charmorphs, prop, 0)
-        self.meta_lock = False
+    def reset_meta(self):
+        d = self.obj.data
+        for k in self.char.morphs_meta.keys():
+            self.meta_prev[k] = 0
+            pname = "cmorph_meta_" + k
+            if pname in d:
+                del d[pname]
 
     def meta_prop(self, name, data):
+        pname = "cmorph_meta_" + name
+
+        value = self.obj.data.get(pname, 0.0)
+        self.meta_prev[name] = value
+
+        def setter(_, new_value):
+            nonlocal value
+            value = new_value
+            self.obj.data[pname] = value
+
         def update(cm, context):
-            if self.meta_lock:
-                return
             prev_value = self.meta_prev.get(name, 0.0)
-            value = getattr(cm, "meta_" + name)
             if value == prev_value:
                 return
             self.meta_prev[name] = value
@@ -206,6 +211,8 @@ class Morpher(metaclass=abc.ABCMeta):
         return ("meta_"+name,bpy.props.FloatProperty(name=name,
             min = -1.0, max = 1.0,
             precision = 3,
+            get = lambda _: self.obj.data.get(pname, 0.0),
+            set = setter,
             update = update))
 
     def preset_prop(self):
@@ -245,11 +252,6 @@ class Morpher(metaclass=abc.ABCMeta):
             logger.error(e)
         return result
 
-    clamp_combos_prop = bpy.props.BoolProperty(
-        name="Clamp combo props",
-        description="Clamp combo properties to (-1..1) so they remain in realistic range",
-        default=True)
-
     @staticmethod
     def morph_prop(name, getter, setter, soft_min = -1):
         return bpy.props.FloatProperty(name=name,
@@ -258,6 +260,18 @@ class Morpher(metaclass=abc.ABCMeta):
             get = getter,
             set = setter)
 
+    def clamp_prop(self):
+        def setter(_, value):
+            self.clamp = value
+        prop = bpy.props.BoolProperty(
+            name="Clamp props",
+            description="Clamp properties to (-1..1) so they remain in realistic range",
+            get = lambda _: self.clamp,
+            set = setter,
+            update = lambda cm, ctx: self.update(),
+            default=True)
+        return ("clamp", prop)
+
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
         del_charmorphs_L2()
@@ -265,12 +279,12 @@ class Morpher(metaclass=abc.ABCMeta):
         if not self.morphs_l2:
             return
 
-        self.meta_prev = { k: 0.0 for k in self.char.morphs_meta.keys() }
+        self.meta_prev = {}
 
         propGroup = type("CharMorpher_Dyn_PropGroup",
             (bpy.types.PropertyGroup,),
             {"__annotations__":
-                dict([("clamp_combos", self.clamp_combos_prop)] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
+                dict([self.clamp_prop()] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
                     [("prop_"+name, prop) for sublist in (self.morph_props(k, v) for k, v in self.morphs_l2.items()) for name, prop in sublist] +
                     [self.meta_prop(name, data) for name, data in self.char.morphs_meta.items()])})
 
@@ -278,6 +292,15 @@ class Morpher(metaclass=abc.ABCMeta):
 
         bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
             type=propGroup, options={"SKIP_SAVE"})
+
+        cm = bpy.context.window_manager.charmorphs
+        for prop in dir(cm):
+            if prop.startswith("prop_"):
+                if abs(getattr(cm, prop)) > 1:
+                    break
+        else:
+            self.clamp = True
+
 
 from . import morphers
 
@@ -297,7 +320,7 @@ def create_charmorphs(obj):
 
     morpher = m
 
-    items = [(name, m.char.types.get(name, {}).get("title",name), "") for name in m.morphs_l1.keys()]
+    items = [(name, m.char.types.get(name, {}).get("title",name), "") for name in sorted(m.morphs_l1.keys())]
 
     if not m.L1 and "default_type" in m.char.config:
         m.set_L1(m.char.default_type)
@@ -385,7 +408,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             for prop in meta_morphs:
                 col.prop(morphs, prop, slider=True)
 
-        self.layout.prop(morphs, "clamp_combos")
+        self.layout.prop(morphs, "clamp")
 
         self.layout.separator()
 

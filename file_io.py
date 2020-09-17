@@ -156,8 +156,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             typenames = [typenames]
 
         m = morphing.morpher
-        char = library.obj_char(m.char)
-        typemap = { v["title"]:k for k,v in char.types.items() if "title" in v }
+        typemap = { v["title"]:k for k,v in m.char.types.items() if "title" in v }
         m.lock()
         for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
             if not name:

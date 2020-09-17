@@ -225,13 +225,13 @@ def import_shapekeys(obj, char_name):
         for file in sorted(os.listdir(dir)):
             if os.path.isdir(os.path.join(dir, file)):
                 L1_basis = L1_basis_dict.get(file)
-                if not L1_basis:
+                if L1_basis is None:
                     logger.error("Unknown L1 type: " + file)
                     continue
                 for file2 in sorted(os.listdir(os.path.join(dir, file))):
                     name, _ = os.path.splitext(file2)
-                    sk = obj.shape_key_add(name = "L2_%s_%s" + (file, file2), from_mix = False)
-                    sk.relative_key = sk.obj.data.shape_keys.key_blocks[file]
+                    sk = obj.shape_key_add(name = "L2_%s_%s" % (file, file2), from_mix = False)
+                    sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(dir, file, file2))
 
 class CHARMORPH_PT_Library(bpy.types.Panel):
@@ -288,6 +288,8 @@ class OpImport(bpy.types.Operator):
         materials.init_materials(obj, char)
         if ui.import_shapekeys:
             import_shapekeys(obj, ui.base_model)
+        elif (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks) and os.path.isdir(char.path("morphs")):
+            obj.data["cm_morpher"] = "ext"
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
         return {"FINISHED"}
