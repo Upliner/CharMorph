@@ -20,14 +20,31 @@
 
 from . import morphing
 
-def get_combo_prop_value(arr, idx):
-    return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1)*2-1) for arr_idx, sk in enumerate(arr))
-
-def get_combo_prop_values(arr, dims):
-    return [get_combo_prop_value(arr, i) for i in range(dims)]
-
 def get_combo_item_value(arr_idx, values):
     return sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values))
+
+def enum_combo_names(name):
+    nameParts = name.split("_")
+    return (nameParts[0]+"_"+name for name in nameParts[1].split("-"))
+
+class ShapeKeysComboMorpher:
+    def __init__(self, arr, dims):
+        self.arr = arr
+        self.coeff = 2 / len(arr)
+        self.values = [self.get_combo_prop_value(i) for i in range(dims)]
+
+    def get_combo_prop_value(self, idx):
+        return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1)*2-1) for arr_idx, sk in enumerate(self.arr))
+
+    def get(self, idx):
+        val = self.get_combo_prop_value(idx)
+        self.values[idx] = val
+        return val
+
+    def set(self, idx, value):
+        self.values[idx] = value
+        for arr_idx, sk in enumerate(self.arr):
+            sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 class ShapeKeysMorpher(morphing.Morpher):
     def update_L1(self):
@@ -84,58 +101,46 @@ class ShapeKeysMorpher(morphing.Morpher):
         if len(self.L1) > 0:
             load_shape_keys_by_prefix("L2_%s_" % self.L1)
 
+        for k, v in self.morphs_combo.items():
+            names = list(enum_combo_names(k))
+            combo_morpher = ShapeKeysComboMorpher(v, len(names))
+            for i, name in enumerate(names):
+                arr = self.morphs_l2.get(name)
+                if not arr:
+                    arr = []
+                    self.morphs_l2[name] = arr
+                arr.append((combo_morpher, i))
+
     # create simple prop that drives one min and one max shapekey
     def morph_prop_simple(self, name, skmin, skmax, soft_min=-1.0):
         def setter(cm, value):
-            self.version += 1
             if value < 0:
                 if skmax != None: skmax.value = 0
                 if skmin != None: skmin.value = -value
             else:
                 if skmin != None: skmin.value = 0
                 if skmax != None: skmax.value = value
-            self.update()
-        return self.morph_prop(name,
-            lambda self: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
+        return self.basic_morph_prop(name,
+            lambda _: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
             setter, soft_min)
 
-    # create a bunch of props from combo shape keys
-    def morph_props_combo(self, name, arr):
-        nameParts = name.split("_")
-        names = nameParts[1].split("-")
-        dims = len(names)
-        coeff = 2 / len(arr)
+    # create a prop that drives multple shapekeys
+    def morph_prop_combo(self, name, arr):
+        def setter(cm, value):
+            for item in arr:
+                item[0].set(item[1], value)
 
-        values = get_combo_prop_values(arr, dims)
+        return self.basic_morph_prop(name,
+            lambda _: sum(item[0].get(item[1]) for item in arr)/len(arr),
+            setter)
 
-        def getterfunc(idx):
-            def getter(self):
-                val = get_combo_prop_value(arr, idx)
-                values[idx] = val
-                return val
-
-            return getter
-
-        def setterfunc(idx):
-            def setter(cm, value):
-                if self.clamp:
-                    value = max(min(value, 1), -1)
-                self.version += 1
-                values[idx] = value
-                for arr_idx, sk in enumerate(arr):
-                    sk.value = get_combo_item_value(arr_idx, values) * coeff
-                self.update()
-            return setter
-
-        return [(name, self.morph_prop(name, getterfunc(i), setterfunc(i))) for i, name in ((i, nameParts[0]+"_"+name) for i, name in enumerate(names))]
-
-    def morph_props(self, name, data):
-        if len(data) == 1:
-            return [(name, self.morph_prop_simple(name, None, data[0], 0.0))]
-        elif len(data) == 2:
-            return [(name, self.morph_prop_simple(name, data[0], data[1]))]
+    def morph_prop(self, name, data):
+        if isinstance(data[0], tuple):
+            return self.morph_prop_combo(name,data)
+        elif len(data) == 1:
+            return self.morph_prop_simple(name, None, data[0], 0)
         else:
-            return self.morph_props_combo(name, data)
+            return self.morph_prop_simple(name, data[0], data[1], -1)
 
 import os, numpy
 
@@ -186,10 +191,9 @@ class NumpyMorpher(morphing.Morpher):
         if self.L1:
             load_dir("morphs/L2/"+self.L1)
 
-    @staticmethod
-    def enum_combo_names(name):
-        nameParts = name.split("_")
-        return (nameParts[0]+"_"+name for name in nameParts[1].split("-"))
+        for k in self.morphs_combo.keys():
+            for name in enum_combo_names(k):
+                self.morphs_l2[name] = self.morphs_l2.get(name)
 
     def do_update(self):
         if self.basis is None:
@@ -213,19 +217,21 @@ class NumpyMorpher(morphing.Morpher):
             morph_data[item[0]] += item[1] * value
 
         for name, data in self.morphs_l2.items():
-            if len(data)<=2:
-                val = self.obj.data.get("cmorph_L2_"+name)
-                if val:
-                    if len(data) == 1:
-                        do_morph(data, 0, val)
-                    elif len(data) == 2:
-                        do_morph(data, 0, -val)
-                        do_morph(data, 1, val)
-            else:
-                values = [ self.obj.data.get("cmorph_L2_"+n, 0.0) for n in  self.enum_combo_names(name) ]
-                coeff = 2 / len(data)
-                for i in range(len(data)):
-                    do_morph(data, i, get_combo_item_value(i, values) * coeff)
+            if data is None:
+                continue
+            val = self.obj.data.get("cmorph_L2_"+name)
+            if val:
+                if len(data) == 1:
+                    do_morph(data, 0, val)
+                elif len(data) == 2:
+                    do_morph(data, 0, -val)
+                    do_morph(data, 1, val)
+
+        for name, data in self.morphs_combo.items():
+            values = [ self.obj.data.get("cmorph_L2_"+n, 0.0) for n in enum_combo_names(name) ]
+            coeff = 2 / len(data)
+            for i in range(len(data)):
+                do_morph(data, i, get_combo_item_value(i, values) * coeff)
 
         if morph_data is None:
             morph_data = self.basis
@@ -240,20 +246,13 @@ class NumpyMorpher(morphing.Morpher):
 
         super().do_update()
 
-    def morph_prop_simple(self, name, soft_min = -1):
+    def morph_prop(self, name, data):
+        soft_min = -1
+        if isinstance(data, list) and len(data) == 1:
+            soft_min = 0
         pname = "cmorph_L2_"+name
         def setter(cm, value):
-            if self.clamp:
-                value = max(min(value, 1), -1)
-            self.version += 1
             self.obj.data[pname] = value
-            self.update()
-        return self.morph_prop(name,
+        return self.basic_morph_prop(name,
             lambda _: self.obj.data.get(pname, 0.0),
             setter, soft_min)
-
-    def morph_props(self, name, data):
-        if len(data) <= 2:
-            return [(name, self.morph_prop_simple(name, 0.0 if len(data) == 1 else -1.0))]
-        else:
-            return [(name, self.morph_prop_simple(name)) for name in self.enum_combo_names(name)]

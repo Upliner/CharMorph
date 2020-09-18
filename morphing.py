@@ -50,6 +50,9 @@ def convertSigns(signs):
     except KeyError:
         return -1
 
+def prefixed_prop(prefix, prop):
+    return (prefix + prop[1]["name"], prop)
+
 class Morpher(metaclass=abc.ABCMeta):
     def __init__(self, obj):
         self.obj = obj
@@ -58,6 +61,7 @@ class Morpher(metaclass=abc.ABCMeta):
         self.clamp = False
         self.morphs_l1 = None
         self.morphs_l2 = {}
+        self.morphs_combo = {}
         self.version = 0
         self.L1 = self.get_L1()
         materials.update_props(obj)
@@ -70,7 +74,7 @@ class Morpher(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_morphs_L2(self): pass
     @abc.abstractmethod
-    def morph_props(self, name, data): pass
+    def morph_prop(self, name, data): pass
 
     def set_L1(self, L1):
         if L1 not in self.morphs_l1:
@@ -116,14 +120,19 @@ class Morpher(metaclass=abc.ABCMeta):
         morph_name = nameParts[0]+"_"+nameParts[1]
         cnt = 2 ** len(names)
 
-        if morph_name in self.morphs_l2:
-            morph = self.morphs_l2[morph_name]
+        if len(names) == 1:
+            arr = self.morphs_l2
+        else:
+            arr = self.morphs_combo
+
+        if morph_name in arr:
+            morph = arr[morph_name]
             if len(morph) != cnt:
                 logger.error("L2 combo morph conflict: different dimension count on {}, skipping".format(name))
                 return
         else:
             morph = [None] * cnt
-            self.morphs_l2[morph_name] = morph
+            arr[morph_name] = morph
 
         morph[signIdx] = data
 
@@ -208,12 +217,12 @@ class Morpher(metaclass=abc.ABCMeta):
                         else:
                             materials.props[k].default_value = calc_val(value)
 
-        return ("meta_"+name,bpy.props.FloatProperty(name=name,
+        return bpy.props.FloatProperty(name=name,
             min = -1.0, max = 1.0,
             precision = 3,
             get = lambda _: self.obj.data.get(pname, 0.0),
             set = setter,
-            update = update))
+            update = update)
 
     def preset_prop(self):
         presets = self.load_presets()
@@ -252,8 +261,13 @@ class Morpher(metaclass=abc.ABCMeta):
             logger.error(e)
         return result
 
-    @staticmethod
-    def morph_prop(name, getter, setter, soft_min = -1):
+    def basic_morph_prop(self, name, getter, setter_base, soft_min = -1):
+        def setter(cm, value):
+            if self.clamp:
+                value = max(min(value, 1), -1)
+            self.version += 1
+            setter_base(cm, value)
+            self.update()
         return bpy.props.FloatProperty(name=name,
             soft_min = soft_min, soft_max = 1.0,
             precision = 3,
@@ -285,8 +299,8 @@ class Morpher(metaclass=abc.ABCMeta):
             (bpy.types.PropertyGroup,),
             {"__annotations__":
                 dict([self.clamp_prop()] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
-                    [("prop_"+name, prop) for sublist in (self.morph_props(k, v) for k, v in self.morphs_l2.items()) for name, prop in sublist] +
-                    [self.meta_prop(name, data) for name, data in self.char.morphs_meta.items()])})
+                    [prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items()] +
+                    [prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.char.morphs_meta.items()])})
 
         bpy.utils.register_class(propGroup)
 
