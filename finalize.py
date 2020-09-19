@@ -117,7 +117,7 @@ class OpFinalize(bpy.types.Operator):
         fin_sk = None
         if keys and keys.key_blocks:
             if ui.fin_morph != "NO" or ui.fin_rig != "NO":
-                fin_sk = m.obj.data.shape_keys.key_blocks["charmorph_final"]
+                fin_sk = m.obj.data.shape_keys.key_blocks.get("charmorph_final")
                 if not fin_sk:
                     fin_sk = m.obj.shape_key_add(name="charmorph_final", from_mix=True)
                 fin_sk.value = 1
