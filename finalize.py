@@ -48,9 +48,7 @@ def add_rig(conf, rigtype, verts):
     #override["object"] = metarig
     #override["active_object"] = metarig
     def remove_metarig():
-       old_armature = metarig.data
-       bpy.data.objects.remove(metarig)
-       bpy.data.armatures.remove(old_armature)
+       bpy.data.armatures.remove(metarig.data)
 
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
