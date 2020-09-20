@@ -142,9 +142,12 @@ def apply_pose(ui, context):
         if torso:
             torso.location = (0, 0, -min_z)
 
-    ik2fk_attr = "rigify_limb_ik2fk_" + rig_id
-    if hasattr(bpy.ops.pose, ik2fk_attr):
-        ik2fk = getattr(bpy.ops.pose, ik2fk_attr)
+    ik2fk = None
+    if ui.pose_ik2fk:
+        ik2fk_attr = "rigify_limb_ik2fk_" + rig_id
+        if hasattr(bpy.ops.pose, ik2fk_attr):
+            ik2fk = getattr(bpy.ops.pose, ik2fk_attr)
+    if ik2fk:
         for side in ["L","R"]:
             ik2fk(prop_bone='upper_arm_parent.' + side,
                 fk_bones='["upper_arm_fk.{0}", "forearm_fk.{0}", "hand_fk.{0}"]'.format(side),
@@ -157,8 +160,8 @@ def apply_pose(ui, context):
                 ctrl_bones = '["thigh_ik.{0}", "foot_ik.{0}", "thigh_ik_target.{0}"]'.format(side),
                 extra_ctrls = '["foot_heel_ik.{0}", "foot_spin_ik.{0}"]'.format(side))
 
-    for k, v in ik_fk.items():
-        rig.pose.bones[k]["IK_FK"] = v
+        for k, v in ik_fk.items():
+            rig.pose.bones[k]["IK_FK"] = v
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):
     bl_label = "Pose"
@@ -177,6 +180,7 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
         return len(char.poses) > 0
 
     def draw(self, context):
+        self.layout.prop(context.window_manager.charmorph_ui, "pose_ik2fk")
         self.layout.prop(context.window_manager.charmorph_ui, "pose")
 
 classes = [CHARMORPH_PT_Pose]

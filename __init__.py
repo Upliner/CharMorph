@@ -253,6 +253,10 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         description="Remove unused vertex groups after finalization")
 
     # Pose
+    pose_ik2fk: bpy.props.BoolProperty(
+        name="Apply pose to IK controllers",
+        default = True,
+        description="Apply poses designed for FK to IK controllers too (might be slow)")
     pose: bpy.props.EnumProperty(
         name="Pose",
         items = library.get_poses,
