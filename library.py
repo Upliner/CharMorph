@@ -230,7 +230,7 @@ def import_shapekeys(obj, char_name):
                     continue
                 for file2 in sorted(os.listdir(os.path.join(dir, file))):
                     name, _ = os.path.splitext(file2)
-                    sk = obj.shape_key_add(name = "L2_%s_%s" % (file, file2), from_mix = False)
+                    sk = obj.shape_key_add(name = "L2_%s_%s" % (file, name), from_mix = False)
                     sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(dir, file, file2))
 
