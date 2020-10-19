@@ -78,6 +78,7 @@ def save_props(cm, version):
 class OpRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
     bl_label = "Randomize"
+    bl_options = {"UNDO"}
 
     @classmethod
     def poll(cls, context):
