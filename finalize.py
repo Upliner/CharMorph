@@ -113,10 +113,12 @@ class OpFinalize(bpy.types.Operator):
 
         keys = m.obj.data.shape_keys
         fin_sk = None
+        fin_sk_tmp = False
         if keys and keys.key_blocks:
             if ui.fin_morph != "NO" or ui.fin_rig != "NO":
                 fin_sk = m.obj.data.shape_keys.key_blocks.get("charmorph_final")
                 if not fin_sk:
+                    fin_sk_tmp = ui.fin_morph == "NO"
                     fin_sk = m.obj.shape_key_add(name="charmorph_final", from_mix=True)
                 fin_sk.value = 1
 
@@ -178,7 +180,7 @@ class OpFinalize(bpy.types.Operator):
 
         ok = do_rig()
 
-        if fin_sk and ui.fin_morph == "NO":
+        if fin_sk_tmp:
             # Remove temporary mix shape key
             m.obj.shape_key_remove(fin_sk)
 
