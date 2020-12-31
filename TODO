@@ -42,6 +42,7 @@ Assets:
   - Use default underwear assets instead of censors
 
 Rigging:
+  - Add chest and abdomen bones for breathing
   - More weight paint checking
   - Allow to re-rig MB-Lab character?
   - Live regular rig deform

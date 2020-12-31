@@ -33,6 +33,18 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 * Rig is added only at finalization, because it takes quite a long time for Rigify to generate a rig and I have no idea if it's possible to morph such rig in real time.
 * Still lacking some features (Automodelling, measures) just because I don't use them in my projects. Maybe they'll come later.
 
+## Development notes
+
+This project uses git submodules so you need to checkout submodules alongside with code:
+
+git clone https://github.com/Upliner/CharMorph
+cd CharMorph
+git submodule init
+git submodule update
+cd data
+git submodule init
+git submodule update
+
 ## Links
 
 You can see examples of these features at [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
