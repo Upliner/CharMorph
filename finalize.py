@@ -154,7 +154,9 @@ class OpFinalize(bpy.types.Operator):
                     if vg.startswith("hair_"):
                         unused_l1.difference_update([vg[5:]])
 
+        vg_cleanup = ui.fin_vg_cleanup
         def do_rig():
+            nonlocal vg_cleanup
             if ui.fin_rig == "NO":
                 return True
             if isinstance(m.obj.parent, bpy.types.Object) and m.obj.parent.type == "ARMATURE":
@@ -168,9 +170,10 @@ class OpFinalize(bpy.types.Operator):
                 self.report({"ERROR"}, "Multiple rigs aren't supported yet")
                 return False
             rig_type = ui.fin_rig
-            if rig_type == "RG" and not hasattr(bpy.ops.pose, "rigify_generate"):
+            if rig_type == "RG" and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 rig_type = "MR"
+                vg_cleanup = False
             try:
                 add_rig(rigs[0], rig_type, fin_sk.data if fin_sk else None)
             except RigException as e:
@@ -209,7 +212,7 @@ class OpFinalize(bpy.types.Operator):
                 add_modifiers(asset)
 
 
-        if ui.fin_vg_cleanup:
+        if vg_cleanup:
             for vg in m.obj.vertex_groups:
                 if vg.name.startswith("joint_") or (
                         vg.name.startswith("hair_") and vg.name[5:] in unused_l1):
