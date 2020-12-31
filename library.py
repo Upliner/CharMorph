@@ -144,7 +144,12 @@ def load_library():
     global hair_colors
     chars.clear()
     hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), yaml.safe_load)
-    for char_name in os.listdir(os.path.join(data_dir,"characters")):
+    chardir = os.listdir(os.path.join(data_dir,"characters"))
+    if not os.path.isdir(chardir):
+        logger.error("Directory {} is not found.".format(chardir)
+        continue
+
+    for char_name in chardir:
         char = Character(char_name)
         char.config = char.get_yaml("config.yaml")
         if not os.path.isfile(char.blend_file()):
