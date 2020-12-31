@@ -37,13 +37,13 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 
 This project uses git submodules so you need to checkout submodules alongside with code:
 
-git clone https://github.com/Upliner/CharMorph
-cd CharMorph
-git submodule init
-git submodule update
-cd data
-git submodule init
-git submodule update
+* git clone https://github.com/Upliner/CharMorph
+* cd CharMorph
+* git submodule init
+* git submodule update
+* cd data
+* git submodule init
+* git submodule update
 
 ## Links
 
