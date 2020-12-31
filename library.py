@@ -146,8 +146,8 @@ def load_library():
     hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), yaml.safe_load)
     chardir = os.listdir(os.path.join(data_dir,"characters"))
     if not os.path.isdir(chardir):
-        logger.error("Directory {} is not found.".format(chardir)
-        continue
+        logger.error("Directory {} is not found.".format(chardir))
+        return
 
     for char_name in chardir:
         char = Character(char_name)

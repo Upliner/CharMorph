@@ -67,7 +67,7 @@ def joints_to_vg(char, lst, verts):
     bones = set()
     for name, _, bone, attr in lst:
         item = avg.get(name)
-        if item:
+        if item and item[0]>0.1:
             bones.add(bone)
             pos = item[1]/item[0]
             offs = bone.get("charmorph_offs_" + attr)
@@ -76,6 +76,8 @@ def joints_to_vg(char, lst, verts):
             setattr(bone, attr, pos)
         else:
             logger.error("No vg for " + name)
+            if item:
+                logger.error(item[0])
             result = False
 
     # Bone roll
