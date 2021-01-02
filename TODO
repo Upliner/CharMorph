@@ -43,6 +43,7 @@ Assets:
 
 Rigging:
   - Add chest and abdomen bones for breathing
+  - Limit corrective smooth with vertex groups
   - More weight paint checking
   - Allow to re-rig MB-Lab character?
   - Live regular rig deform

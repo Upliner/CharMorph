@@ -359,6 +359,7 @@ def recalc_comb_mask(char, new_asset=None):
     assets = get_assets(char)
     if new_asset:
         assets.append(new_asset)
+    assets = [asset for asset in assets if not asset.get("cm_mask_disable")]
     if not assets:
         return
     try:

@@ -159,7 +159,7 @@ class OpFinalize(bpy.types.Operator):
             nonlocal vg_cleanup
             if ui.fin_rig == "NO":
                 return True
-            if isinstance(m.obj.parent, bpy.types.Object) and m.obj.parent.type == "ARMATURE":
+            if isinstance(m.obj.parent, bpy.types.Object) and m.obj.parent.type == "ARMATURE" and ui.fin_rig != "MR":
                 self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
                 return True
             rigs = m.char.armature

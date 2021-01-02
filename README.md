@@ -14,7 +14,7 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 
   Make a copy of local materials instead of importing them every time.
 
-  It is safe if you're creating scene from scratch, but it is recommended to disable this option if you already have MB-Lab characters on the scene.
+  It is safe if you're creating scene from scratch, but it is recommended to disable this option if you already have MB-Lab/older Charmorph characters on the scene.
 
 ## Differences from MB-Lab:
 

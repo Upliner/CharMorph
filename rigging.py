@@ -112,38 +112,57 @@ def reposition_armature_modifier(context, char):
         if ops.object.modifier_move_up.poll():
             ops.object.modifier_move_up(override, modifier=name)
 
-def apply_tweaks(rig, tweaks):
+def apply_tweaks(rig, tweaks, depth=0):
+    if depth>100:
+        logger.error("Too deep tweaks loading: " + repr(tweaks))
+        return
+
     if isinstance(tweaks, str):
-        char_name = rig.data["charmorph_template"]
-        with open(library.char_file(char_name, tweaks)) as f:
-            tweaks = yaml.safe_load(f)
+        tweaks = [tweaks]
+
     if not isinstance(tweaks, list):
         if tweaks is not None:
             logger.error("Unknown tweaks format: " + repr(tweaks))
         return
     for tweak in tweaks:
-        apply_tweak(rig, tweak)
+        apply_tweak(rig, tweak, depth)
 
 def constraint_by_target(bone, rig, type, target):
     for c in bone.constraints:
         if c.type == type and c.target == rig and c.subtarget == target:
             return c
 
-def apply_tweak(rig, tweak):
+def apply_tweak(rig, tweak, depth=0):
     if not rig.pose:
+        logger.error("No pose in rig " + repr(rig) + " no tweaks were applied")
         return
-    select = tweak.get("select")
-    if select != "constraint":
-        logger.error("Invalid tweak select: " + select)
+    if isinstance(tweak, str):
+        char_name = rig.data["charmorph_template"]
+        with open(library.char_file(char_name, tweak)) as f:
+            apply_tweaks(rig, yaml.safe_load(f), depth+1)
         return
     bone_name = tweak.get("bone")
     bone = rig.pose.bones.get(bone_name,"")
     if not bone:
         logger.error("Tweak bone not found: " + bone_name)
         return
-    constraint = bone.constraints.get(tweak.get("name",""))
-    if not constraint:
-        constraint = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
+    select = tweak.get("select")
+    if select=="bone":
+        add = tweak.get("add","")
+        if add != "constraint":
+            logger.error("bone select must contain add constraint operator: " + add)
+        constraint = bone.constraints.new(tweak.get("type"))
+        target_bone = tweak.get("target_bone")
+        if target_bone and hasattr(constraint, "target"):
+            constraint.target = rig
+            constraint.subtarget = target_bone
+    elif select == "constraint":
+        constraint = bone.constraints.get(tweak.get("name",""))
+        if not constraint:
+            constraint = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
+    else:
+        logger.error("Invalid tweak select: " + select)
+        return
     if not constraint:
         logger.error("Constraint not found: name: " + repr(tweak))
         return

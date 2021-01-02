@@ -525,11 +525,14 @@ class OpSymmetrize(bpy.types.Operator):
 
                 if abs(g1e.weight-g2w)>=0.00001:
                     if not is_deform(g2name):
-                        print("Normalizing non-deform", v.index, v2.v.index, g2name)
+                        print("Normalizing non-deform", v.index, v2.index, g2name)
                     #print("Normalizing", v.index, v2.index, g1e.weight, g2w, wgt2, g2name)
-                    wgt = (g1e.weight+g2w)/2
-                    g1e.weight = wgt
-                    g2e.weight = wgt
+                    if v2.select:
+                        wgt = (g1e.weight+g2w)/2
+                        g1e.weight = wgt
+                        g2e.weight = wgt
+                    else:
+                        g1e.weight = g2w
 
             normalize()
         return {"FINISHED"}
@@ -632,7 +635,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         name = "Tweaks file",
         description = "Path to rigify tweaks yaml file",
         default = rigify_tweaks_file,
-        subtype = 'DIR_PATH',
+        subtype = 'FILE_PATH',
     )
 
 classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, CMEDIT_PT_Utils]
