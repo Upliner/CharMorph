@@ -232,11 +232,13 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         description="Use subdivision surface for smoother look")
     fin_csmooth: bpy.props.EnumProperty(
         name="Corrective smooth",
-        default = "LENGTH_WEIGHTED",
+        default = "L_LENGTH_WEIGHTED",
         items = [
             ("NO", "None", "No corrective smooth"),
-            ("SIMPLE", "Simple", ""),
-            ("LENGTH_WEIGHTED", "Length weighted", ""),
+            ("L_SIMPLE", "Limited Simple", ""),
+            ("L_LENGTH_WEIGHTED", "Limited Length weighted", ""),
+            ("U_SIMPLE", "Unlimited Simple", ""),
+            ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
         ],
         description="Use corrective smooth to fix armature deform artifacts")
     fin_subdiv_assets: bpy.props.BoolProperty(

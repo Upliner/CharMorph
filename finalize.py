@@ -199,7 +199,11 @@ class OpFinalize(bpy.types.Operator):
 
             if ui.fin_csmooth != "NO":
                 mod = add_modifier("CORRECTIVE_SMOOTH")
-                mod.smooth_type = ui.fin_csmooth
+                mod.smooth_type = ui.fin_csmooth[2:]
+                if ui.fin_csmooth == "L" and "corrective_smooth" in obj.vertex_groups:
+                    mod.vertex_group = "corrective_smooth"
+                elif ui.fin_csmooth == "U":
+                    mod.vertex_group = ""
 
             if ui.fin_subdivision != "NO":
                 mod = add_modifier("SUBSURF")
