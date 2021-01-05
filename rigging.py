@@ -173,3 +173,30 @@ def apply_tweak(rig, tweak, depth=0):
         return
     for attr, val in tweak.get("set").items():
         setattr(constraint, attr, val)
+
+def make_gaming_rig(context, char):
+    a = context.object.data
+    bones = a.edit_bones
+    for bone in list(bones):
+        if bone.name == "ORG-face":
+            bone.parent = bones["DEF-spine.006"]
+        elif bone.use_deform:
+            bone.bbone_segments = 1 # Game engines don't support bendy bones
+        else:
+            bones.remove(bone)
+
+    for bone in context.object.pose.bones:
+        c = bone.constraints
+        while len(c) > 0:
+            c.remove(c[0])
+        bone.lock_ik_x = False
+        bone.lock_ik_y = False
+        bone.lock_ik_z = False
+        bone.lock_location = (False, False, False)
+        bone.lock_rotation = (False, False, False)
+        bone.lock_rotation_w = False
+        bone.lock_rotations_4d = False
+        bone.lock_scale = (False, False, False)
+
+    for i in range(len(a.layers)):
+        a.layers[i] = True

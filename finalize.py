@@ -57,7 +57,7 @@ def add_rig(obj, conf, rigtype, verts):
 
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    if rigtype != "RG":
+    if rigtype != "RG" and rigtype != "GM":
         copy_transform(metarig, obj)
         return
 
@@ -68,6 +68,8 @@ def add_rig(obj, conf, rigtype, verts):
     rig.name = obj.name + "_rig"
     bpy.ops.object.mode_set(mode="EDIT")
     rigging.rigify_add_deform(bpy.context, obj)
+    if rigtype == "GM":
+        rigging.make_gaming_rig(bpy.context, obj)
     bpy.ops.object.mode_set(mode="OBJECT")
 
     copy_transform(rig, obj)
@@ -86,7 +88,8 @@ def add_rig(obj, conf, rigtype, verts):
     mod.object = rig
     rigging.reposition_armature_modifier(bpy.context, obj)
 
-    rigging.apply_tweaks(rig, conf.get("tweaks",[]))
+    if rigtype == "RG":
+        rigging.apply_tweaks(rig, conf.get("tweaks",[]))
 
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
@@ -170,7 +173,7 @@ class OpFinalize(bpy.types.Operator):
                 self.report({"ERROR"}, "Multiple rigs aren't supported yet")
                 return False
             rig_type = ui.fin_rig
-            if rig_type == "RG" and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
+            if (rig_type == "RG" or rig_type == "GM") and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 rig_type = "MR"
                 vg_cleanup = False

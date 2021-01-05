@@ -218,6 +218,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         items = [
             ("NO", "None", "Don't generate armature"),
             ("MR", "Metarig only", "Generate metarig only"),
+            ("GM", "Gaming", "Generate rig compatible with game engines"),
             ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
         ],
         description="Rigging options")
