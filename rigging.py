@@ -28,12 +28,19 @@ from mathutils import Vector, Matrix
 logger = logging.getLogger(__name__)
 
 def get_joints(context, is_all):
-    joints = []
+    joints = {}
     for bone in context.object.data.edit_bones:
-        if is_all or bone.select_head:
-            joints.append(("joint_"+bone.name+"_head", bone.head, bone, "head"))
+        if is_all:
+            if not bone.use_connect:
+                joints["joint_"+bone.name+"_head"] = (bone.head, bone, "head")
+        elif bone.select_head:
+            if bone.use_connect:
+                b = bone.parent
+                joints["joint_"+b.name+"_tail"] = (b.tail, b, "tail")
+            else:
+                joints["joint_"+bone.name+"_head"] = (bone.head, bone, "head")
         if is_all or bone.select_tail:
-            joints.append(("joint_"+bone.name+"_tail", bone.tail, bone, "tail"))
+            joints["joint_"+bone.name+"_tail"] = (bone.tail, bone, "tail")
     return joints
 
 def all_joints(context):      return get_joints(context, True)
@@ -65,7 +72,7 @@ def joints_to_vg(char, lst, verts):
     avg = get_vg_avg(char, verts)
     result = True
     bones = set()
-    for name, _, bone, attr in lst:
+    for name, (_, bone, attr) in lst.items():
         item = avg.get(name)
         if item and item[0]>0.1:
             bones.add(bone)
@@ -152,10 +159,8 @@ def apply_tweak(rig, tweak, depth=0):
         if add != "constraint":
             logger.error("bone select must contain add constraint operator: " + add)
         constraint = bone.constraints.new(tweak.get("type"))
-        target_bone = tweak.get("target_bone")
-        if target_bone and hasattr(constraint, "target"):
+        if hasattr(constraint, "target"):
             constraint.target = rig
-            constraint.subtarget = target_bone
     elif select == "constraint":
         constraint = bone.constraints.get(tweak.get("name",""))
         if not constraint:

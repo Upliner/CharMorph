@@ -74,17 +74,18 @@ def get_char(context):
 def kdtree_from_bones(bones):
     kd = mathutils.kdtree.KDTree(len(bones)*2)
     for i, bone in enumerate(bones):
-        kd.insert(bone.head,i*2)
+        if not bone.use_connect:
+            kd.insert(bone.head,i*2)
         kd.insert(bone.tail,i*2+1)
     kd.balance()
     return kd
 
 def joint_list_extended(context, xmirror):
     result = rigging.selected_joints(context)
-    bone_set = set(tup[0] for tup in result)
     bones = context.object.data.edit_bones
     kd = kdtree_from_bones(bones)
-    for name, co, _, _ in result.copy():
+    for name, tup in list(result.items()):
+        co = tup[0]
         checklist = [co]
         if xmirror:
             checklist.append(mathutils.Vector((-co[0],co[1],co[2])))
@@ -93,9 +94,8 @@ def joint_list_extended(context, xmirror):
                 bone = bones[jid//2]
                 attr = "head" if jid&1==0 else "tail"
                 name = "joint_{}_{}".format(bone.name, attr)
-                if name not in bone_set:
-                    result.append((name, co3, bone, attr))
-                    bone_set.add(name)
+                if name not in result:
+                    result[name] = (co3, bone, attr)
     return result
 
 def editable_bones_poll(context):
@@ -266,7 +266,8 @@ class OpCalcVg(bpy.types.Operator):
 
         if typ == "CU":
             vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.add((co, v.index)), None)
-            for name, co, _, _ in joints:
+            for name, tup in joints.items():
+                co = tup[0]
                 vg = char.vertex_groups.get(name)
                 if not vg:
                     logger.error(name + " doesn't have current vertex group")
@@ -280,7 +281,8 @@ class OpCalcVg(bpy.types.Operator):
             elif typ == "NF":
                 bvh = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char.data.vertices], [f.vertices for f in char.data.polygons])
 
-            for name, co, _, _ in joints:
+            for name, tup in joints.items():
+                co = tup[0]
                 if typ == "NP":
                     recalc_np(char, co, name, kd, ui.rig_vg_n)
                 elif typ == "NR":
@@ -296,7 +298,7 @@ class OpCalcVg(bpy.types.Operator):
 
         if ui.rig_vg_offs == "R":
             avg = rigging.get_vg_avg(char, None)
-            for name, co, bone, attr in joints:
+            for name, (co, bone, attr) in joints.items():
                 item = avg.get(name)
                 if item:
                     offs = co-(item[1]/item[0])
@@ -308,7 +310,7 @@ class OpCalcVg(bpy.types.Operator):
                 else:
                     logger.error("Can't calculate offset for " + name)
         elif ui.rig_vg_offs == "C":
-            for _, _, bone, attr in joints:
+            for _, bone, attr in joints.values():
                 k = "charmorph_offs_"+attr
                 if k in bone:
                     del bone[k]
@@ -354,6 +356,7 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_order = 2
 
     def draw(self, context):
+        self.layout.operator("cmedit.cleanup_joints")
         self.layout.operator("cmedit.check_symmetry")
         self.layout.operator("cmedit.symmetrize_vg")
         self.layout.operator("cmedit.transfer")
@@ -574,6 +577,29 @@ class OpTransfer(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class OpCleanupJoints(bpy.types.Operator):
+    bl_idname = "cmedit.cleanup_joints"
+    bl_label = "Cleanup joint VGs"
+    bl_description = "Remove all unused joint_* vertex groups. You must be in edit armature mode."
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_ARMATURE" and get_char(context)
+
+    def execute(self, context):
+        char = get_char(context)
+        joints = rigging.all_joints(context)
+        if len(joints) == 0:
+            self.report({'ERROR'}, "No joints found")
+            return
+
+        for vg in list(char.vertex_groups):
+            if vg.name.startswith("joint_") and vg.name not in joints:
+               char.vertex_groups.remove(vg)
+
+        return {"FINISHED"}
+
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
@@ -638,7 +664,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         subtype = 'FILE_PATH',
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
