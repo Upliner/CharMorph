@@ -180,6 +180,12 @@ def make_gaming_rig(context, char):
     for bone in list(bones):
         if bone.name == "ORG-face":
             bone.parent = bones["DEF-spine.006"]
+        elif bone.name.startswith("DEF-breast.") or bone.name.startswith("DEF-shoulder."):
+            bone.parent = bones["DEF-spine.003"]
+        elif bone.name.startswith("DEF-pelvis.") or bone.name == "DEF-thigh.L" or bone.name == "DEF-thigh.R":
+            bone.parent = bones["DEF-spine"]
+        elif bone.name == "DEF-upper_arm.L" or bone.name == "DEF-upper_arm.R":
+            bone.parent = bones["DEF-shoulder." + bone.name[-1:]]
         elif bone.use_deform:
             bone.bbone_segments = 1 # Game engines don't support bendy bones
         else:
