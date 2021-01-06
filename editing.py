@@ -21,7 +21,7 @@
 import logging, numpy, os
 import bpy, bpy_extras, mathutils
 
-from . import yaml, rigging
+from . import yaml, rigging, library
 
 logger = logging.getLogger(__name__)
 
@@ -339,12 +339,24 @@ class OpRigifyTweaks(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.object.type=="ARMATURE" and context.mode in ["OBJECT", "POSE"]
+        return context.object and context.object.type=="ARMATURE"
 
     def execute(self, context):
         with open(context.window_manager.cmedit_ui.rig_tweaks_file) as f:
             tweaks = yaml.safe_load(f)
-        rigging.apply_tweaks(context.object, tweaks)
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(context.object), tweaks)
+        if len(editmode_tweaks)>0:
+            old_mode = context.mode
+            override = context.copy()
+            bpy.ops.object.mode_set(override, mode="EDIT")
+            for tweak in editmode_tweaks:
+                rigging.apply_editmode_tweak(context, tweak)
+            if old_mode == "EDIT_ARMATURE":
+                bpy.ops.object.mode_set(override, mode="OBJECT")
+            bpy.ops.object.mode_set(override, mode=old_mode)
+
+        for tweak in tweaks:
+            rigging.apply_tweak(context.object, tweak)
         return {"FINISHED"}
 
 class CMEDIT_PT_Utils(bpy.types.Panel):

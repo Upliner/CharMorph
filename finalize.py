@@ -36,9 +36,10 @@ def copy_transform(target, source):
     target.scale = source.scale
 
 def add_rig(obj, conf, rigtype, verts):
+    char = library.obj_char(obj)
     if conf.get("type") != "rigify":
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
-    metarig = library.import_obj(library.obj_char(obj).path(conf["file"]), conf["obj_name"], "ARMATURE")
+    metarig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
         raise RigException("Rig import failed")
 
@@ -66,11 +67,20 @@ def add_rig(obj, conf, rigtype, verts):
     remove_metarig()
     rig = bpy.context.object
     rig.name = obj.name + "_rig"
+    if rigtype == "RG":
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(char, conf.get("tweaks",[]))
+    else:
+        editmode_tweaks, tweaks = ([], [])
     bpy.ops.object.mode_set(mode="EDIT")
     rigging.rigify_add_deform(bpy.context, obj)
     if rigtype == "GM":
         rigging.make_gaming_rig(bpy.context, obj)
+    for tweak in editmode_tweaks:
+        rigging.apply_editmode_tweak(bpy.context, tweak)
     bpy.ops.object.mode_set(mode="OBJECT")
+
+    for tweak in tweaks:
+        rigging.apply_tweak(rig, tweak)
 
     copy_transform(rig, obj)
 
@@ -87,9 +97,6 @@ def add_rig(obj, conf, rigtype, verts):
     mod.use_vertex_groups = True
     mod.object = rig
     rigging.reposition_armature_modifier(bpy.context, obj)
-
-    if rigtype == "RG":
-        rigging.apply_tweaks(rig, conf.get("tweaks",[]))
 
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)

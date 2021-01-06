@@ -119,7 +119,7 @@ def reposition_armature_modifier(context, char):
         if ops.object.modifier_move_up.poll():
             ops.object.modifier_move_up(override, modifier=name)
 
-def apply_tweaks(rig, tweaks, depth=0):
+def unpack_tweaks(char, tweaks, editmode_tweaks=[], regular_tweaks=[], depth=0):
     if depth>100:
         logger.error("Too deep tweaks loading: " + repr(tweaks))
         return
@@ -132,47 +132,82 @@ def apply_tweaks(rig, tweaks, depth=0):
             logger.error("Unknown tweaks format: " + repr(tweaks))
         return
     for tweak in tweaks:
-        apply_tweak(rig, tweak, depth)
+        if isinstance(tweak, str):
+            with open(char.path(tweak)) as f:
+                unpack_tweaks(char, yaml.safe_load(f), editmode_tweaks, regular_tweaks, depth+1)
+        elif tweak.get("tweak")=="rigify_sliding_joint":
+            editmode_tweaks.append(tweak)
+            regular_tweaks.append(tweak)
+        elif tweak.get("select") == "edit_bone":
+            editmode_tweaks.append(tweak)
+        else:
+            regular_tweaks.append(tweak)
+    return (editmode_tweaks, regular_tweaks)
+
+def constraint_by_type(bone, type):
+    for c in bone.constraints:
+        if c.type == type:
+            return c
 
 def constraint_by_target(bone, rig, type, target):
     for c in bone.constraints:
         if c.type == type and c.target == rig and c.subtarget == target:
             return c
 
-def apply_tweak(rig, tweak, depth=0):
+def apply_editmode_tweak(context, tweak):
+    if tweak.get("tweak") == "rigify_sliding_joint":
+        sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], tweak["side"])
+    elif tweak.get("select") == "edit_bone":
+        bone_name = tweak.get("bone")
+        bone = context.object.data.edit_bones.get(tweak.get("bone"))
+        if not bone:
+            logger.error("Tweak bone not found: " + bone_name)
+            return
+        for attr, val in tweak.get("set").items():
+            setattr(bone, attr, val)
+
+def apply_tweak(rig, tweak):
     if not rig.pose:
         logger.error("No pose in rig " + repr(rig) + " no tweaks were applied")
         return
-    if isinstance(tweak, str):
-        char_name = rig.data["charmorph_template"]
-        with open(library.char_file(char_name, tweak)) as f:
-            apply_tweaks(rig, yaml.safe_load(f), depth+1)
+    if tweak.get("tweak") == "rigify_sliding_joint":
+        sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], tweak["side"], tweak["influence"])
         return
     bone_name = tweak.get("bone")
-    bone = rig.pose.bones.get(bone_name,"")
-    if not bone:
-        logger.error("Tweak bone not found: " + bone_name)
-        return
     select = tweak.get("select")
     if select=="bone":
-        add = tweak.get("add","")
-        if add != "constraint":
-            logger.error("bone select must contain add constraint operator: " + add)
-        constraint = bone.constraints.new(tweak.get("type"))
-        if hasattr(constraint, "target"):
-            constraint.target = rig
+        obj = rig.data.bones.get(bone_name)
+    elif select=="pose_bone":
+        obj = rig.pose.bones.get(bone_name)
+        add = tweak.get("add")
+        if add is None:
+            pass
+        elif add == "constraint":
+            obj = obj.constraints.new(tweak.get("type"))
+            if hasattr(obj, "target"):
+                obj.target = rig
+        else:
+            logger.error("Invalid add operator: " + repr(tweak))
     elif select == "constraint":
-        constraint = bone.constraints.get(tweak.get("name",""))
-        if not constraint:
-            constraint = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
+        bone = rig.pose.bones.get(bone_name)
+        obj = bone.constraints.get(tweak.get("name",""))
+        if not obj:
+            obj = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
     else:
-        logger.error("Invalid tweak select: " + select)
+        logger.error("Invalid tweak select: " + repr(tweak))
         return
-    if not constraint:
-        logger.error("Constraint not found: name: " + repr(tweak))
+    if not obj:
+        logger.error("Tweak object not found: " + repr(tweak))
         return
     for attr, val in tweak.get("set").items():
-        setattr(constraint, attr, val)
+        setattr(obj, attr, val)
+
+def set_lock(bone, is_lock):
+    bone.lock_location = (is_lock, is_lock, is_lock)
+    bone.lock_rotation = (is_lock, is_lock, is_lock)
+    bone.lock_rotation_w = is_lock
+    bone.lock_rotations_4d = is_lock
+    bone.lock_scale = (is_lock, is_lock, is_lock)
 
 def make_gaming_rig(context, char):
     a = context.object.data
@@ -195,14 +230,91 @@ def make_gaming_rig(context, char):
         c = bone.constraints
         while len(c) > 0:
             c.remove(c[0])
-        bone.lock_ik_x = False
-        bone.lock_ik_y = False
-        bone.lock_ik_z = False
-        bone.lock_location = (False, False, False)
-        bone.lock_rotation = (False, False, False)
-        bone.lock_rotation_w = False
-        bone.lock_rotations_4d = False
-        bone.lock_scale = (False, False, False)
+        set_lock(bone, False)
 
     for i in range(len(a.layers)):
         a.layers[i] = True
+
+
+# My implementation of sliding joints on top of rigify
+# Thanks to DanPro for the idea!
+# https://www.youtube.com/watch?v=c7csuy-09k8
+
+def sliding_joint_create(context, upper_bone, lower_bone, side):
+    bones = context.object.data.edit_bones
+
+    mch_name = "MCH-{}.{}".format(lower_bone, side)
+
+    if mch_name in bones:
+        raise Exception("Seems to already have sliding joint")
+
+    tweak_name = "{}_tweak.{}".format(lower_bone, side)
+
+    bone = bones["MCH-" + tweak_name]
+    bone.parent = bone.parent.parent
+    bone.name = "MCH-{}_tweak.{}.002".format(upper_bone, side)
+    bone.align_roll(bone.parent.z_axis)
+
+    mch_layer = bone.layers
+
+    bone = bones[tweak_name]
+    bone.name = "{}_tweak.{}.002".format(upper_bone, side)
+    tweak_tail = bone.tail
+    tweak_layer = bone.layers
+    tweak_size = bone.bbone_x
+
+    bone = bones.new(mch_name)
+    bone.parent = bones["ORG-{}.{}".format(lower_bone, side)]
+    bone.use_connect = True
+    bone.use_deform = False
+    bone.tail = bone.parent.head
+    org_roll = bone.parent.z_axis
+    bone.align_roll(-org_roll)
+    bone.layers = mch_layer
+    bone.bbone_x = bone.parent.bbone_x
+    bone.bbone_z = bone.parent.bbone_z
+    mch_bone = bone
+
+    bone = bones.new(tweak_name)
+    bone.parent = mch_bone
+    bone.use_connect = True
+    bone.use_deform = False
+    bone.tail = tweak_tail
+    bone.align_roll(org_roll)
+    bone.layers = tweak_layer
+    bone.bbone_x = tweak_size
+    bone.bbone_z = tweak_size
+
+    bones["DEF-{}.{}".format(lower_bone, side)].use_connect = False
+
+def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
+    bones = rig.pose.bones
+
+    mch_name = "MCH-{}.{}".format(lower_bone, side)
+    tweak_name = "{}_tweak.{}".format(lower_bone, side)
+    old_tweak = "{}_tweak.{}.002".format(upper_bone, side)
+
+    obone = bones[old_tweak]
+    del obone["rubber_tweak"] # DEF bones aren't connected anymore so rubber tweak is not possible now
+    bone = bones[tweak_name]
+    bone.custom_shape = obone.custom_shape
+    bone.bone_group = obone.bone_group
+
+    set_lock(bones[mch_name], True)
+
+    c = bones[mch_name].constraints.new("COPY_ROTATION")
+    c.target = rig
+    c.subtarget = "ORG-{}.{}".format(lower_bone, side)
+    c.use_y = False
+    c.use_z = False
+    c.influence = influence
+    c.owner_space = "LOCAL"
+    c.target_space = "LOCAL"
+
+    def replace_tweak(bone):
+        for c in bone.constraints:
+            if c.type == "COPY_TRANSFORMS" and c.target == rig and c.subtarget == old_tweak:
+                c.subtarget = tweak_name
+
+    replace_tweak(bones["DEF-{}.{}".format(lower_bone, side)])
+    replace_tweak(bones["MCH-{}.001".format(tweak_name)])
