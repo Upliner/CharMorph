@@ -342,6 +342,9 @@ def do_fit(char, assets):
     if bpy.context.window_manager.charmorph_ui.hair_deform:
         hair.fit_all_hair(bpy.context, char, diff_arr, False)
 
+def masking_enabled(asset):
+    asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']
+
 def recalc_comb_mask(char, new_asset=None):
     t = Timer()
     # Cleanup old masks
@@ -359,7 +362,7 @@ def recalc_comb_mask(char, new_asset=None):
     assets = get_assets(char)
     if new_asset:
         assets.append(new_asset)
-    assets = [asset for asset in assets if not asset.get("cm_mask_disable")]
+    assets = [asset for asset in assets if masking_enabled(asset)]
     if not assets:
         return
     try:
@@ -394,7 +397,7 @@ def fit_new(char, asset):
     if ui.fitting_transforms:
         apply_transforms(asset)
 
-    if asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']:
+    if masking_enabled(asset):
         if ui.fitting_mask == "SEPR":
             get_obj_weights(char, asset, True)
         elif ui.fitting_mask == "COMB":
