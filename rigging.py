@@ -119,10 +119,15 @@ def reposition_armature_modifier(context, char):
         if ops.object.modifier_move_up.poll():
             ops.object.modifier_move_up(override, modifier=name)
 
-def unpack_tweaks(char, tweaks, editmode_tweaks=[], regular_tweaks=[], depth=0):
+def unpack_tweaks(char, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):
     if depth>100:
         logger.error("Too deep tweaks loading: " + repr(tweaks))
         return
+
+    if editmode_tweaks is None:
+        editmode_tweaks = []
+    if regular_tweaks is None:
+        regular_tweaks = []
 
     if isinstance(tweaks, str):
         tweaks = [tweaks]
@@ -253,6 +258,7 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     bone = bones["MCH-" + tweak_name]
     bone.parent = bone.parent.parent
     bone.name = "MCH-{}_tweak.{}.002".format(upper_bone, side)
+    bone.align_orientation(bone.parent)
     bone.align_roll(bone.parent.z_axis)
 
     mch_layer = bone.layers
@@ -262,6 +268,8 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     tweak_tail = bone.tail
     tweak_layer = bone.layers
     tweak_size = bone.bbone_x
+    bone.align_orientation(bone.parent)
+    bone.align_roll(bone.parent.z_axis)
 
     bone = bones.new(mch_name)
     bone.parent = bones["ORG-{}.{}".format(lower_bone, side)]
@@ -277,9 +285,10 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
 
     bone = bones.new(tweak_name)
     bone.parent = mch_bone
-    bone.use_connect = True
+    bone.head = mch_bone.tail
     bone.use_deform = False
     bone.tail = tweak_tail
+    bone.align_orientation(mch_bone.parent)
     bone.align_roll(org_roll)
     bone.layers = tweak_layer
     bone.bbone_x = tweak_size
@@ -299,6 +308,8 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     bone = bones[tweak_name]
     bone.custom_shape = obone.custom_shape
     bone.bone_group = obone.bone_group
+    bone.lock_rotation = (True, False, True)
+    bone.lock_scale = (False, True, False)
 
     set_lock(bones[mch_name], True)
 
