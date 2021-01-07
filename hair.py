@@ -304,6 +304,29 @@ def make_scalp(obj, name):
     finally:
         bm.free()
 
+def diff_array(context, char):
+    if not char.find_armature():
+        return fitting.diff_array(char)
+
+    # Temporarily disable all modifiers that can make vertex mapping impossible
+    restore_modifiers = []
+    for m in char.modifiers:
+        if (m.type == "SUBSURF" or m.type == "MASK") and m.show_viewport:
+            m.show_viewport = False
+            restore_modifiers.append(m)
+    bm = bmesh.new()
+    try:
+        bm.from_object(char, context.evaluated_depsgraph_get())
+        result = numpy.empty((len(bm.verts),3))
+        verts = char.data.vertices
+        for i, vert in enumerate(bm.verts):
+            result[i] = vert.co-verts[i].co
+        return result
+    finally:
+        bm.free()
+        for m in restore_modifiers:
+            m.show_viewport = True
+
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
     bl_label = "Refit hair"
@@ -315,7 +338,7 @@ class OpRefitHair(bpy.types.Operator):
 
     def execute(self, context):
         char = fitting.get_char()
-        if not fit_all_hair(context, char, fitting.diff_array(char), True):
+        if not fit_all_hair(context, char, diff_array(context, char), True):
             self.report({"ERROR"},"No hair fitting data found")
             return {"CANCELLED"}
         return {"FINISHED"}

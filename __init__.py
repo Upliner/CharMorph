@@ -303,8 +303,9 @@ def on_select_object():
             pass
 
         # Prevent morphing of rigged characters
-        if obj.parent and obj.parent.type == "ARMATURE" and len(obj.parent.users_collection)>0:
-            obj = obj.parent
+        arm = obj.find_armature()
+        if arm:
+            obj = arm
 
     if obj == morphing.last_object:
         return

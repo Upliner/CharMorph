@@ -352,8 +352,9 @@ class OpRigifyTweaks(bpy.types.Operator):
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(context, tweak)
             if old_mode == "EDIT_ARMATURE":
-                bpy.ops.object.mode_set(override, mode="OBJECT")
-            bpy.ops.object.mode_set(override, mode=old_mode)
+                context.object.update_from_editmode()
+            else:
+                bpy.ops.object.mode_set(override, mode=old_mode)
 
         for tweak in tweaks:
             rigging.apply_tweak(context.object, tweak)
