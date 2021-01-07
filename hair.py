@@ -334,7 +334,7 @@ class OpRefitHair(bpy.types.Operator):
     bl_options = {"UNDO"}
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and fitting.get_char()
+        return context.mode in ["OBJECT", "POSE"] and fitting.get_char()
 
     def execute(self, context):
         char = fitting.get_char()
