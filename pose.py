@@ -57,15 +57,15 @@ bone_map = {
 }
 
 for side in ["L", "R"]:
-    bone_map["thigh_%s" % side] = ("thigh_fk.%s" % side, m2)
-    bone_map["calf_%s" % side] = ("shin_fk.%s" % side, m2)
-    bone_map["foot_%s" % side] = ("foot_fk.%s" % side, m2)
-    bone_map["toes_%s" % side] = ("toe.%s" % side, m1)
-    bone_map["breast_%s" % side] = ("breast.%s" % side, m1)
-    bone_map["clavicle_%s" % side] = ("shoulder.%s" % side, shoulder_rot[side])
-    bone_map["upperarm_%s" % side] = ("upper_arm_fk.%s" % side, m1)
-    bone_map["lowerarm_%s" % side] = ("forearm_fk.%s" % side, m1)
-    bone_map["hand_%s" % side] = ("hand_fk.%s" % side, flip_x_z[side])
+    bone_map["thigh_" + side] = ("thigh_fk." + side, m2)
+    bone_map["calf_" + side] = ("shin_fk." + side, m2)
+    bone_map["foot_" + side] = ("foot_fk." + side, m2)
+    bone_map["toes_" + side] = ("toe." + side, m1)
+    bone_map["breast_" + side] = ("breast." + side, m1)
+    bone_map["clavicle_" + side] = ("shoulder." + side, shoulder_rot[side])
+    bone_map["upperarm_" + side] = ("upper_arm_fk." + side, m1)
+    bone_map["lowerarm_" + side] = ("forearm_fk." + side, m1)
+    bone_map["hand_" + side] = ("hand_fk." + side, flip_x_z[side])
     for i in range(1,4):
         is_master = "_master" if i==1 else ""
         bone_map["thumb0%d_%s" % (i, side)] = ("thumb.0%d%s.%s" % (i, is_master, side), m2)
@@ -147,6 +147,7 @@ def apply_pose(ui, context):
         if not target_bone:
             logger.debug("no target for " + k)
             continue
+        target_bone.rotation_mode="QUATERNION"
         target_bone.rotation_quaternion = matrix @ Vector(v)
 
     spine_fk = rig.pose.bones.get("spine_fk")
@@ -179,13 +180,16 @@ def apply_pose(ui, context):
 
     if ui.pose_ik2fk:
         try:
-            ik2fk_operator = getattr(bpy.ops.pose, "rigify_limb_ik2fk_" + rig_id)
-            if rig_id not in ik2fk_map:
-                scan_rigify_modules()
-            ik2fk_limbs = ik2fk_map[rig_id]
-            if not ik2fk_limbs:
-                logger.error("CharMorph doesn't support IK2FK for your Rigify version")
+            op = getattr(bpy.ops.pose, "rigify_limb_ik2fk_" + rig_id)
+            if op.poll():
+                ik2fk_operator = op
+                if rig_id not in ik2fk_map:
+                    scan_rigify_modules()
+                ik2fk_limbs = ik2fk_map[rig_id]
+                if not ik2fk_limbs:
+                    logger.error("CharMorph doesn't support IK2FK for your Rigify version")
         except:
+            logger.error("Rigify UI doesn't seem to be available. IK2FK is disabled")
             pass
     if ik2fk_operator and ik2fk_limbs:
         fail=False
