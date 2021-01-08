@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging
+import logging, re
 import bpy
 
 from . import library
@@ -72,6 +72,44 @@ for side in ["L", "R"]:
         for finger in ["index", "middle", "ring", "pinky"]:
             bone_map["%s0%d_%s" % (finger, i, side)] = ("f_%s.0%d%s.%s" % (finger, i, is_master, side), m2)
 
+
+# Different rigify versions use different parameters for IK2FK so we need to scan its modules
+
+ik2fk_map = {}
+
+re_rigid = re.compile(r'^rig_id = "([0-9a-z]*)"$', re.MULTILINE)
+
+def scan_rigify_modules():
+    for t in bpy.data.texts:
+        s = t.as_string()
+        m = re_rigid.search(s)
+        if not m:
+            continue
+        rig_id = m.group(1)
+        limbs = []
+        s = s[m.end(0)+1:]
+        re_operator = re.compile(r"^( *)props = [0-9a-z_]*\.operator\('pose.rigify_limb_ik2fk_%s'" % rig_id, re.MULTILINE)
+
+        while True:
+            m = re_operator.search(s)
+            if not m:
+                break
+            indent = m.group(1)
+            re_prop = re.compile(r"%sprops.([0-9a-z_]*) = '([^']*)'$" % indent)
+            props = {}
+            while True:
+                s = s[m.end(0):]
+                s = s[s.find("\n")+1:]
+                line = s[:s.find("\n")]
+                m = re_prop.match(line)
+                if not m:
+                    break
+                props[m.group(1)] = m.group(2)
+            if len(props)>0:
+                limbs.append(props)
+        if len(limbs)>0:
+            ik2fk_map[rig_id] = limbs
+
 def apply_pose(ui, context):
     if not ui.pose or ui.pose==" ":
         return
@@ -123,45 +161,66 @@ def apply_pose(ui, context):
     if hasattr(context, "evaluated_depsgraph_get"):
         # Calculate lowest point for sitting and similiar poses
         erig = rig.evaluated_get(context.evaluated_depsgraph_get())
-        min_z = 1
-        def check_bone(name):
-            nonlocal min_z
-            b = erig.pose.bones.get(name)
-            if not b:
-                return
+        torso = rig.pose.bones.get("torso")
+        min_z = torso.head[2]
+        for bone in erig.pose.bones:
+            if not bone.name.startswith("ORG-"):
+                continue
             for attr in ["head","tail"]:
-                val = getattr(b, attr)
+                val = getattr(bone, attr)
                 if val[2] < min_z:
                     min_z = val[2]
-        check_bone("head")
-        for side in ["L","R"]:
-            for bone in ["ORG-heel.02","toe","hand"]:
-                check_bone("%s.%s" % (bone, side))
         min_z = max(min_z, 0)
-        torso = rig.pose.bones.get("torso")
         if torso:
             torso.location = (0, 0, -min_z)
 
-    ik2fk = None
-    if ui.pose_ik2fk:
-        ik2fk_attr = "rigify_limb_ik2fk_" + rig_id
-        if hasattr(bpy.ops.pose, ik2fk_attr):
-            ik2fk = getattr(bpy.ops.pose, ik2fk_attr)
-    if ik2fk:
-        for side in ["L","R"]:
-            ik2fk(prop_bone='upper_arm_parent.' + side,
-                fk_bones='["upper_arm_fk.{0}", "forearm_fk.{0}", "hand_fk.{0}"]'.format(side),
-                ik_bones = '["upper_arm_ik.{0}", "MCH-forearm_ik.{0}", "MCH-upper_arm_ik_target.{0}"]'.format(side),
-                ctrl_bones = '["upper_arm_ik.{0}", "hand_ik.{0}", "upper_arm_ik_target.{0}"]'.format(side),
-                extra_ctrls = '[]')
-            ik2fk(prop_bone='thigh_parent.' + side,
-                fk_bones='["thigh_fk.{0}", "shin_fk.{0}", "foot_fk.{0}", "toe.{0}"]'.format(side),
-                ik_bones = '["thigh_ik.{0}", "MCH-shin_ik.{0}", "MCH-thigh_ik_target.{0}"]'.format(side),
-                ctrl_bones = '["thigh_ik.{0}", "foot_ik.{0}", "thigh_ik_target.{0}"]'.format(side),
-                extra_ctrls = '["foot_heel_ik.{0}", "foot_spin_ik.{0}"]'.format(side))
+    ik2fk_operator = None
+    ik2fk_limbs = None
 
-        for k, v in ik_fk.items():
-            rig.pose.bones[k]["IK_FK"] = v
+    if ui.pose_ik2fk:
+        try:
+            ik2fk_operator = getattr(bpy.ops.pose, "rigify_limb_ik2fk_" + rig_id)
+            if rig_id not in ik2fk_map:
+                scan_rigify_modules()
+            ik2fk_limbs = ik2fk_map[rig_id]
+            if not ik2fk_limbs:
+                logger.error("CharMorph doesn't support IK2FK for your Rigify version")
+        except:
+            pass
+    if ik2fk_operator and ik2fk_limbs:
+        fail=False
+        for limb in ik2fk_limbs:
+            result = ik2fk_operator(**limb)
+            if "FINISHED" not in result:
+                fail = True
+
+        if fail:
+            logger.error("IK2FK failed")
+        else:
+            for k, v in ik_fk.items():
+                rig.pose.bones[k]["IK_FK"] = v
+
+def poll(cls, context):
+    if not (context.mode in ["OBJECT", "POSE"] and context.active_object and
+        context.active_object.type == "ARMATURE" and
+        context.active_object.data.get("rig_id")):
+        return False
+    char = library.obj_char(context.active_object)
+    return len(char.poses) > 0
+
+class OpApplyPose(bpy.types.Operator):
+    bl_idname = "charmorph.apply_pose"
+    bl_label = "Apply pose"
+    bl_description = "Apply selected pose"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return poll(cls, context)
+
+    def execute(self, context):
+        apply_pose(context.window_manager.charmorph_ui, context)
+        return {"FINISHED"}
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):
     bl_label = "Pose"
@@ -172,15 +231,11 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        if not (context.mode in ["OBJECT", "POSE"] and context.active_object and
-            context.active_object.type == "ARMATURE" and
-            context.active_object.data.get("rig_id")):
-            return False
-        char = library.obj_char(context.active_object)
-        return len(char.poses) > 0
+        return poll(cls, context)
 
     def draw(self, context):
         self.layout.prop(context.window_manager.charmorph_ui, "pose_ik2fk")
         self.layout.prop(context.window_manager.charmorph_ui, "pose")
+        self.layout.operator("charmorph.apply_pose")
 
-classes = [CHARMORPH_PT_Pose]
+classes = [CHARMORPH_PT_Pose, OpApplyPose]

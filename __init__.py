@@ -263,7 +263,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     pose: bpy.props.EnumProperty(
         name="Pose",
         items = library.get_poses,
-        update = pose.apply_pose,
         description="Select pose from library")
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
