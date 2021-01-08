@@ -423,11 +423,14 @@ class OpCreateHair(bpy.types.Operator):
         context.view_layer.objects.active = dst_obj
 
         override["object"] = dst_obj
-        for i, m in enumerate(dst_obj.modifiers):
+        cnt = len(dst_obj.modifiers)
+        for m in list(dst_obj.modifiers):
+            cnt -= 1
             if is_obstructive_modifier(m):
-                for j in range(len(dst_obj.modifiers)-i-1):
+                for j in range(cnt):
                     if bpy.ops.object.modifier_move_down.poll(override):
                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
+                cnt += 1
 
         for m in restore_modifiers:
             m.show_viewport = True
