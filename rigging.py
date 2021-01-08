@@ -116,7 +116,7 @@ def reposition_armature_modifier(context, char):
         if mod.type != "MASK":
             break
     for i in range(pos-i):
-        if ops.object.modifier_move_up.poll():
+        if ops.object.modifier_move_up.poll(override):
             ops.object.modifier_move_up(override, modifier=name)
 
 def unpack_tweaks(char, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):

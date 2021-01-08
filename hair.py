@@ -304,16 +304,24 @@ def make_scalp(obj, name):
     finally:
         bm.free()
 
+def is_obstructive_modifier(m):
+    return m.type == "SUBSURF" or m.type == "MASK"
+
+# Temporarily disable all modifiers that can make vertex mapping impossible
+def disable_modifiers(obj):
+    lst = []
+    for m in obj.modifiers:
+        if is_obstructive_modifier(m) and m.show_viewport:
+            m.show_viewport = False
+            lst.append(m)
+    return lst
+
 def diff_array(context, char):
     if not char.find_armature():
         return fitting.diff_array(char)
 
-    # Temporarily disable all modifiers that can make vertex mapping impossible
-    restore_modifiers = []
-    for m in char.modifiers:
-        if (m.type == "SUBSURF" or m.type == "MASK") and m.show_viewport:
-            m.show_viewport = False
-            restore_modifiers.append(m)
+    restore_modifiers = disable_modifiers(char)
+
     bm = bmesh.new()
     try:
         bm.from_object(char, context.evaluated_depsgraph_get())
@@ -383,6 +391,7 @@ class OpCreateHair(bpy.types.Operator):
             return {"CANCELLED"}
 
         override["particle_system"] = src_psys
+        restore_modifiers = []
         if ui.hair_scalp:
             obj.particle_systems.active_index = idx
             bpy.ops.particle.disconnect_hair(override)
@@ -390,6 +399,7 @@ class OpCreateHair(bpy.types.Operator):
             dst_obj = bpy.data.objects.new("hair_" + style, obj.data)
             attach_scalp(char, dst_obj)
         else:
+            restore_modifiers = disable_modifiers(char)
             dst_obj = char
             fitting.do_fit(char, [obj])
             obj.parent=char
@@ -408,9 +418,19 @@ class OpCreateHair(bpy.types.Operator):
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
         s.material = get_material_slot(context, dst_obj, "hair_" + style)
-        fit_hair(context, char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, fitting.diff_array(char), True)
+        fit_hair(context, char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
 
         context.view_layer.objects.active = dst_obj
+
+        override["object"] = dst_obj
+        for i, m in enumerate(dst_obj.modifiers):
+            if is_obstructive_modifier(m):
+                for j in range(len(dst_obj.modifiers)-i-1):
+                    if bpy.ops.object.modifier_move_down.poll(override):
+                       bpy.ops.object.modifier_move_down(override, modifier=m.name)
+
+        for m in restore_modifiers:
+            m.show_viewport = True
 
         return {"FINISHED"}
 
