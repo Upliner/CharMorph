@@ -158,32 +158,30 @@ def calc_weights(char, arr):
 
     # calculate weights based on n nearest vertices
     kd_char = fitting.kdtree_from_verts(char_verts)
-    weights = [[{ idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32) } for co in keys ] for keys in arr]
+    weights = [{ idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32) } for co in arr]
 
     t.time("hair_kdtree")
 
     bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
-    for i, keys in enumerate(arr):
-        for j, co in enumerate(keys):
-            loc, norm, idx, fdist = bvh_char.find_nearest(co)
+    for i, co in enumerate(arr):
+        loc, norm, idx, fdist = bvh_char.find_nearest(co)
 
-            fdist = max(fdist, fitting.epsilon)
+        fdist = max(fdist, fitting.epsilon)
 
-            if not loc or ((co-loc).dot(norm)<=0 and fdist > fitting.dist_thresh):
-                continue
+        if not loc or ((co-loc).dot(norm)<=0 and fdist > fitting.dist_thresh):
+            continue
 
-            d = weights[i][j]
-            for vi in char_faces[idx].vertices:
-                d[vi] = max(d.get(vi,0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
+        d = weights[i]
+        for vi in char_faces[idx].vertices:
+            d[vi] = max(d.get(vi,0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
 
     t.time("hair_bvh")
 
-    for arr in weights:
-        for i, d in enumerate(arr):
-            thresh = max(d.values())/16
-            d = { k:v for k,v in d.items() if v > thresh }
-            total = sum(w for w in d.values())
-            arr[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
+    for i, d in enumerate(weights):
+        thresh = max(d.values())/16
+        d = { k:v for k,v in d.items() if v > thresh }
+        total = sum(w for w in d.values())
+        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
     t.time("hair_normalize")
 
     return weights
@@ -211,17 +209,17 @@ def get_data(char, psys, new):
         return None, None
 
     try:
-        arr = numpy.load(char_conf.path("hairstyles/%s.npy" % style), allow_pickle=True)
+        arr = numpy.load(char_conf.path("hairstyles/%s.npz" % style))
     except Exception as e:
         logger.error(str(e))
         return None, None
 
-    if len(arr) != len(psys.particles):
-        logger.error("Mismatch between current hairsyle and .npy!")
+    if len(arr["cnt"]) != len(psys.particles):
+        logger.error("Mismatch between current hairsyle and .npz!")
         invalidate_cache()
         return None, None
 
-    weights = calc_weights(char, arr)
+    weights = calc_weights(char, arr["data"])
     obj_cache[id] = (arr, weights)
     return arr, weights
 
@@ -255,6 +253,18 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     mat = obj.matrix_world
     npy_matrix = numpy.array(mat.to_3x3().transposed())
     npy_translate = numpy.array(mat.translation)
+
+    # Calculate hair points
+    data = arr["data"]
+    morphed = numpy.empty((len(data)+1,3))
+    marr = morphed[1:]
+    for i, w in enumerate(weights):
+        marr[i] = (diff_arr[w[0]] * w[1]).sum(0)
+    marr += data
+    marr.dot(npy_matrix, marr)
+    marr += npy_translate
+    t.time("calc")
+
     override = context.copy()
     override["object"] = obj
     override["particle_system"] = psys
@@ -264,20 +274,17 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     bpy.ops.particle.disconnect_hair(override)
     t.time("disconnect")
     try:
-        for p, keys, pweights in zip(psys.particles, arr, weights):
-            if len(p.hair_keys)-1 != len(keys):
+        pos = 0
+        for p, cnt in zip(psys.particles, arr["cnt"]):
+            if len(p.hair_keys) != cnt+1:
                 if not have_mismatch:
-                    logger.error("Particle mismatch %d %d", len(p.hair_keys), len(keys))
+                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
                     have_mismatch = True
                 continue
-            arr = numpy.empty((len(p.hair_keys),3))
-            arr[0] = p.hair_keys[0].co_local
-            arr1 = arr[1:]
-            for i, w in enumerate(pweights):
-                arr1[i] = keys[i] + (diff_arr[w[0]] * w[1]).sum(0)
-            arr1.dot(npy_matrix, arr1)
-            arr1 += npy_translate
-            p.hair_keys.foreach_set("co_local", arr.reshape(len(p.hair_keys)*3))
+            marr = morphed[pos:pos+cnt+1]
+            marr[0] = p.hair_keys[0].co_local
+            pos += cnt
+            p.hair_keys.foreach_set("co_local", marr.reshape(len(p.hair_keys)*3))
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()
