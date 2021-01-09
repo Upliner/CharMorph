@@ -161,7 +161,7 @@ class NumpyMorpher(morphing.Morpher):
             verts = self.obj.data.vertices
             arr = numpy.empty(len(verts) * 3)
             verts.foreach_get("co", arr)
-            self.basis = arr.reshape((len(verts),3))
+            self.basis = arr.reshape(-1, 3)
 
     def get_L1(self):
         self.morphs_l1 = {}

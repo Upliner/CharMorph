@@ -376,20 +376,35 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
         #self.layout.operator("cmedit.hair_smooth")
         self.layout.operator("cmedit.hair_export")
 
-def np_particle_data(p):
-    result = numpy.empty(len(p.hair_keys)*3)
-    p.hair_keys.foreach_get("co_local", result)
-    if len(result)>3:
-        result = result[3:]
-    return numpy.reshape(result, (len(p.hair_keys)-1,3))
+def np_particles_data(particles):
+    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
+    total = 0
+    mx = 1
+    for i, p in enumerate(particles):
+        c = len(p.hair_keys)-1
+        cnt[i] = c
+        total += c
+        if c>mx:
+            mx = c
+
+    data = numpy.empty((total, 3), dtype=numpy.float32)
+    tmp = numpy.empty(mx*3+3, dtype=numpy.float32)
+    i = 0
+    for p in particles:
+        t2 = tmp[:len(p.hair_keys)*3]
+        p.hair_keys.foreach_get("co_local", t2)
+        t2 = t2[3:].reshape((-1,3))
+        data[i:i+len(t2)] = t2
+        i += len(t2)
+    return {"cnt":cnt, "data":data}
 
 class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.hair_export"
     bl_label = "Export hair"
-    bl_description = "Export hairstyle to .npy file"
-    filename_ext = ".npy"
+    bl_description = "Export hairstyle to .npz file"
+    filename_ext = ".npz"
 
-    filter_glob: bpy.props.StringProperty(default="*.npy", options={'HIDDEN'})
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
@@ -401,7 +416,7 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         override = context.copy()
         if not is_global:
             bpy.ops.particle.disconnect_hair(override)
-        numpy.save(self.filepath, [np_particle_data(p) for p in psys.particles])
+        numpy.savez_compressed(self.filepath, **np_particles_data(psys.particles))
         if not is_global:
             bpy.ops.particle.connect_hair(override)
         return {"FINISHED"}

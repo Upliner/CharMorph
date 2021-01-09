@@ -198,7 +198,7 @@ def import_morph(basis, sk, file):
         if basis is None:
             data = numpy.zeros((len(sk.data),3))
         else:
-            data = basis.copy().reshape((-1,3))
+            data = basis.copy().reshape(-1,3)
         data[idx] += delta
         data = data.reshape(-1)
     else:

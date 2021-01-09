@@ -121,7 +121,7 @@ def create_scalp(name, char, vgi):
 
 def create_default_hair(context, obj, char, scalp):
     l1 = ""
-    if hasattr(context.scene,"chartype"):
+    if hasattr(context.window_manager, "chartype"):
         l1 = context.window_manager.chartype
     vg = None
     if "hair_" + l1 in obj.vertex_groups:
@@ -181,7 +181,7 @@ def calc_weights(char, arr):
         thresh = max(d.values())/16
         d = { k:v for k,v in d.items() if v > thresh }
         total = sum(w for w in d.values())
-        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
+        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(-1,1)/total)
     t.time("hair_normalize")
 
     return weights
@@ -191,7 +191,7 @@ def invalidate_cache():
 
 def get_data(char, psys, new):
     if not psys.is_edited:
-        return None, None
+        return None, None, None
     if "charmorph_fit_id" not in psys.settings and new:
         psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
 
@@ -201,27 +201,29 @@ def get_data(char, psys, new):
         return data
 
     if not new:
-        return None, None
+        return None, None, None
 
     char_conf = library.obj_char(char)
     style = psys.settings.get("charmorph_hairstyle")
     if not char_conf or not style:
-        return None, None
-
+        return None, None, None
     try:
         arr = numpy.load(char_conf.path("hairstyles/%s.npz" % style))
     except Exception as e:
         logger.error(str(e))
-        return None, None
+        return None, None, None
 
-    if len(arr["cnt"]) != len(psys.particles):
+    cnts = arr["cnt"]
+    data = arr["data"].astype(dtype=numpy.float64, casting="same_kind")
+
+    if len(cnts) != len(psys.particles):
         logger.error("Mismatch between current hairsyle and .npz!")
         invalidate_cache()
-        return None, None
+        return None, None, None
 
-    weights = calc_weights(char, arr["data"])
-    obj_cache[id] = (arr, weights)
-    return arr, weights
+    weights = calc_weights(char, data)
+    obj_cache[id] = (cnts, data, weights)
+    return cnts, data, weights
 
 def fit_all_hair(context, char, diff_arr, new):
     t = fitting.Timer()
@@ -238,15 +240,15 @@ def fit_all_hair(context, char, diff_arr, new):
 
 def has_hair(char):
     for psys in char.particle_systems:
-        arr, weights = get_data(char, psys, False)
-        if arr is not None and weights:
+        cnts, data, weights = get_data(char, psys, False)
+        if cnts is not None and data is not None and weights:
            return True
     return False
 
 def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     t = fitting.Timer()
-    arr, weights = get_data(char, psys, new)
-    if arr is None or not weights:
+    cnts, data, weights = get_data(char, psys, new)
+    if cnts is None or data is None or not weights:
         return False
     t.time("prepare")
 
@@ -255,7 +257,6 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     npy_translate = numpy.array(mat.translation)
 
     # Calculate hair points
-    data = arr["data"]
     morphed = numpy.empty((len(data)+1,3))
     marr = morphed[1:]
     for i, w in enumerate(weights):
@@ -275,7 +276,7 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     t.time("disconnect")
     try:
         pos = 0
-        for p, cnt in zip(psys.particles, arr["cnt"]):
+        for p, cnt in zip(psys.particles, cnts):
             if len(p.hair_keys) != cnt+1:
                 if not have_mismatch:
                     logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
@@ -284,7 +285,7 @@ def fit_hair(context, char, obj, psys, idx, diff_arr, new):
             marr = morphed[pos:pos+cnt+1]
             marr[0] = p.hair_keys[0].co_local
             pos += cnt
-            p.hair_keys.foreach_set("co_local", marr.reshape(len(p.hair_keys)*3))
+            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()

@@ -122,7 +122,7 @@ def calc_weights(char, asset, mask):
         total = sum(d.values())
         #coeff = (sum(fnorm.dot(char_verts[vi].normal) * v  for vi, v in d)/total)
         #total *= coeff
-        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(len(d),1)/total)
+        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(-1,1)/total)
 
     t.time("normalize")
 
@@ -331,10 +331,10 @@ def do_fit(char, assets):
 
         verts = numpy.empty(len(asset_fitkey.data)*3)
         asset.data.vertices.foreach_get("co", verts)
-        verts = verts.reshape((len(asset_fitkey.data), 3))
+        verts = verts.reshape(-1, 3)
         for i, w in enumerate(weights):
             verts[i] += (diff_arr[w[0]] * w[1]).sum(0)
-        asset_fitkey.data.foreach_set("co", verts.reshape(len(asset_fitkey.data)*3))
+        asset_fitkey.data.foreach_set("co", verts.reshape(-1))
 
         asset_fitkey.value = max(asset_fitkey.value, 1)
 
