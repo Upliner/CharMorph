@@ -35,10 +35,15 @@ def copy_transform(target, source):
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
-def add_rig(obj, conf, rigtype, verts):
+def add_rigify(obj, conf, mode, verts):
     char = library.obj_char(obj)
     if conf.get("type") != "rigify":
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
+
+    weights = conf.get("weights")
+    if weights:
+        rigging.import_vg(obj, char.path(weights), False)
+
     metarig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
         raise RigException("Rig import failed")
@@ -52,13 +57,13 @@ def add_rig(obj, conf, rigtype, verts):
 
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
-    if not rigging.joints_to_vg(obj, rigging.all_joints(bpy.context), verts):
+    if not rigging.joints_to_vg(obj, rigging.all_joints(bpy.context), verts, char.path(conf.get("joints"))):
         remove_metarig()
         raise RigException("Metarig fitting failed")
 
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    if rigtype != "RG" and rigtype != "GM":
+    if mode != "RG" and mode != "GM":
         copy_transform(metarig, obj)
         return
 
@@ -67,13 +72,13 @@ def add_rig(obj, conf, rigtype, verts):
     remove_metarig()
     rig = bpy.context.object
     rig.name = obj.name + "_rig"
-    if rigtype == "RG":
+    if mode == "RG":
         editmode_tweaks, tweaks = rigging.unpack_tweaks(char, conf.get("tweaks",[]))
     else:
         editmode_tweaks, tweaks = ([], [])
     bpy.ops.object.mode_set(mode="EDIT")
     rigging.rigify_add_deform(bpy.context, obj)
-    if rigtype == "GM":
+    if mode == "GM":
         rigging.make_gaming_rig(bpy.context, obj)
     for tweak in editmode_tweaks:
         rigging.apply_editmode_tweak(bpy.context, tweak)
@@ -125,7 +130,7 @@ class OpFinalize(bpy.types.Operator):
         fin_sk = None
         fin_sk_tmp = False
         if keys and keys.key_blocks:
-            if ui.fin_morph != "NO" or ui.fin_rig != "NO":
+            if ui.fin_morph != "NO" or ui.fin_rig != "-":
                 fin_sk = obj.data.shape_keys.key_blocks.get("charmorph_final")
                 if not fin_sk:
                     fin_sk_tmp = ui.fin_morph == "NO"
@@ -167,25 +172,24 @@ class OpFinalize(bpy.types.Operator):
         vg_cleanup = ui.fin_vg_cleanup
         def do_rig():
             nonlocal vg_cleanup
-            if ui.fin_rig == "NO":
+            if ui.fin_rig == "-":
                 return True
-            if obj.find_armature() and ui.fin_rig != "MR":
+            if obj.find_armature() and ui.fin_rigify_mode != "MR":
                 self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
                 return True
+            i = int(ui.fin_rig)
             rigs = char.armature
-            if not rigs or len(rigs) == 0:
+            if i >= len(rigs):
                 self.report({"ERROR"}, "Rig is not found")
                 return False
-            if len(rigs) > 1:
-                self.report({"ERROR"}, "Multiple rigs aren't supported yet")
-                return False
-            rig_type = ui.fin_rig
-            if (rig_type == "RG" or rig_type == "GM") and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
+            rig = rigs[i]
+            rigify_mode = ui.fin_rigify_mode
+            if (rigify_mode == "RG" or rigify_mode == "GM") and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
-                rig_type = "MR"
+                rigify_mode = "MR"
                 vg_cleanup = False
             try:
-                add_rig(obj, rigs[0], rig_type, fin_sk.data if fin_sk else None)
+                add_rigify(obj, rig, rigify_mode, fin_sk.data if fin_sk else None)
             except RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
@@ -253,6 +257,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
+        self.layout.prop(ui, "fin_rigify_mode")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")

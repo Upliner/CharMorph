@@ -36,7 +36,7 @@ additional_assets = {}
 hair_colors = {}
 
 def char_file(char, file):
-    if not char:
+    if not char or not file:
         return ""
     return os.path.join(data_dir, "characters", char, file)
 
@@ -94,6 +94,9 @@ def get_fitting_assets(ui, context):
     obj = bpy.data.objects.get(ui.fitting_char)
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
+
+def get_rigs(ui, context):
+    return [("-","<None>","Don't generate rig")] + [ (str(i),rig.get("title","<unnamed %d>" % i),"") for i, rig in enumerate(obj_char(context.active_object).armature) ]
 
 def get_poses(ui, context):
     return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(obj_char(context.active_object).poses.keys()) ]

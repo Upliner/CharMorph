@@ -214,14 +214,18 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         description="Apply current shape key mix")
     fin_rig: bpy.props.EnumProperty(
         name="Rig",
+        items=library.get_rigs,
+        default=1,
+        description="Rigging options")
+    fin_rigify_mode: bpy.props.EnumProperty(
+        name="Rigify mode",
         default = "RG",
         items = [
-            ("NO", "None", "Don't generate armature"),
             ("MR", "Metarig only", "Generate metarig only"),
             ("GM", "Gaming", "Generate rig compatible with game engines"),
             ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
         ],
-        description="Rigging options")
+        description="Rigify rigging options")
     fin_subdivision: bpy.props.EnumProperty(
         name="Subdivision",
         default = "RO",
@@ -282,6 +286,7 @@ def on_select_object():
     obj = bpy.context.active_object
     if obj is None:
         return
+    ui = bpy.context.window_manager.charmorph_ui
     if obj.type == "MESH":
         asset = None
         if (obj.parent and obj.parent.type == "MESH" and
@@ -290,7 +295,6 @@ def on_select_object():
             asset = obj
             obj = obj.parent
         try:
-            ui = bpy.context.window_manager.charmorph_ui
             if asset:
                 ui.fitting_char = obj.name
                 ui.fitting_asset = asset.name
@@ -308,6 +312,11 @@ def on_select_object():
 
     if obj == morphing.last_object:
         return
+    char = library.obj_char(obj)
+    if len(char.armature)==0:
+        ui.fin_rig="-"
+    else:
+        ui.fin_rig="0"
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent

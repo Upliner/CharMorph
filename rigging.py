@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, math
+import logging, math, numpy
 
 from . import yaml, library
 
@@ -68,8 +68,51 @@ def get_vg_avg(char, verts):
         data_item[1] += co*gw.weight
     return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
 
-def joints_to_vg(char, lst, verts):
+
+def process_vg_file(file, callback):
+    z = numpy.load(file)
+    names = [ n.decode("utf-8") for n in bytes(z["names"]).split(b'\0') ]
+    i = 0
+    idx = z["idx"]
+    weights = z["weights"]
+    for name, cnt in zip(names, z["cnt"]):
+        i2 = i+cnt
+        callback(name, zip(idx[i:i2], weights[i:i2]))
+        i = i2
+
+def import_vg(obj, file, overwrite):
+    def callback(name, data):
+        if name in obj.vertex_groups:
+            if overwrite:
+                obj.vertex_groups.remove(obj.vertex_groups[name])
+            else:
+                return
+        vg = obj.vertex_groups.new(name = name)
+        for i, weight in data:
+            vg.add([int(i)], weight, 'REPLACE')
+
+    process_vg_file(file, callback)
+
+def add_joints_from_file(verts, avg, file):
+    def callback(name, data):
+        print(name)
+        if not name.startswith("joint_"):
+            return
+        if name in avg:
+            return
+        item = [0, Vector()]
+        avg[name] = item
+        for i, weight in data:
+            item[0] += weight
+            item[1] += verts[i].co*weight
+    print(file)
+    process_vg_file(file, callback)
+
+def joints_to_vg(char, lst, verts, jfile = None):
     avg = get_vg_avg(char, verts)
+    if jfile:
+        add_joints_from_file(verts, avg, jfile)
+
     result = True
     bones = set()
     for name, (_, bone, attr) in lst.items():
@@ -239,7 +282,6 @@ def make_gaming_rig(context, char):
 
     for i in range(len(a.layers)):
         a.layers[i] = True
-
 
 # My implementation of sliding joints on top of rigify
 # Thanks to DanPro for the idea!

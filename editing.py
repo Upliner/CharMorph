@@ -483,6 +483,21 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    bl_idname = "cmedit.vg_import"
+    bl_label = "Import VGs"
+    bl_description = "Import vertex groups from npz file"
+
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        rigging.import_vg(context.object, self.filepath, context.window_manager.cmedit_ui.vg_overwrite)
+        return {"FINISHED"}
+
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
 
@@ -763,7 +778,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description = "Overwrite existing vertex groups with imported ones",
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, OpVgExport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, OpVgExport, OpVgImport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
