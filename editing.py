@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, numpy, os
+import logging, numpy, os, re
 import bpy, bpy_extras, mathutils
 
 from . import yaml, rigging, library
@@ -61,6 +61,28 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         self.layout.operator("cmedit.add_rigify_deform")
         self.layout.prop(ui, "rig_tweaks_file")
         self.layout.operator("cmedit.rigify_tweaks")
+
+class CMEDIT_PT_Utils(bpy.types.Panel):
+    bl_label = "Utils"
+    bl_parent_id = "VIEW3D_PT_CMEdit"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "CharMorph"
+    bl_order = 2
+
+    def draw(self, context):
+        ui = context.window_manager.cmedit_ui
+        self.layout.operator("cmedit.cleanup_joints")
+        self.layout.operator("cmedit.check_symmetry")
+        self.layout.operator("cmedit.symmetrize_vg")
+        self.layout.operator("cmedit.transfer")
+        #self.layout.operator("cmedit.hair_smooth")
+        self.layout.operator("cmedit.hair_export")
+        self.layout.separator()
+        self.layout.prop(ui, "vg_regex")
+        self.layout.prop(ui, "vg_overwrite")
+        self.layout.operator("cmedit.vg_export")
+        self.layout.operator("cmedit.vg_import")
 
 def obj_by_type(name, type):
     if not name:
@@ -360,22 +382,6 @@ class OpRigifyTweaks(bpy.types.Operator):
             rigging.apply_tweak(context.object, tweak)
         return {"FINISHED"}
 
-class CMEDIT_PT_Utils(bpy.types.Panel):
-    bl_label = "Utils"
-    bl_parent_id = "VIEW3D_PT_CMEdit"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "CharMorph"
-    bl_order = 2
-
-    def draw(self, context):
-        self.layout.operator("cmedit.cleanup_joints")
-        self.layout.operator("cmedit.check_symmetry")
-        self.layout.operator("cmedit.symmetrize_vg")
-        self.layout.operator("cmedit.transfer")
-        #self.layout.operator("cmedit.hair_smooth")
-        self.layout.operator("cmedit.hair_export")
-
 def np_particles_data(particles):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
     total = 0
@@ -419,6 +425,62 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         numpy.savez_compressed(self.filepath, **np_particles_data(psys.particles))
         if not is_global:
             bpy.ops.particle.connect_hair(override)
+        return {"FINISHED"}
+
+class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.vg_export"
+    bl_label = "Export VGs"
+    bl_description = "Export vertex groups matching regex"
+    filename_ext = ".npz"
+
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        r = re.compile(context.window_manager.cmedit_ui.vg_regex)
+        m = {}
+        arr = []
+        dt = numpy.uint8
+        names = bytearray()
+        for vg in context.object.vertex_groups:
+            if r.search(vg.name):
+                m[vg.index]=len(arr)
+                arr.append([])
+                if len(names)>0:
+                    names.append(0)
+                names.extend(vg.name.encode("utf-8"))
+
+        for v in context.object.data.vertices:
+            for g in v.groups:
+                i = m.get(g.group)
+                if i is None:
+                    continue
+                a = arr[i]
+                a.append((v.index, g.weight))
+                if len(a)>255:
+                    dt = numpy.uint16
+
+        cnt = numpy.empty(len(arr), dtype=dt)
+        total = 0
+        for i, a in enumerate(arr):
+            cnt[i] = len(a)
+            total += len(a)
+
+        idx = numpy.empty(total, dtype=numpy.uint16)
+        weights = numpy.empty(total, dtype=numpy.float64)
+
+        i = 0
+        for a in arr:
+            for t in a:
+                idx[i] = t[0]
+                weights[i] = t[1]
+                i += 1
+
+        numpy.savez_compressed(self.filepath, names=names, cnt=cnt, idx=idx, weights=weights)
+
         return {"FINISHED"}
 
 def is_deform(group_name):
@@ -691,8 +753,17 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         default = rigify_tweaks_file,
         subtype = 'FILE_PATH',
     )
+    vg_regex: bpy.props.StringProperty(
+        name = "VG regex",
+        description = "Regular expression for vertex group export",
+        default = "^(DEF-|MCH-|ORG|corrective_smooth$)",
+    )
+    vg_overwrite: bpy.props.BoolProperty(
+        name = "VG overwrite",
+        description = "Overwrite existing vertex groups with imported ones",
+    )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, OpVgExport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
