@@ -264,7 +264,8 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
-        self.layout.prop(ui, "fin_rigify_mode")
+        if ui.fin_rig != '-':
+            self.layout.prop(ui, "fin_rigify_mode")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")
