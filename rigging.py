@@ -296,10 +296,7 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     tweak_name = "{}_tweak.{}".format(lower_bone, side)
 
     bone = bones["MCH-" + tweak_name]
-    bone.parent = bone.parent.parent
     bone.name = "MCH-{}_tweak.{}.002".format(upper_bone, side)
-    bone.align_orientation(bone.parent)
-    bone.align_roll(bone.parent.z_axis)
 
     mch_layer = bone.layers
 
@@ -308,8 +305,6 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     tweak_tail = bone.tail
     tweak_layer = bone.layers
     tweak_size = bone.bbone_x
-    bone.align_orientation(bone.parent)
-    bone.align_roll(bone.parent.z_axis)
 
     bone = bones.new(mch_name)
     bone.parent = bones["ORG-{}.{}".format(lower_bone, side)]
@@ -328,13 +323,21 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     bone.head = mch_bone.tail
     bone.use_deform = False
     bone.tail = tweak_tail
-    bone.align_orientation(mch_bone.parent)
     bone.align_roll(org_roll)
     bone.layers = tweak_layer
     bone.bbone_x = tweak_size
     bone.bbone_z = tweak_size
 
     bones["DEF-{}.{}".format(lower_bone, side)].use_connect = False
+
+    bone = bones.new("MCH-{}.{}".format(upper_bone, side))
+    bone.parent = bones["DEF-{}.{}.001".format(upper_bone, side)]
+    bone.use_connect = True
+    bone.tail = tweak_tail
+    bone.layers = mch_layer
+    bone.align_roll(org_roll)
+    bone.bbone_x = tweak_size
+    bone.bbone_z = tweak_size
 
 def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     bones = rig.pose.bones
@@ -361,6 +364,12 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     c.influence = influence
     c.owner_space = "LOCAL"
     c.target_space = "LOCAL"
+
+    c = bones["MCH-{}.{}".format(upper_bone, side)].constraints.new("COPY_ROTATION")
+    c.target = rig
+    c.subtarget = "DEF-{}.{}".format(lower_bone, side)
+    c.owner_space = "POSE"
+    c.target_space = "POSE"
 
     def replace_tweak(bone):
         for c in bone.constraints:
