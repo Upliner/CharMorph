@@ -313,10 +313,12 @@ def on_select_object():
     if obj == morphing.last_object:
         return
     char = library.obj_char(obj)
-    if len(char.armature)==0:
-        ui.fin_rig="-"
-    else:
-        ui.fin_rig="0"
+    if char.name and ui.fin_rig != '-':
+        if len(ui.fin_rig)>=len(char.armature):
+            if len(char.armature)==0:
+                ui.fin_rig="-"
+            else:
+                ui.fin_rig="0"
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent

@@ -771,7 +771,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
     vg_regex: bpy.props.StringProperty(
         name = "VG regex",
         description = "Regular expression for vertex group export",
-        default = "^(DEF-|MCH-|ORG|corrective_smooth$)",
+        default = "^(DEF-|MCH-|ORG|corrective_smooth(_inv)?$)",
     )
     vg_overwrite: bpy.props.BoolProperty(
         name = "VG overwrite",

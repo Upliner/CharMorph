@@ -95,7 +95,6 @@ def import_vg(obj, file, overwrite):
 
 def add_joints_from_file(verts, avg, file):
     def callback(name, data):
-        print(name)
         if not name.startswith("joint_"):
             return
         if name in avg:
@@ -105,7 +104,6 @@ def add_joints_from_file(verts, avg, file):
         for i, weight in data:
             item[0] += weight
             item[1] += verts[i].co*weight
-    print(file)
     process_vg_file(file, callback)
 
 def joints_to_vg(char, lst, verts, jfile = None):

@@ -214,8 +214,15 @@ class OpFinalize(bpy.types.Operator):
             if ui.fin_csmooth != "NO":
                 mod = add_modifier("CORRECTIVE_SMOOTH")
                 mod.smooth_type = ui.fin_csmooth[2:]
-                if ui.fin_csmooth == "L" and "corrective_smooth" in obj.vertex_groups:
-                    mod.vertex_group = "corrective_smooth"
+                if ui.fin_csmooth[:1] == "L":
+                    print("limited")
+                    print("corrective_smooth" in obj.vertex_groups)
+                    print("corrective_smooth_inv" in obj.vertex_groups)
+                    if "corrective_smooth" in obj.vertex_groups:
+                        mod.vertex_group = "corrective_smooth"
+                    elif "corrective_smooth_inv" in obj.vertex_groups:
+                        mod.vertex_group = "corrective_smooth_inv"
+                        mod.invert_vertex_group = True
                 elif ui.fin_csmooth == "U":
                     mod.vertex_group = ""
 
