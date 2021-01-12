@@ -211,7 +211,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     fin_rig: bpy.props.EnumProperty(
         name="Rig",
         items=library.get_rigs,
-        default=1,
         description="Rigging options")
     fin_rigify_mode: bpy.props.EnumProperty(
         name="Rigify mode",

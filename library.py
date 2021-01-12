@@ -294,12 +294,18 @@ class OpImport(bpy.types.Operator):
 
         obj.data["charmorph_template"] = ui.base_model
         materials.init_materials(obj, char)
+
         if ui.import_shapekeys:
             import_shapekeys(obj, ui.base_model)
         elif (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks) and os.path.isdir(char.path("morphs")):
             obj.data["cm_morpher"] = "ext"
+
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
+
+        if len(char.armature) > 0 and ui.fin_rig=='-':
+            ui.fin_rig = '0'
+
         return {"FINISHED"}
 
 classes = [OpImport, CHARMORPH_PT_Library]
