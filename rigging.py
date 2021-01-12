@@ -255,32 +255,6 @@ def set_lock(bone, is_lock):
     bone.lock_rotations_4d = is_lock
     bone.lock_scale = (is_lock, is_lock, is_lock)
 
-def make_gaming_rig(context, char):
-    a = context.object.data
-    bones = a.edit_bones
-    for bone in list(bones):
-        if bone.name == "ORG-face":
-            bone.parent = bones["DEF-spine.006"]
-        elif bone.name.startswith("DEF-breast.") or bone.name.startswith("DEF-shoulder."):
-            bone.parent = bones["DEF-spine.003"]
-        elif bone.name.startswith("DEF-pelvis.") or bone.name == "DEF-thigh.L" or bone.name == "DEF-thigh.R":
-            bone.parent = bones["DEF-spine"]
-        elif bone.name == "DEF-upper_arm.L" or bone.name == "DEF-upper_arm.R":
-            bone.parent = bones["DEF-shoulder." + bone.name[-1:]]
-        elif bone.use_deform:
-            bone.bbone_segments = 1 # Game engines don't support bendy bones
-        else:
-            bones.remove(bone)
-
-    for bone in context.object.pose.bones:
-        c = bone.constraints
-        while len(c) > 0:
-            c.remove(c[0])
-        set_lock(bone, False)
-
-    for i in range(len(a.layers)):
-        a.layers[i] = True
-
 # My implementation of sliding joints on top of rigify
 # Thanks to DanPro for the idea!
 # https://www.youtube.com/watch?v=c7csuy-09k8

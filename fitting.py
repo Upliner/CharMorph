@@ -249,7 +249,7 @@ def get_obj_weights(char, asset, mask = False):
     obj_cache[id] = weights
     return weights
 
-def transfer_weights(char, asset):
+def transfer_weights(char, asset, bones):
     t = Timer()
     weights = get_obj_weights(char, asset)
     char_verts = char.data.vertices
@@ -261,7 +261,7 @@ def transfer_weights(char, asset):
             for src in char_verts[vi].groups:
                 gid = src.group
                 group_name = char.vertex_groups[gid].name
-                if not group_name.startswith("DEF-"):
+                if group_name not in bones:
                     continue
                 vg_dst = groups.get(gid)
                 if vg_dst is None:
@@ -279,6 +279,7 @@ def transfer_armature(char, asset):
         if mod.type=="ARMATURE" and mod.object:
             existing.add(mod.object.name)
 
+    bones = set()
     for mod in char.modifiers:
         if mod.type=="ARMATURE" and mod.object and mod.object.name not in existing:
             newmod = asset.modifiers.new(mod.name, "ARMATURE")
@@ -288,6 +289,12 @@ def transfer_armature(char, asset):
             newmod.use_bone_envelopes = mod.use_bone_envelopes
             newmod.use_vertex_groups = mod.use_vertex_groups
             rigging.reposition_armature_modifier(bpy.context, asset)
+            for bone in mod.object.data.bones:
+                if bone.use_deform:
+                    bones.add(bone.name)
+
+    transfer_weights(char, asset, bones)
+
 
 def transfer_new_armature(char):
     for asset in get_assets(char):
@@ -406,8 +413,6 @@ def fit_new(char, asset):
     do_fit(char, [asset])
     asset.parent = char
     char_cache.clear()
-    if ui.fitting_weights:
-        transfer_weights(char, asset)
     if ui.fitting_armature:
         transfer_armature(char, asset)
 
@@ -447,7 +452,6 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "fitting_mask")
         col = self.layout.column(align=True)
         col.prop(ui, "fitting_transforms")
-        col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_armature")
         self.layout.separator()
         obj = bpy.data.objects.get(ui.fitting_asset)

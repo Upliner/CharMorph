@@ -35,9 +35,10 @@ def copy_transform(target, source):
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
-def add_rigify(obj, conf, mode, verts):
+def add_rig(obj, conf, mode, verts):
     char = library.obj_char(obj)
-    if conf.get("type") != "rigify":
+    rig_type = conf.get("type")
+    if rig_type not in ["rigify","regular"]:
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
 
     weights = conf.get("weights")
@@ -52,41 +53,43 @@ def add_rigify(obj, conf, mode, verts):
     #override = context.copy()
     #override["object"] = metarig
     #override["active_object"] = metarig
-    def remove_metarig():
-       bpy.data.armatures.remove(metarig.data)
 
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
     if not rigging.joints_to_vg(obj, rigging.all_joints(bpy.context), verts, char.path(conf.get("joints"))):
-        remove_metarig()
+        bpy.data.armatures.remove(metarig.data)
         raise RigException("Metarig fitting failed")
 
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    if mode != "RG" and mode != "GM":
-        copy_transform(metarig, obj)
-        return
+    if rig_type == "rigify":
+        if mode != "RG":
+            copy_transform(metarig, obj)
+        else:
+            add_rigify(obj, metarig, conf)
+    else:
+        attach_rig(obj, metarig)
 
+def add_rigify(obj, metarig, conf):
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
-    remove_metarig()
+    bpy.data.armatures.remove(metarig.data)
+
     rig = bpy.context.object
     rig.name = obj.name + "_rig"
-    if mode == "RG":
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(char, conf.get("tweaks",[]))
-    else:
-        editmode_tweaks, tweaks = ([], [])
+
+    editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj), conf.get("tweaks",[]))
     bpy.ops.object.mode_set(mode="EDIT")
     rigging.rigify_add_deform(bpy.context, obj)
-    if mode == "GM":
-        rigging.make_gaming_rig(bpy.context, obj)
     for tweak in editmode_tweaks:
         rigging.apply_editmode_tweak(bpy.context, tweak)
     bpy.ops.object.mode_set(mode="OBJECT")
-
     for tweak in tweaks:
         rigging.apply_tweak(rig, tweak)
 
+    attach_rig(obj, rig)
+
+def attach_rig(obj, rig):
     copy_transform(rig, obj)
 
     obj.location = (0,0,0)
@@ -97,7 +100,7 @@ def add_rigify(obj, conf, mode, verts):
 
     rig.data["charmorph_template"] = obj.data.get("charmorph_template","")
 
-    mod = obj.modifiers.new("charmorph_rigify", "ARMATURE")
+    mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
     mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
@@ -184,12 +187,12 @@ class OpFinalize(bpy.types.Operator):
                 return False
             rig = rigs[i]
             rigify_mode = ui.fin_rigify_mode
-            if (rigify_mode == "RG" or rigify_mode == "GM") and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
+            if rigify_mode == "RG" and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 rigify_mode = "MR"
                 vg_cleanup = False
             try:
-                add_rigify(obj, rig, rigify_mode, fin_sk.data if fin_sk else None)
+                add_rig(obj, rig, rigify_mode, fin_sk.data if fin_sk else None)
             except RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
@@ -262,7 +265,10 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
         if ui.fin_rig != '-':
-            self.layout.prop(ui, "fin_rigify_mode")
+            char = library.obj_char(context.object)
+            i = int(ui.fin_rig)
+            if i < len(char.armature) and char.armature[i].get("type") == "rigify":
+                self.layout.prop(ui, "fin_rigify_mode")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")

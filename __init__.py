@@ -168,10 +168,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         name="Apply transforms",
         default=True,
         description="Apply object transforms before fitting")
-    fitting_weights: bpy.props.BoolProperty(
-        name="Transfer weights",
-        default=True,
-        description="Transfer armature weights to the asset")
     fitting_armature: bpy.props.BoolProperty(
         name="Transfer armature",
         default=True,
@@ -222,7 +218,6 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
         default = "RG",
         items = [
             ("MR", "Metarig only", "Generate metarig only"),
-            ("GM", "Gaming", "Generate rig compatible with game engines"),
             ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
         ],
         description="Rigify rigging options")
