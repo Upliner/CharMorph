@@ -54,9 +54,14 @@ def add_rig(obj, conf, mode, verts):
     #override["object"] = metarig
     #override["active_object"] = metarig
 
+    joints = rigging.all_joints(metarig)
+
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
-    if not rigging.joints_to_vg(obj, rigging.all_joints(bpy.context), verts, char.path(conf.get("joints"))):
+
+    locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
+
+    if not rigging.joints_to_locs(metarig, joints, locs):
         bpy.data.armatures.remove(metarig.data)
         raise RigException("Metarig fitting failed")
 
@@ -66,11 +71,24 @@ def add_rig(obj, conf, mode, verts):
         if mode != "RG":
             copy_transform(metarig, obj)
         else:
-            add_rigify(obj, metarig, conf)
+            add_rigify(obj, metarig, conf, locs)
     else:
         attach_rig(obj, metarig)
 
-def add_rigify(obj, metarig, conf):
+def add_mixin(obj, conf, rig):
+    obj_name = conf.get("mixin")
+    if not obj_name:
+        return None
+    mixin = library.import_obj(library.obj_char(obj).path(conf["file"]), obj_name, "ARMATURE")
+    joints = rigging.all_joints(mixin)
+    override = bpy.context.copy()
+    override["object"] = rig
+    override["selected_editable_objects"] = [rig, mixin]
+    bpy.ops.object.join(override)
+
+    return joints
+
+def add_rigify(obj, metarig, conf, locs):
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
     bpy.data.armatures.remove(metarig.data)
@@ -78,9 +96,17 @@ def add_rigify(obj, metarig, conf):
     rig = bpy.context.object
     rig.name = obj.name + "_rig"
 
-    editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj), conf.get("tweaks",[]))
+    new_joints = add_mixin(obj, conf, rig)
+
+    editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
     bpy.ops.object.mode_set(mode="EDIT")
+
+    if new_joints and not rigging.joints_to_locs(rig, new_joints, locs):
+        bpy.data.armatures.remove(rig.data)
+        raise RigException("Mixin fitting failed")
+
     rigging.rigify_add_deform(bpy.context, obj)
+
     for tweak in editmode_tweaks:
         rigging.apply_editmode_tweak(bpy.context, tweak)
     bpy.ops.object.mode_set(mode="OBJECT")

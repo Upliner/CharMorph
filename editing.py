@@ -685,16 +685,16 @@ class OpTransfer(bpy.types.Operator):
 class OpCleanupJoints(bpy.types.Operator):
     bl_idname = "cmedit.cleanup_joints"
     bl_label = "Cleanup joint VGs"
-    bl_description = "Remove all unused joint_* vertex groups. You must be in edit armature mode."
+    bl_description = "Remove all unused joint_* vertex groups. Metarig must be selected."
     bl_options = {"UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "EDIT_ARMATURE" and get_char(context)
+        return get_char(context) and context.object and context.object.type == "ARMATURE"
 
     def execute(self, context):
         char = get_char(context)
-        joints = rigging.all_joints(context)
+        joints = rigging.all_joints(context.object)
         if len(joints) == 0:
             self.report({'ERROR'}, "No joints found")
             return

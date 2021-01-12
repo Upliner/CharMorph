@@ -18,18 +18,18 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, math, numpy
+import logging, math, numpy, os
 
 from . import yaml, library
 
-from bpy import ops
+from bpy import ops, context
 from mathutils import Vector, Matrix
 
 logger = logging.getLogger(__name__)
 
-def get_joints(context, is_all):
+def get_joints(bones, is_all):
     joints = {}
-    for bone in context.object.data.edit_bones:
+    for bone in bones:
         if is_all:
             if not bone.use_connect:
                 joints["joint_"+bone.name+"_head"] = (bone.head, bone, "head")
@@ -43,8 +43,8 @@ def get_joints(context, is_all):
             joints["joint_"+bone.name+"_tail"] = (bone.tail, bone, "tail")
     return joints
 
-def all_joints(context):      return get_joints(context, True)
-def selected_joints(context): return get_joints(context, False)
+def all_joints(obj):          return get_joints(obj.data.bones, True)
+def selected_joints(context): return get_joints(context.object.data.edit_bones, False)
 
 def get_vg_data(char, new, accumulate, verts):
     if verts is None:
@@ -106,22 +106,29 @@ def add_joints_from_file(verts, avg, file):
             item[1] += verts[i].co*weight
     process_vg_file(file, callback)
 
-def joints_to_vg(char, lst, verts, jfile = None):
+def vg_to_locs(char, verts, jfile):
     avg = get_vg_avg(char, verts)
     if jfile:
         add_joints_from_file(verts, avg, jfile)
+    return avg
 
+def joints_to_vg(char, lst, verts, jfile = None):
+    joints_to_locs(char, lst, vg_to_locs(char, verts, jfile))
+
+def joints_to_locs(obj, lst, locs):
     result = True
     bones = set()
+    edit_bones = obj.data.edit_bones
     for name, (_, bone, attr) in lst.items():
-        item = avg.get(name)
+        item = locs.get(name)
         if item and item[0]>0.1:
-            bones.add(bone)
+            eb = edit_bones[bone.name]
+            bones.add(eb)
             pos = item[1]/item[0]
             offs = bone.get("charmorph_offs_" + attr)
             if offs and len(offs) == 3:
                 pos += Vector(tuple(offs))
-            setattr(bone, attr, pos)
+            setattr(eb, attr, pos)
         else:
             logger.error("No vg for " + name)
             if item:
@@ -160,7 +167,7 @@ def reposition_armature_modifier(context, char):
         if ops.object.modifier_move_up.poll(override):
             ops.object.modifier_move_up(override, modifier=name)
 
-def unpack_tweaks(char, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):
+def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):
     if depth>100:
         logger.error("Too deep tweaks loading: " + repr(tweaks))
         return
@@ -179,12 +186,13 @@ def unpack_tweaks(char, tweaks, editmode_tweaks=None, regular_tweaks=None, depth
         return
     for tweak in tweaks:
         if isinstance(tweak, str):
-            with open(char.path(tweak)) as f:
-                unpack_tweaks(char, yaml.safe_load(f), editmode_tweaks, regular_tweaks, depth+1)
+            newpath = os.path.join(path, tweak)
+            with open(newpath) as f:
+                unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), editmode_tweaks, regular_tweaks, depth+1)
         elif tweak.get("tweak")=="rigify_sliding_joint":
             editmode_tweaks.append(tweak)
             regular_tweaks.append(tweak)
-        elif tweak.get("select") == "edit_bone":
+        elif tweak.get("select") == "edit_bone" or tweak.get("tweak")=="assign_parents":
             editmode_tweaks.append(tweak)
         else:
             regular_tweaks.append(tweak)
@@ -201,11 +209,16 @@ def constraint_by_target(bone, rig, type, target):
             return c
 
 def apply_editmode_tweak(context, tweak):
-    if tweak.get("tweak") == "rigify_sliding_joint":
+    t = tweak.get("tweak")
+    edit_bones = context.object.data.edit_bones
+    if t == "rigify_sliding_joint":
         sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], tweak["side"])
+    elif t == "assign_parents":
+        for k, v in tweak["parents"].items():
+            edit_bones[k].parent = edit_bones[v]
     elif tweak.get("select") == "edit_bone":
         bone_name = tweak.get("bone")
-        bone = context.object.data.edit_bones.get(tweak.get("bone"))
+        bone = edit_bones.get(tweak.get("bone"))
         if not bone:
             logger.error("Tweak bone not found: " + bone_name)
             return
