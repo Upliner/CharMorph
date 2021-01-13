@@ -49,6 +49,10 @@ def add_rig(obj, conf, mode, verts):
     if not metarig:
         raise RigException("Rig import failed")
 
+    spine = metarig.pose.bones["spine"]
+    if spine:
+         spine.rigify_parameters.make_custom_pivot = bpy.context.window_manager.charmorph_ui.fin_rigify_pivot
+
     # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
     #override = context.copy()
     #override["object"] = metarig
@@ -56,12 +60,17 @@ def add_rig(obj, conf, mode, verts):
 
     joints = rigging.all_joints(metarig)
 
+    bone_opts = None
+    bones_file = conf.get("bones", char.bones)
+    if bones_file:
+        bone_opts = char.get_yaml(bones_file)
+
     bpy.context.view_layer.objects.active = metarig
     bpy.ops.object.mode_set(mode="EDIT")
 
     locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
 
-    if not rigging.joints_to_locs(metarig, joints, locs):
+    if not rigging.joints_to_locs(metarig, joints, locs, bone_opts):
         bpy.data.armatures.remove(metarig.data)
         raise RigException("Metarig fitting failed")
 
@@ -71,7 +80,7 @@ def add_rig(obj, conf, mode, verts):
         if mode != "RG":
             copy_transform(metarig, obj)
         else:
-            add_rigify(obj, metarig, conf, locs)
+            add_rigify(obj, metarig, conf, locs, bone_opts)
     else:
         attach_rig(obj, metarig)
 
@@ -88,7 +97,7 @@ def add_mixin(obj, conf, rig):
 
     return joints
 
-def add_rigify(obj, metarig, conf, locs):
+def add_rigify(obj, metarig, conf, locs, opts):
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
     bpy.data.armatures.remove(metarig.data)
@@ -101,7 +110,7 @@ def add_rigify(obj, metarig, conf, locs):
     editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
     bpy.ops.object.mode_set(mode="EDIT")
 
-    if new_joints and not rigging.joints_to_locs(rig, new_joints, locs):
+    if new_joints and not rigging.joints_to_locs(rig, new_joints, locs, opts):
         bpy.data.armatures.remove(rig.data)
         raise RigException("Mixin fitting failed")
 
@@ -124,6 +133,8 @@ def attach_rig(obj, rig):
     obj.scale = (1,1,1)
     obj.parent = rig
 
+    rigging.lock_obj(obj, True)
+
     rig.data["charmorph_template"] = obj.data.get("charmorph_template","")
 
     mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
@@ -135,6 +146,16 @@ def attach_rig(obj, rig):
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
 
+def get_obj(context):
+    m = morphing.morpher
+    if m:
+        return m.obj, m.char
+    if context.object and context.object.type == "MESH":
+        char = library.obj_char(context.object)
+        if char.name:
+            return context.object, char
+    return (None, None)
+
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
     bl_label = "Finalize"
@@ -143,12 +164,11 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode=="OBJECT" and library.obj_char(context.object).name
+        return context.mode=="OBJECT" and get_obj(context)[0]
 
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
-        obj = context.object
-        char = library.obj_char(obj)
+        obj, char = get_obj(context)
         if not char.name or not char.config:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
@@ -284,17 +304,18 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and library.obj_char(context.object).name
+        return context.mode == "OBJECT" and get_obj(context)[0]
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
         if ui.fin_rig != '-':
-            char = library.obj_char(context.object)
+            char = get_obj(context)[1]
             i = int(ui.fin_rig)
             if i < len(char.armature) and char.armature[i].get("type") == "rigify":
                 self.layout.prop(ui, "fin_rigify_mode")
+                self.layout.prop(ui, "fin_rigify_pivot")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")

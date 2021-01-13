@@ -220,6 +220,10 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
             ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
         ],
         description="Rigify rigging options")
+    fin_rigify_pivot: bpy.props.BoolProperty(
+        name="Add custom pivot",
+        description = "Create a rotation pivot control that can be repositioned arbitrarily"
+    )
     fin_subdivision: bpy.props.EnumProperty(
         name="Subdivision",
         default = "RO",
@@ -306,13 +310,6 @@ def on_select_object():
 
     if obj == morphing.last_object:
         return
-    char = library.obj_char(obj)
-    if char.name and ui.fin_rig != '-':
-        if len(ui.fin_rig)>=len(char.armature):
-            if len(char.armature)==0:
-                ui.fin_rig="-"
-            else:
-                ui.fin_rig="0"
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent

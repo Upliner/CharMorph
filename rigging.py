@@ -104,6 +104,7 @@ def add_joints_from_file(verts, avg, file):
         for i, weight in data:
             item[0] += weight
             item[1] += verts[i].co*weight
+        print(name,item[1]/item[0])
     process_vg_file(file, callback)
 
 def vg_to_locs(char, verts, jfile):
@@ -115,17 +116,25 @@ def vg_to_locs(char, verts, jfile):
 def joints_to_vg(char, lst, verts, jfile = None):
     joints_to_locs(char, lst, vg_to_locs(char, verts, jfile))
 
-def joints_to_locs(obj, lst, locs):
+def joints_to_locs(obj, lst, locs, opts = None):
     result = True
     bones = set()
     edit_bones = obj.data.edit_bones
+    def get_opt(bone, opt):
+        if opts:
+            bo = opts.get(bone.name)
+            if bo:
+              val = bo.get(opt)
+              if val:
+                  return val
+        return bone.get("charmorph_" + opt)
     for name, (_, bone, attr) in lst.items():
         item = locs.get(name)
         if item and item[0]>0.1:
             eb = edit_bones[bone.name]
             bones.add(eb)
             pos = item[1]/item[0]
-            offs = bone.get("charmorph_offs_" + attr)
+            offs = get_opt(bone,"offs_" + attr)
             if offs and len(offs) == 3:
                 pos += Vector(tuple(offs))
             setattr(eb, attr, pos)
@@ -137,10 +146,10 @@ def joints_to_locs(obj, lst, locs):
 
     # Bone roll
     for bone in bones:
-        axis = bone.get("charmorph_axis_z")
+        axis = get_opt(bone, "axis_z")
         flip = False
         if not axis:
-            axis = bone.get("charmorph_axis_x")
+            axis = get_opt(bone, "axis_x")
             flip = True
         if axis and len(axis) == 3:
             axis = Vector(tuple(axis))
@@ -261,12 +270,12 @@ def apply_tweak(rig, tweak):
     for attr, val in tweak.get("set").items():
         setattr(obj, attr, val)
 
-def set_lock(bone, is_lock):
-    bone.lock_location = (is_lock, is_lock, is_lock)
-    bone.lock_rotation = (is_lock, is_lock, is_lock)
-    bone.lock_rotation_w = is_lock
-    bone.lock_rotations_4d = is_lock
-    bone.lock_scale = (is_lock, is_lock, is_lock)
+def lock_obj(obj, is_lock):
+    obj.lock_location = (is_lock, is_lock, is_lock)
+    obj.lock_rotation = (is_lock, is_lock, is_lock)
+    obj.lock_rotation_w = is_lock
+    obj.lock_rotations_4d = is_lock
+    obj.lock_scale = (is_lock, is_lock, is_lock)
 
 # My implementation of sliding joints on top of rigify
 # Thanks to DanPro for the idea!
@@ -351,7 +360,7 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     bone.lock_rotation = (True, False, True)
     bone.lock_scale = (False, True, False)
 
-    set_lock(bones[mch_name], True)
+    lock_obj(bones[mch_name], True)
 
     c = bones[mch_name].constraints.new("COPY_ROTATION")
     c.target = rig

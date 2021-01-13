@@ -329,6 +329,15 @@ def create_charmorphs(obj):
     else:
         m = morphers.ShapeKeysMorpher(obj)
 
+    ui = bpy.context.window_manager.charmorph_ui
+
+    if m.char.name and ui.fin_rig != '-':
+        if len(ui.fin_rig)>=len(m.char.armature):
+            if len(m.char.armature)==0:
+                ui.fin_rig="-"
+            else:
+                ui.fin_rig="0"
+
     if not m.has_morphs():
         return
 

@@ -19,9 +19,9 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, numpy, os, re
-import bpy, bpy_extras, mathutils
+import bpy, bpy_extras, mathutils, idprop
 
-from . import yaml, rigging, library
+from . import yaml, rigging, library, file_io
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,8 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         self.layout.operator("cmedit.add_rigify_deform")
         self.layout.prop(ui, "rig_tweaks_file")
         self.layout.operator("cmedit.rigify_tweaks")
+        self.layout.prop(ui, "rig_bones_mode")
+        self.layout.operator("cmedit.bones_export")
 
 class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_label = "Utils"
@@ -498,6 +500,48 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         rigging.import_vg(context.object, self.filepath, context.window_manager.cmedit_ui.vg_overwrite)
         return {"FINISHED"}
 
+class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.bones_export"
+    bl_label = "Export Bone settings"
+    bl_description = "Export bone settings (offsets, roll)"
+    filename_ext = ".yaml"
+
+    filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "ARMATURE" and (context.mode == "EDIT_ARMATURE" or context.window_manager.cmedit_ui.rig_bones_mode == "N")
+
+    def execute(self, context):
+        result = {}
+        mode = context.window_manager.cmedit_ui.rig_bones_mode
+        a = context.object.data
+        if context.mode == "EDIT_ARMATURE":
+            bones = a.edit_bones
+        else:
+            bones = a.bones
+        for b in bones:
+            bd = {}
+            for k,v in b.items():
+                if k.startswith("charmorph_"):
+                    if type(v) == idprop.types.IDPropertyArray:
+                        v = list(v)
+                    bd[k[10:]] = v
+
+            if "axis_x" not in bd and "axis_z" not in bd:
+                if mode == "X":
+                    bd["axis_x"] = list(b.x_axis)
+                elif mode == "Z":
+                    bd["axis_z"] = list(b.z_axis)
+
+            if len(bd)>0:
+                result[b.name] = bd
+
+        with open(self.filepath, "w") as f:
+            yaml.dump(result, f, Dumper=file_io.MyDumper)
+
+        return {"FINISHED"}
+
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
 
@@ -708,7 +752,7 @@ class OpCleanupJoints(bpy.types.Operator):
 def objects_by_type(type):
     return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
 
-rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/rigify_tweaks.yaml")
+rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
 class CMEditUIProps(bpy.types.PropertyGroup):
     # Rigging
@@ -768,6 +812,16 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         default = rigify_tweaks_file,
         subtype = 'FILE_PATH',
     )
+    rig_bones_mode: bpy.props.EnumProperty(
+        name = "Bones mode",
+        description = "Bones export mode",
+        default = "N",
+        items = [
+            ("N", "Props only", "Export data only where charmorph_* custom props are present"),
+            ("X", "X axis", "Export X axis for all bones"),
+            ("Z", "Z axis", "Export Z axis for all bones"),
+        ]
+    )
     vg_regex: bpy.props.StringProperty(
         name = "VG regex",
         description = "Regular expression for vertex group export",
@@ -778,7 +832,8 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description = "Overwrite existing vertex groups with imported ones",
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks, OpHairExport, OpVgExport, OpVgImport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks,
+    OpHairExport, OpVgExport, OpVgImport, OpBoneExport, CMEDIT_PT_Utils]
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 

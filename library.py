@@ -61,6 +61,7 @@ class Character:
             "title": name,
             "char_file": "char.blend",
             "char_obj": "char",
+            "bones": "",
             "default_type": "",
             "default_hair_length": 0.1,
             "hairstyles": [],
