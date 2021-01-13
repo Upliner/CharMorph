@@ -201,7 +201,7 @@ def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth
         elif tweak.get("tweak")=="rigify_sliding_joint":
             editmode_tweaks.append(tweak)
             regular_tweaks.append(tweak)
-        elif tweak.get("select") == "edit_bone" or tweak.get("tweak")=="assign_parents":
+        elif tweak.get("select") == "edit_bone" or tweak.get("tweak") in ["assign_parents", "align"]:
             editmode_tweaks.append(tweak)
         else:
             regular_tweaks.append(tweak)
@@ -223,13 +223,18 @@ def apply_editmode_tweak(context, tweak):
     if t == "rigify_sliding_joint":
         sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], tweak["side"])
     elif t == "assign_parents":
-        for k, v in tweak["parents"].items():
+        for k, v in tweak["bones"].items():
             edit_bones[k].parent = edit_bones[v]
+    elif t == "align":
+        for k, v in tweak["bones"].items():
+            bone = edit_bones[k]
+            target = edit_bones[v]
+            bone.align_orientation(target)
+            bone.roll = target.roll
     elif tweak.get("select") == "edit_bone":
-        bone_name = tweak.get("bone")
         bone = edit_bones.get(tweak.get("bone"))
         if not bone:
-            logger.error("Tweak bone not found: " + bone_name)
+            logger.error("Tweak bone not found: " + tweak.get("bone"))
             return
         for attr, val in tweak.get("set").items():
             setattr(bone, attr, val)
