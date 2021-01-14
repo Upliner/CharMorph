@@ -331,7 +331,7 @@ def create_charmorphs(obj):
 
     ui = bpy.context.window_manager.charmorph_ui
 
-    if m.char.name and ui.fin_rig != '-':
+    if m.char.name and ui.fin_rig.isdigit():
         if len(ui.fin_rig)>=len(m.char.armature):
             if len(m.char.armature)==0:
                 ui.fin_rig="-"

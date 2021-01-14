@@ -104,7 +104,6 @@ def add_joints_from_file(verts, avg, file):
         for i, weight in data:
             item[0] += weight
             item[1] += verts[i].co*weight
-        print(name,item[1]/item[0])
     process_vg_file(file, callback)
 
 def vg_to_locs(char, verts, jfile):

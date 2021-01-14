@@ -87,15 +87,16 @@ def add_rig(obj, conf, mode, verts):
 def add_mixin(obj, conf, rig):
     obj_name = conf.get("mixin")
     if not obj_name:
-        return None
+        return (None, None)
     mixin = library.import_obj(library.obj_char(obj).path(conf["file"]), obj_name, "ARMATURE")
+    bones = [ b.name for b in mixin.data.bones ]
     joints = rigging.all_joints(mixin)
     override = bpy.context.copy()
     override["object"] = rig
     override["selected_editable_objects"] = [rig, mixin]
     bpy.ops.object.join(override)
 
-    return joints
+    return (bones, joints)
 
 def add_rigify(obj, metarig, conf, locs, opts):
     metarig.data.rigify_generate_mode = "new"
@@ -105,7 +106,7 @@ def add_rigify(obj, metarig, conf, locs, opts):
     rig = bpy.context.object
     rig.name = obj.name + "_rig"
 
-    new_joints = add_mixin(obj, conf, rig)
+    new_bones, new_joints = add_mixin(obj, conf, rig)
 
     editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
     bpy.ops.object.mode_set(mode="EDIT")
@@ -121,6 +122,16 @@ def add_rigify(obj, metarig, conf, locs, opts):
     bpy.ops.object.mode_set(mode="OBJECT")
     for tweak in tweaks:
         rigging.apply_tweak(rig, tweak)
+
+    # adjust bone constraints for mixin
+    if new_bones:
+        for name in new_bones:
+            bone = rig.pose.bones.get(name)
+            if not bone:
+                continue
+            for c in bone.constraints:
+                if c.type == "STRETCH_TO":
+                    c.rest_length = bone.length
 
     attach_rig(obj, rig)
 
@@ -310,7 +321,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
-        if ui.fin_rig != '-':
+        if ui.fin_rig.isdigit():
             char = get_obj(context)[1]
             i = int(ui.fin_rig)
             if i < len(char.armature) and char.armature[i].get("type") == "rigify":
