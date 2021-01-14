@@ -70,7 +70,7 @@ def add_rig(obj, conf, mode, verts):
 
     locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
 
-    if not rigging.joints_to_locs(metarig, joints, locs, bone_opts):
+    if not rigging.joints_to_locs(bpy.context, obj, joints, locs, bone_opts):
         bpy.data.armatures.remove(metarig.data)
         raise RigException("Metarig fitting failed")
 
@@ -111,7 +111,7 @@ def add_rigify(obj, metarig, conf, locs, opts):
     editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
     bpy.ops.object.mode_set(mode="EDIT")
 
-    if new_joints and not rigging.joints_to_locs(rig, new_joints, locs, opts):
+    if new_joints and not rigging.joints_to_locs(bpy.context, rig, new_joints, locs, opts):
         bpy.data.armatures.remove(rig.data)
         raise RigException("Mixin fitting failed")
 
