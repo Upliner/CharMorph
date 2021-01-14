@@ -221,14 +221,6 @@ class OpFinalize(bpy.types.Operator):
             for k in [k for k in obj.data.keys() if k.startswith("cmorph_")]:
                 del obj.data[k]
 
-        # Make sure we won't delete any vertex groups used by hair particle systems
-        for psys in obj.particle_systems:
-            for attr in dir(psys):
-                if attr.startswith("vertex_group_"):
-                    vg = getattr(psys, attr)
-                    if vg.startswith("hair_"):
-                        unused_l1.difference_update([vg[5:]])
-
         vg_cleanup = ui.fin_vg_cleanup
         def do_rig():
             nonlocal vg_cleanup
@@ -295,6 +287,26 @@ class OpFinalize(bpy.types.Operator):
 
 
         if vg_cleanup:
+            if hasattr(context.window_manager, "chartype"):
+                current_l1 = context.window_manager.chartype
+                m = morphing.morpher
+                if m and m.obj == obj and m.morphs_l1:
+                    for l1 in m.morphs_l1.keys():
+                        if l1 != current_l1:
+                            unused_l1.add(l1)
+
+                hair_vg = obj.vertex_groups.get("hair_" + current_l1)
+                if hair_vg and "hair" not in obj.vertex_groups:
+                    hair_vg.name = "hair"
+
+            # Make sure we won't delete any vertex groups used by hair particle systems
+            for psys in obj.particle_systems:
+                for attr in dir(psys):
+                    if attr.startswith("vertex_group_"):
+                        vg = getattr(psys, attr)
+                        if vg.startswith("hair_"):
+                            unused_l1.remove(vg[5:])
+
             for vg in obj.vertex_groups:
                 if vg.name.startswith("joint_") or (
                         vg.name.startswith("hair_") and vg.name[5:] in unused_l1):

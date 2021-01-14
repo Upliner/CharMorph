@@ -128,6 +128,11 @@ def create_default_hair(context, obj, char, scalp):
         vg = "hair_" + l1
     elif "hair" in obj.vertex_groups:
         vg = "hair"
+    else:
+        for g in obj.vertex_groups:
+            if g.name.startswith("hair_"):
+                vg = g.name
+                break
 
     if scalp and vg:
         obj = create_scalp("hair_default", obj, obj.vertex_groups[vg].index)
