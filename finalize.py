@@ -41,48 +41,54 @@ def add_rig(obj, conf, mode, verts):
     if rig_type not in ["rigify","regular"]:
         raise RigException("Rig type {} is not supported".format(conf.get("type")))
 
-    weights = conf.get("weights")
-    if weights:
-        rigging.import_vg(obj, char.path(weights), False)
-
     metarig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
         raise RigException("Rig import failed")
 
-    spine = metarig.pose.bones["spine"]
-    if spine:
-         spine.rigify_parameters.make_custom_pivot = bpy.context.window_manager.charmorph_ui.fin_rigify_pivot
+    try:
+        spine = metarig.pose.bones["spine"]
+        if spine:
+            spine.rigify_parameters.make_custom_pivot = bpy.context.window_manager.charmorph_ui.fin_rigify_pivot
 
-    # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
-    #override = context.copy()
-    #override["object"] = metarig
-    #override["active_object"] = metarig
+        # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
+        #override = context.copy()
+        #override["object"] = metarig
+        #override["active_object"] = metarig
 
-    joints = rigging.all_joints(metarig)
+        joints = rigging.all_joints(metarig)
 
-    bone_opts = None
-    bones_file = conf.get("bones", char.bones)
-    if bones_file:
-        bone_opts = char.get_yaml(bones_file)
+        bone_opts = None
+        bones_file = conf.get("bones", char.bones)
+        if bones_file:
+            bone_opts = char.get_yaml(bones_file)
 
-    bpy.context.view_layer.objects.active = metarig
-    bpy.ops.object.mode_set(mode="EDIT")
+        bpy.context.view_layer.objects.active = metarig
+        bpy.ops.object.mode_set(mode="EDIT")
 
-    locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
+        locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
 
-    if not rigging.joints_to_locs(metarig, joints, locs, bone_opts):
-        bpy.data.armatures.remove(metarig.data)
-        raise RigException("Metarig fitting failed")
+        if not rigging.joints_to_locs(bpy.context, obj, joints, locs, bone_opts):
+            raise RigException("Metarig fitting failed")
 
-    bpy.ops.object.mode_set(mode="OBJECT")
+        bpy.ops.object.mode_set(mode="OBJECT")
 
-    if rig_type == "rigify":
-        if mode != "RG":
-            copy_transform(metarig, obj)
+        weights = conf.get("weights")
+        if weights:
+            rigging.import_vg(obj, char.path(weights), False)
+
+        if rig_type == "rigify":
+            if mode != "RG":
+                copy_transform(metarig, obj)
+            else:
+                add_rigify(obj, metarig, conf, locs, bone_opts)
         else:
-            add_rigify(obj, metarig, conf, locs, bone_opts)
-    else:
-        attach_rig(obj, metarig)
+            attach_rig(obj, metarig)
+    except:
+        try:
+            bpy.data.armatures.remove(metarig.data)
+        except:
+            pass
+        raise
 
 def add_mixin(obj, conf, rig):
     obj_name = conf.get("mixin")
@@ -101,39 +107,43 @@ def add_mixin(obj, conf, rig):
 def add_rigify(obj, metarig, conf, locs, opts):
     metarig.data.rigify_generate_mode = "new"
     bpy.ops.pose.rigify_generate()
-    bpy.data.armatures.remove(metarig.data)
-
     rig = bpy.context.object
-    rig.name = obj.name + "_rig"
+    try:
+        bpy.data.armatures.remove(metarig.data)
+        rig.name = obj.name + "_rig"
+        new_bones, new_joints = add_mixin(obj, conf, rig)
 
-    new_bones, new_joints = add_mixin(obj, conf, rig)
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
+        bpy.ops.object.mode_set(mode="EDIT")
 
-    editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
-    bpy.ops.object.mode_set(mode="EDIT")
+        if new_joints and not rigging.joints_to_locs(bpy.context, rig, new_joints, locs, opts):
+            raise RigException("Mixin fitting failed")
 
-    if new_joints and not rigging.joints_to_locs(rig, new_joints, locs, opts):
-        bpy.data.armatures.remove(rig.data)
-        raise RigException("Mixin fitting failed")
+        rigging.rigify_add_deform(bpy.context, obj)
 
-    rigging.rigify_add_deform(bpy.context, obj)
+        for tweak in editmode_tweaks:
+            rigging.apply_editmode_tweak(bpy.context, tweak)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for tweak in tweaks:
+            rigging.apply_tweak(rig, tweak)
 
-    for tweak in editmode_tweaks:
-        rigging.apply_editmode_tweak(bpy.context, tweak)
-    bpy.ops.object.mode_set(mode="OBJECT")
-    for tweak in tweaks:
-        rigging.apply_tweak(rig, tweak)
+        # adjust bone constraints for mixin
+        if new_bones:
+            for name in new_bones:
+                bone = rig.pose.bones.get(name)
+                if not bone:
+                    continue
+                for c in bone.constraints:
+                    if c.type == "STRETCH_TO":
+                        c.rest_length = bone.length
 
-    # adjust bone constraints for mixin
-    if new_bones:
-        for name in new_bones:
-            bone = rig.pose.bones.get(name)
-            if not bone:
-                continue
-            for c in bone.constraints:
-                if c.type == "STRETCH_TO":
-                    c.rest_length = bone.length
-
-    attach_rig(obj, rig)
+        attach_rig(obj, rig)
+    except:
+        try:
+            bpy.data.armatures.remove(rig.data)
+        except:
+            pass
+        raise
 
 def attach_rig(obj, rig):
     copy_transform(rig, obj)

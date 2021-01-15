@@ -112,13 +112,13 @@ def vg_to_locs(char, verts, jfile):
         add_joints_from_file(verts, avg, jfile)
     return avg
 
-def joints_to_vg(char, lst, verts, jfile = None):
-    joints_to_locs(char, lst, vg_to_locs(char, verts, jfile))
+def joints_to_vg(context, char, lst, verts, jfile = None):
+    joints_to_locs(context, char, lst, vg_to_locs(char, verts, jfile))
 
-def joints_to_locs(obj, lst, locs, opts = None):
+def joints_to_locs(context, obj, lst, locs, opts = None):
     result = True
     bones = set()
-    edit_bones = obj.data.edit_bones
+    edit_bones = context.object.data.edit_bones
     def get_opt(bone, opt):
         if opts:
             bo = opts.get(bone.name)
