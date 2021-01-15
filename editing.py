@@ -16,12 +16,12 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, numpy, os, re
-import bpy, bpy_extras, mathutils, idprop
+import logging, numpy, os
+import bpy, mathutils
 
-from . import yaml, rigging, file_io
+from . import yaml, rigging
 
 logger = logging.getLogger(__name__)
 
@@ -47,22 +47,21 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.cmedit_ui
-        self.layout.prop(ui, "rig_char")
-        self.layout.operator("cmedit.joints_to_vg")
-        self.layout.prop(ui, "rig_vg_calc")
-        self.layout.prop(ui, "rig_vg_offs")
-        self.layout.prop(ui, "rig_xmirror")
+        l = self.layout
+        l.prop(ui, "rig_char")
+        l.operator("cmedit.joints_to_vg")
+        l.prop(ui, "rig_vg_calc")
+        l.prop(ui, "rig_vg_offs")
+        l.prop(ui, "rig_xmirror")
         if ui.rig_vg_calc == "NP":
-            self.layout.prop(ui, "rig_vg_n")
+            l.prop(ui, "rig_vg_n")
         elif ui.rig_vg_calc == "NR":
-            self.layout.prop(ui, "rig_vg_radius")
+            l.prop(ui, "rig_vg_radius")
 
-        self.layout.operator("cmedit.calc_vg")
-        self.layout.operator("cmedit.add_rigify_deform")
-        self.layout.prop(ui, "rig_tweaks_file")
-        self.layout.operator("cmedit.rigify_tweaks")
-        self.layout.prop(ui, "rig_bones_mode")
-        self.layout.operator("cmedit.bones_export")
+        l.operator("cmedit.calc_vg")
+        l.operator("cmedit.add_rigify_deform")
+        l.prop(ui, "rig_tweaks_file")
+        l.operator("cmedit.rigify_tweaks")
 
 class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_label = "Utils"
@@ -73,18 +72,10 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_order = 2
 
     def draw(self, context):
-        ui = context.window_manager.cmedit_ui
-        self.layout.operator("cmedit.cleanup_joints")
-        self.layout.operator("cmedit.check_symmetry")
-        self.layout.operator("cmedit.symmetrize_vg")
-        self.layout.operator("cmedit.transfer")
-        #self.layout.operator("cmedit.hair_smooth")
-        self.layout.operator("cmedit.hair_export")
-        self.layout.separator()
-        self.layout.prop(ui, "vg_regex")
-        self.layout.prop(ui, "vg_overwrite")
-        self.layout.operator("cmedit.vg_export")
-        self.layout.operator("cmedit.vg_import")
+        l = self.layout
+        l.operator("cmedit.cleanup_joints")
+        l.operator("cmedit.check_symmetry")
+        l.operator("cmedit.symmetrize_vg")
 
 def obj_by_type(name, type):
     if not name:
@@ -385,163 +376,6 @@ class OpRigifyTweaks(bpy.types.Operator):
             rigging.apply_tweak(context.object, tweak)
         return {"FINISHED"}
 
-def np_particles_data(particles):
-    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
-    total = 0
-    mx = 1
-    for i, p in enumerate(particles):
-        c = len(p.hair_keys)-1
-        cnt[i] = c
-        total += c
-        if c>mx:
-            mx = c
-
-    data = numpy.empty((total, 3), dtype=numpy.float32)
-    tmp = numpy.empty(mx*3+3, dtype=numpy.float32)
-    i = 0
-    for p in particles:
-        t2 = tmp[:len(p.hair_keys)*3]
-        p.hair_keys.foreach_get("co_local", t2)
-        t2 = t2[3:].reshape((-1,3))
-        data[i:i+len(t2)] = t2
-        i += len(t2)
-    return {"cnt":cnt, "data":data}
-
-class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "cmedit.hair_export"
-    bl_label = "Export hair"
-    bl_description = "Export hairstyle to .npz file"
-    filename_ext = ".npz"
-
-    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return context.object and context.object.particle_systems.active
-
-    def execute(self, context):
-        psys = context.object.particle_systems.active
-        is_global = psys.is_global_hair
-        override = context.copy()
-        if not is_global:
-            bpy.ops.particle.disconnect_hair(override)
-        numpy.savez_compressed(self.filepath, **np_particles_data(psys.particles))
-        if not is_global:
-            bpy.ops.particle.connect_hair(override)
-        return {"FINISHED"}
-
-class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "cmedit.vg_export"
-    bl_label = "Export VGs"
-    bl_description = "Export vertex groups matching regex"
-    filename_ext = ".npz"
-
-    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return context.object and context.object.type == "MESH"
-
-    def execute(self, context):
-        r = re.compile(context.window_manager.cmedit_ui.vg_regex)
-        m = {}
-        arr = []
-        dt = numpy.uint8
-        names = bytearray()
-        for vg in context.object.vertex_groups:
-            if r.search(vg.name):
-                m[vg.index]=len(arr)
-                arr.append([])
-                if len(names)>0:
-                    names.append(0)
-                names.extend(vg.name.encode("utf-8"))
-
-        for v in context.object.data.vertices:
-            for g in v.groups:
-                i = m.get(g.group)
-                if i is None:
-                    continue
-                a = arr[i]
-                a.append((v.index, g.weight))
-                if len(a)>255:
-                    dt = numpy.uint16
-
-        cnt = numpy.empty(len(arr), dtype=dt)
-        total = 0
-        for i, a in enumerate(arr):
-            cnt[i] = len(a)
-            total += len(a)
-
-        idx = numpy.empty(total, dtype=numpy.uint16)
-        weights = numpy.empty(total, dtype=numpy.float64)
-
-        i = 0
-        for a in arr:
-            for t in a:
-                idx[i] = t[0]
-                weights[i] = t[1]
-                i += 1
-
-        numpy.savez_compressed(self.filepath, names=names, cnt=cnt, idx=idx, weights=weights)
-
-        return {"FINISHED"}
-
-class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
-    bl_idname = "cmedit.vg_import"
-    bl_label = "Import VGs"
-    bl_description = "Import vertex groups from npz file"
-
-    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return context.object and context.object.type == "MESH"
-
-    def execute(self, context):
-        rigging.import_vg(context.object, self.filepath, context.window_manager.cmedit_ui.vg_overwrite)
-        return {"FINISHED"}
-
-class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "cmedit.bones_export"
-    bl_label = "Export Bone settings"
-    bl_description = "Export bone settings (offsets, roll)"
-    filename_ext = ".yaml"
-
-    filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context):
-        return context.object and context.object.type == "ARMATURE" and (context.mode == "EDIT_ARMATURE" or context.window_manager.cmedit_ui.rig_bones_mode == "N")
-
-    def execute(self, context):
-        result = {}
-        mode = context.window_manager.cmedit_ui.rig_bones_mode
-        a = context.object.data
-        if context.mode == "EDIT_ARMATURE":
-            bones = a.edit_bones
-        else:
-            bones = a.bones
-        for b in bones:
-            bd = {}
-            for k,v in b.items():
-                if k.startswith("charmorph_"):
-                    if type(v) == idprop.types.IDPropertyArray:
-                        v = list(v)
-                    bd[k[10:]] = v
-
-            if "axis_x" not in bd and "axis_z" not in bd:
-                if mode == "X":
-                    bd["axis_x"] = list(b.x_axis)
-                elif mode == "Z":
-                    bd["axis_z"] = list(b.z_axis)
-
-            if len(bd)>0:
-                result[b.name] = bd
-
-        with open(self.filepath, "w") as f:
-            yaml.dump(result, f, Dumper=file_io.MyDumper)
-
-        return {"FINISHED"}
 
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
@@ -690,43 +524,6 @@ class OpSymmetrize(bpy.types.Operator):
             normalize()
         return {"FINISHED"}
 
-
-class OpTransfer(bpy.types.Operator):
-    bl_idname = "cmedit.transfer"
-    bl_label = "VG direct transfer"
-    bl_description = "Transfer vertex groups from char to active object (must have identical vertices! If not, use Blender's transfer weights function)"
-    bl_options = {"UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        char = get_char(context)
-        return context.object and context.object.type == "MESH" and char and context.object != char
-
-    def execute(self, context):
-        src = get_char(context)
-        dst = context.object
-        if src == dst:
-            self.report({'ERROR'}, "Source and dest are the same!")
-            return
-        if len(src.data.vertices) != len(dst.data.vertices):
-            self.report({'ERROR'}, "Incompatible meshes! Use Blender's transfer weights instead.")
-            return
-
-        while len(dst.vertex_groups) > 0:
-            dst.vertex_groups.remove(dst.vertex_groups[0])
-
-        vg_map = {}
-
-        for vg in src.vertex_groups:
-            new_vg = dst.vertex_groups.new(name = vg.name)
-            vg_map[vg.index] = new_vg
-
-        for v in src.data.vertices:
-            for g in v.groups:
-                vg_map[g.group].add([v.index],g.weight, 'REPLACE')
-
-        return {"FINISHED"}
-
 class OpCleanupJoints(bpy.types.Operator):
     bl_idname = "cmedit.cleanup_joints"
     bl_label = "Cleanup joint VGs"
@@ -832,9 +629,20 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         name = "VG overwrite",
         description = "Overwrite existing vertex groups with imported ones",
     )
+    morph_float_precicion: bpy.props.EnumProperty(
+        name = "Precision",
+        description = "Floating point precision for morph npz files",
+        default = "32",
+        items = [
+            ("32", "32 bits", "IEEE Single precision floating point"),
+            ("64", "64 bits", "IEEE Double precision floating point"),
+        ]
+    )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpTransfer, OpRigifyTweaks,
-    OpHairExport, OpVgExport, OpVgImport, OpBoneExport, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpRigifyTweaks, CMEDIT_PT_Utils]
+
+from . import edit_io
+classes.extend(edit_io.classes)
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 
