@@ -21,7 +21,7 @@
 import logging, numpy, os, re
 import bpy, bpy_extras, mathutils, idprop
 
-from . import yaml, rigging, library, file_io
+from . import yaml, rigging, file_io
 
 logger = logging.getLogger(__name__)
 
@@ -366,9 +366,10 @@ class OpRigifyTweaks(bpy.types.Operator):
         return context.object and context.object.type=="ARMATURE"
 
     def execute(self, context):
-        with open(context.window_manager.cmedit_ui.rig_tweaks_file) as f:
+        file = context.window_manager.cmedit_ui.rig_tweaks_file
+        with open(file) as f:
             tweaks = yaml.safe_load(f)
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(context.object), tweaks)
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
         if len(editmode_tweaks)>0:
             old_mode = context.mode
             override = context.copy()
