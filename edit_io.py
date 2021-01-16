@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import numpy, re
+import os, re, numpy
 import bpy, bpy_extras, idprop
 
 from . import yaml, rigging
@@ -128,6 +128,7 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "cmedit.vg_import"
     bl_label = "Import VGs"
     bl_description = "Import vertex groups from npz file"
+    bl_options = {"UNDO"}
 
     filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
 
@@ -191,21 +192,55 @@ class OpMorphsExport(bpy.types.Operator):
     bl_idname = "cmedit.morphs_export"
     bl_label = "Export L2 Morphs"
     bl_description = "Export L2 all morphs from shape keys to a specified directory"
-    bl_options = {"UNDO"}
 
     directory: bpy.props.StringProperty(
         name="Directory",
         description="Directory for exporting morphs",
         maxlen=1024,
-        subtype='FILE_PATH',
+        subtype='DIR_PATH',
     )
 
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
     def execute(self, context):
-        print(self.directory)
-        self.report({'ERROR'}, "Not implemented yet")
+        m = context.object.data
+        if not m.shape_keys or not m.shape_keys.key_blocks or not m.shape_keys.reference_key:
+            self.report({"ERROR"},"No shape keys!")
+            return {"CANCELLED"}
+        keys = {}
+
+        for sk in m.shape_keys.key_blocks:
+            if sk.name.startswith("L2__"):
+                name = sk.name[4:] + ".npz"
+                keys[name] = sk
+                if os.path.exists(os.path.join(self.directory, name)):
+                    self.report({"ERROR"}, name + ".npz already exists!")
+                    return {"CANCELLED"}
+
+        rk = m.shape_keys.reference_key
+        basis = numpy.empty(len(rk.data)*3)
+        morphed = numpy.empty(len(rk.data)*3)
+        rk.data.foreach_get("co", basis)
+
+        if context.window_manager.cmedit_ui.morph_float_precicion == "64":
+            dtype = numpy.float64
+        else:
+            dtype = numpy.float32
+
+        for name, sk in keys.items():
+            sk.data.foreach_get("co", morphed)
+            morphed -= basis
+            m2 = morphed.reshape(-1,3)
+            idx = m2.any(1).nonzero()[0]
+            numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
+
         return {"CANCELLED"}
 
     def invoke(self, context, _event):
+        if not self.directory:
+            self.directory = os.path.dirname(context.blend_data.filepath)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
