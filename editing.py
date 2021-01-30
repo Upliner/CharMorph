@@ -280,7 +280,7 @@ class OpCalcVg(bpy.types.Operator):
         joints = joint_list_extended(context, ui.rig_xmirror)
 
         if typ == "CU":
-            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.add((co, v.index)), None)
+            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index)), None)
             for name, tup in joints.items():
                 co = tup[0]
                 vg = char.vertex_groups.get(name)
