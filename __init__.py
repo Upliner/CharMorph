@@ -21,7 +21,7 @@
 import os, logging
 import bpy
 
-from . import library, morphing, randomize, file_io, materials, hair, fitting, finalize, pose, editing
+from . import library, morphing
 
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
@@ -196,7 +196,7 @@ class CharMorphUIProps(bpy.types.PropertyGroup):
     hair_style: bpy.props.EnumProperty(
         name="Hairstyle",
         description="Hairstyle",
-        items = hair.get_hairstyles)
+        items = library.get_hairstyles)
 
     # Finalize
     fin_morph: bpy.props.EnumProperty(
@@ -327,6 +327,8 @@ bpy.app.handlers.redo_post.append(select_handler)
 bpy.app.handlers.depsgraph_update_post.append(select_handler)
 
 classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
+
+from . import randomize, file_io, materials, fitting, hair, finalize, pose, editing
 
 for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, pose]:
     classes.extend(module.classes)

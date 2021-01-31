@@ -105,6 +105,14 @@ def get_poses(ui, context):
 def get_hair_colors(ui, context):
     return [ (k,k,"") for k in hair_colors.keys() ]
 
+def get_hairstyles(ui, context):
+    char = obj_char(context.active_object)
+    if not char.name:
+        return [("","<None>","")]
+    result = [("default","Default hair","")]
+    result.extend([(name, name, "") for name in char.hairstyles])
+    return result
+
 def load_assets_dir(dir):
     result = {}
     if not os.path.isdir(dir):

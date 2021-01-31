@@ -28,15 +28,6 @@ logger = logging.getLogger(__name__)
 
 obj_cache = {}
 
-def get_hairstyles(ui, context):
-    char = fitting.get_char()
-    if not char:
-        return [("","<None>","")]
-    result = [("default","Default hair","")]
-    char_conf = library.obj_char(char)
-    result.extend([(name, name, "") for name in char_conf.hairstyles])
-    return result
-
 def create_hair_material(context, name):
     mat = bpy.data.materials.new(name)
     apply_hair_color(context, mat)
