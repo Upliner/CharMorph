@@ -63,15 +63,19 @@ class Character:
             "char_obj": "char",
             "bones": "",
             "default_type": "",
+            "default_armature": "",
             "default_hair_length": 0.1,
             "hairstyles": [],
-            "armature": [],
+            "armature": {},
             "materials": [],
             "types": {},
         }
 
     def __getattr__(self, item):
-        return self.config.get(item, self.conf_default.get(item))
+        v = self.config.get(item)
+        if v is not None:
+            return v
+        return self.conf_default[item]
 
     def path(self, file):
         return char_file(self.name, file)
@@ -96,11 +100,17 @@ def get_fitting_assets(ui, context):
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
 
+def cur_char(context):
+    m = morphing.morpher
+    if m:
+        return m.char
+    return obj_char(context.active_object)
+
 def get_rigs(ui, context):
-    return [("-","<None>","Don't generate rig")] + [ (str(i),rig.get("title","<unnamed %d>" % i),"") for i, rig in enumerate(obj_char(context.active_object).armature) ]
+    return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in cur_char(context).armature.items() ]
 
 def get_poses(ui, context):
-    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(obj_char(context.active_object).poses.keys()) ]
+    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(cur_char(context).poses.keys()) ]
 
 def get_hair_colors(ui, context):
     return [ (k,k,"") for k in hair_colors.keys() ]
@@ -170,6 +180,19 @@ def load_library():
         char.morphs_meta = char.get_yaml("morphs_meta.yaml")
         char.assets = load_assets_dir(char.path("assets"))
         char.poses = load_json_dir(char.path("poses"))
+        if isinstance(char.armature, list):
+            d = {}
+            for i, a in enumerate(char.armature):
+                title = a.get("title")
+                if title:
+                    k = title.lower().replace(" ","_")
+                else:
+                    k = str(i)
+                    a["title"] = "<unnamed %s>" % k
+                d[k] = a
+                if not char.default_armature:
+                    char.config["default_armature"] = k
+            char.config["armature"] = d
         chars[char_name] = char
 
 if not os.path.isdir(data_dir):
@@ -312,8 +335,8 @@ class OpImport(bpy.types.Operator):
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
 
-        if len(char.armature) > 0 and ui.fin_rig=='-':
-            ui.fin_rig = '0'
+        if char.default_armature and ui.fin_rig=='-':
+            ui.fin_rig = char.default_armature
 
         return {"FINISHED"}
 

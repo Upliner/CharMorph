@@ -59,6 +59,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
             l.prop(ui, "rig_vg_radius")
 
         l.operator("cmedit.calc_vg")
+        l.operator("cmedit.symmetrize_joints")
         l.operator("cmedit.add_rigify_deform")
         l.prop(ui, "rig_tweaks_file")
         l.operator("cmedit.rigify_tweaks")
@@ -442,7 +443,7 @@ class OpCheckSymmetry(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OpSymmetrize(bpy.types.Operator):
+class OpSymmetrizeWeights(bpy.types.Operator):
     bl_idname = "cmedit.symmetrize_vg"
     bl_label = "Normalize+symmetrize weights"
     bl_description = "Normalize and symmetrize selected vertices using X axis"
@@ -482,6 +483,8 @@ class OpSymmetrize(bpy.types.Operator):
             #cleanup groups without counterparts before normalizing
             for g in v.groups:
                 vg = obj.vertex_groups[g.group]
+                if vg.lock_weight:
+                    continue
                 g2e = gdict.get(swap_l_r(vg.name))
                 if g2e:
                     if is_deform(vg.name):
@@ -500,7 +503,10 @@ class OpSymmetrize(bpy.types.Operator):
             normalize()
 
             for g1e in v.groups:
-                g2name = swap_l_r(obj.vertex_groups[g1e.group].name)
+                vg = obj.vertex_groups[g1e.group]
+                if vg.lock_weight:
+                    continue
+                g2name = swap_l_r(vg.name)
                 g2e = gdict[g2name]
                 g2w = g2e.weight
                 if is_deform(g2name):
@@ -522,6 +528,55 @@ class OpSymmetrize(bpy.types.Operator):
                         g1e.weight = g2w
 
             normalize()
+        return {"FINISHED"}
+
+class OpSymmetrizeJoints(bpy.types.Operator):
+    bl_idname = "cmedit.symmetrize_joints"
+    bl_label = "Symmetrize joints"
+    bl_description = "Symmetrize joints: add missing joint vertex groups from other side, report non-symmetrical joints"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH" and context.mode == "OBJECT"
+
+    def execute(self, context):
+        obj = context.object
+        mesh = obj.data
+        kd = kdtree_from_verts(mesh.vertices)
+        vg_map = {}
+        new_vg = set()
+        for vg in obj.vertex_groups:
+            if not vg.name.startswith("joint_"):
+                continue
+            cname = swap_l_r(vg.name)
+            if cname in obj.vertex_groups:
+                cvg = obj.vertex_groups[cname]
+            else:
+                cvg = obj.vertex_groups.new(name = cname)
+                new_vg.add(cvg.index)
+            vg_map[vg.index] = cvg
+
+        for v in mesh.vertices:
+            for g in v.groups:
+                if g.group in new_vg:
+                    continue
+                cvg = vg_map.get(g.group)
+                if cvg is None:
+                    continue
+                v2 = counterpart_vertex(mesh.vertices, kd, v)
+                if v2 is None:
+                    continue
+                if cvg.index in new_vg:
+                    cvg.add([v2.index], g.weight, "REPLACE")
+                else:
+                    try:
+                        w2 = cvg.weight(v2.index)
+                    except RuntimeError:
+                        w2 = 0
+                    if abs(g.weight-w2)>=1e-5:
+                        print("assymetry:",cvg.name,v.index,g.weight,v2.index,w2)
+
         return {"FINISHED"}
 
 class OpCleanupJoints(bpy.types.Operator):
@@ -639,7 +694,8 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         ]
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpCheckSymmetry, OpSymmetrize, OpRigifyTweaks, CMEDIT_PT_Utils]
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
+    OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 from . import edit_io
 classes.extend(edit_io.classes)

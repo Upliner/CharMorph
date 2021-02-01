@@ -331,17 +331,13 @@ def create_charmorphs(obj):
 
     ui = bpy.context.window_manager.charmorph_ui
 
-    if m.char.name and ui.fin_rig.isdigit():
-        if len(ui.fin_rig)>=len(m.char.armature):
-            if len(m.char.armature)==0:
-                ui.fin_rig="-"
-            else:
-                ui.fin_rig="0"
-
     if not m.has_morphs():
         return
 
     morpher = m
+
+    if m.char.default_armature and ui.fin_rig not in m.char.armature:
+        ui.fin_rig = m.char.default_armature
 
     items = [(name, m.char.types.get(name, {}).get("title",name), "") for name in sorted(m.morphs_l1.keys())]
 

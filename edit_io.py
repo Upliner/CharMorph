@@ -134,7 +134,7 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.object.type == "MESH"
+        return context.object and context.object.type == "MESH" and context.mode == "OBJECT"
 
     def execute(self, context):
         rigging.import_vg(context.object, self.filepath, context.window_manager.cmedit_ui.vg_overwrite)

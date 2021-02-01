@@ -39,14 +39,14 @@ def add_rig(obj, conf, mode, verts):
     char = library.obj_char(obj)
     rig_type = conf.get("type")
     if rig_type not in ["rigify","regular"]:
-        raise RigException("Rig type {} is not supported".format(conf.get("type")))
+        raise RigException("Rig type {} is not supported".format(rig_type))
 
     metarig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
     if not metarig:
         raise RigException("Rig import failed")
 
     try:
-        spine = metarig.pose.bones["spine"]
+        spine = metarig.pose.bones.get("spine")
         if spine:
             spine.rigify_parameters.make_custom_pivot = bpy.context.window_manager.charmorph_ui.fin_rigify_pivot
 
@@ -239,12 +239,10 @@ class OpFinalize(bpy.types.Operator):
             if obj.find_armature() and ui.fin_rigify_mode != "MR":
                 self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
                 return True
-            i = int(ui.fin_rig)
-            rigs = char.armature
-            if i >= len(rigs):
+            rig = char.armature.get(ui.fin_rig)
+            if not rig:
                 self.report({"ERROR"}, "Rig is not found")
                 return False
-            rig = rigs[i]
             rigify_mode = ui.fin_rigify_mode
             if rigify_mode == "RG" and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
@@ -341,14 +339,13 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
+        char = get_obj(context)[1]
         self.layout.prop(ui, "fin_morph")
         self.layout.prop(ui, "fin_rig")
-        if ui.fin_rig.isdigit():
-            char = get_obj(context)[1]
-            i = int(ui.fin_rig)
-            if i < len(char.armature) and char.armature[i].get("type") == "rigify":
-                self.layout.prop(ui, "fin_rigify_mode")
-                self.layout.prop(ui, "fin_rigify_pivot")
+        rig = char.armature.get(ui.fin_rig)
+        if rig and rig.get("type") == "rigify":
+            self.layout.prop(ui, "fin_rigify_mode")
+            self.layout.prop(ui, "fin_rigify_pivot")
         self.layout.prop(ui, "fin_subdivision")
         self.layout.prop(ui, "fin_csmooth")
         self.layout.prop(ui, "fin_vg_cleanup")
