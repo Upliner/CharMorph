@@ -328,10 +328,10 @@ def diff_array(context, char):
     if not char.find_armature():
         return fitting.diff_array(char)
 
+    echar = char.evaluated_get(context.evaluated_depsgraph_get())
     restore_modifiers = disable_modifiers(char)
-
     try:
-        deformed = char.evaluated_get(context.evaluated_depsgraph_get()).to_mesh()
+        deformed = echar.to_mesh()
         verts = char.data.vertices
         l = len(verts)*3
         result = numpy.empty(l)
@@ -341,7 +341,7 @@ def diff_array(context, char):
         result -= basis
         return result.reshape(-1,3)
     finally:
-        char.to_mesh_clear()
+        echar.to_mesh_clear()
         for m in restore_modifiers:
             m.show_viewport = True
 
