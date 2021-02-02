@@ -226,6 +226,9 @@ class OpApplyPose(bpy.types.Operator):
         apply_pose(context.window_manager.charmorph_ui, context)
         return {"FINISHED"}
 
+def get_poses(ui, context):
+    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(library.obj_char(context.object).poses.keys()) ]
+
 class UIProps:
     pose_ik2fk: bpy.props.BoolProperty(
         name="Apply pose to IK controllers",
@@ -233,7 +236,7 @@ class UIProps:
         description="Apply poses designed for FK to IK controllers too (might be slow)")
     pose: bpy.props.EnumProperty(
         name="Pose",
-        items = library.get_poses,
+        items = get_poses,
         description="Select pose from library")
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):

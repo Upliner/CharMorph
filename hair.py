@@ -480,6 +480,17 @@ class OpRecolorHair(bpy.types.Operator):
             s.material = get_material_slot(context, obj, "hair")
         return {"FINISHED"}
 
+def get_hair_colors(ui, context):
+    return [ (k,k,"") for k in library.hair_colors.keys() ]
+
+def get_hairstyles(ui, context):
+    char = library.obj_char(context.active_object)
+    result = [("default","Default hair","")]
+    if not char.name:
+        return result
+    result.extend([(name, name, "") for name in char.hairstyles])
+    return result
+
 class UIProps:
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
@@ -490,11 +501,11 @@ class UIProps:
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
-        items = library.get_hair_colors)
+        items = get_hair_colors)
     hair_style: bpy.props.EnumProperty(
         name="Hairstyle",
         description="Hairstyle",
-        items = library.get_hairstyles)
+        items = get_hairstyles)
 
 class CHARMORPH_PT_Hair(bpy.types.Panel):
     bl_label = "Hair"

@@ -325,6 +325,12 @@ class OpFinalize(bpy.types.Operator):
 
         return {"FINISHED"}
 
+def get_rigs(ui, context):
+    char = get_obj(context)[1]
+    if not char:
+        return []
+    return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in char.armature.items() ]
+
 class UIProps:
     fin_morph: bpy.props.EnumProperty(
         name="Apply morphs",
@@ -337,7 +343,7 @@ class UIProps:
         description="Apply current shape key mix")
     fin_rig: bpy.props.EnumProperty(
         name="Rig",
-        items=library.get_rigs,
+        items=get_rigs,
         description="Rigging options")
     fin_rigify_mode: bpy.props.EnumProperty(
         name="Rigify mode",

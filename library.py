@@ -92,28 +92,6 @@ def obj_char(obj):
         return empty_char
     return chars.get(obj.data.get("charmorph_template"), chars.get(obj.get("charmorph_template"), empty_char))
 
-def get_fitting_assets(ui, context):
-    obj = bpy.data.objects.get(ui.fitting_char)
-    char = obj_char(obj)
-    return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
-
-def get_rigs(ui, context):
-    return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in cur_char(context).armature.items() ]
-
-def get_poses(ui, context):
-    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(obj_char(context.object).poses.keys()) ]
-
-def get_hair_colors(ui, context):
-    return [ (k,k,"") for k in hair_colors.keys() ]
-
-def get_hairstyles(ui, context):
-    char = obj_char(context.active_object)
-    result = [("default","Default hair","")]
-    if not char.name:
-        return result
-    result.extend([(name, name, "") for name in char.hairstyles])
-    return result
-
 def load_assets_dir(dir):
     result = {}
     if not os.path.isdir(dir):

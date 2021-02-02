@@ -447,6 +447,11 @@ def get_visible_meshes(ui, context):
         return [("","<None>","")]
     return result
 
+def get_fitting_assets(ui, context):
+    obj = bpy.data.objects.get(ui.fitting_char)
+    char = library.obj_char(obj)
+    return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(library.additional_assets.keys()) ]
+
 class UIProps:
     fitting_char: bpy.props.EnumProperty(
         name="Char",
@@ -476,7 +481,7 @@ class UIProps:
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",
-        items = library.get_fitting_assets)
+        items = get_fitting_assets)
     fitting_library_dir: bpy.props.StringProperty(
         name = "Library dir",
         description = "Additional library directory",
