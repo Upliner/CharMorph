@@ -206,8 +206,8 @@ def apply_pose(ui, context):
 
 def poll(cls, context):
     if not (context.mode in ["OBJECT", "POSE"] and context.active_object and
-        context.active_object.type == "ARMATURE" and
-        context.active_object.data.get("rig_id")):
+            context.active_object.type == "ARMATURE" and
+            context.active_object.data.get("rig_id")):
         return False
     char = library.obj_char(context.active_object)
     return len(char.poses) > 0

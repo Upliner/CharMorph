@@ -101,16 +101,16 @@ def get_rigs(ui, context):
     return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in cur_char(context).armature.items() ]
 
 def get_poses(ui, context):
-    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(cur_char(context).poses.keys()) ]
+    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(obj_char(context.object).poses.keys()) ]
 
 def get_hair_colors(ui, context):
     return [ (k,k,"") for k in hair_colors.keys() ]
 
 def get_hairstyles(ui, context):
     char = obj_char(context.active_object)
-    if not char.name:
-        return [("","<None>","")]
     result = [("default","Default hair","")]
+    if not char.name:
+        return result
     result.extend([(name, name, "") for name in char.hairstyles])
     return result
 

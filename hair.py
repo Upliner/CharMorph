@@ -188,16 +188,15 @@ def invalidate_cache():
 def get_data(char, psys, new):
     if not psys.is_edited:
         return None, None, None
-    if "charmorph_fit_id" not in psys.settings and new:
-        psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
-
     id = psys.settings.get("charmorph_fit_id")
-    data = obj_cache.get(id)
-    if data:
-        return data
-
-    if not new:
-        return None, None, None
+    if id:
+        data = obj_cache.get(id)
+        if data:
+            return data
+    else:
+        if not new:
+            return None, None, None
+        psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
 
     char_conf = library.obj_char(char)
     style = psys.settings.get("charmorph_hairstyle")
@@ -221,15 +220,20 @@ def get_data(char, psys, new):
     obj_cache[id] = (cnts, data, weights)
     return cnts, data, weights
 
-def fit_all_hair(context, char, diff_arr, new):
+def fit_hair_asset(context, char, asset, diff_arr):
+    has_fit = False
+    for i, psys in enumerate(asset.particle_systems):
+        has_fit |= fit_hair(context, char, asset, psys, i, diff_arr, False)
+    return has_fit
+
+def fit_all_hair(context, char, diff_arr):
     t = fitting.Timer()
     has_fit = False
     for i, psys in enumerate(char.particle_systems):
-        has_fit |= fit_hair(context, char, char, psys, i, diff_arr, new)
+        has_fit |= fit_hair(context, char, char, psys, i, diff_arr, False)
 
     for asset in fitting.get_assets(char):
-        for i, psys in enumerate(asset.particle_systems):
-            has_fit |= fit_hair(context, char, asset, psys, i, diff_arr, new)
+        has_fit |= fit_hair_asset(context, char, asset, diff_arr)
 
     t.time("hair_fit")
     return has_fit
@@ -346,12 +350,28 @@ class OpRefitHair(bpy.types.Operator):
     bl_options = {"UNDO"}
     @classmethod
     def poll(cls, context):
-        return context.mode in ["OBJECT", "POSE"] and fitting.get_char()
+        obj = context.object
+        if not obj:
+            return False
+        return context.mode in ["OBJECT", "POSE"] and obj.type in ["MESH", "ARMATURE"]
 
     def execute(self, context):
-        char = fitting.get_char()
-        if not fit_all_hair(context, char, diff_array(context, char), True):
-            self.report({"ERROR"},"No hair fitting data found")
+        char = context.object
+        if char.type == "ARMATURE":
+            children = char.children
+            if len(children) == 1:
+                char = children[0]
+        if char.type != "MESH":
+            self.report({"ERROR"}, "Character is not found")
+            return {"CANCELLED"}
+        if "charmorph_fit_id" in char.data and char.parent and char.parent.type == "MESH":
+            obj = char
+            char = char.parent
+            has_fit = fit_hair_asset(context, char, obj, diff_array(context, char))
+        else:
+            has_fit = fit_all_hair(context, char, diff_array(context, char))
+        if not has_fit:
+            self.report({"ERROR"}, "No hair fitting data found")
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -363,11 +383,11 @@ class OpCreateHair(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and fitting.get_char()
+        return context.mode == "OBJECT" and context.object and context.object.type == "MESH"
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
         style = ui.hair_style
-        char = fitting.get_char()
+        char = context.object
         char_conf = library.obj_char(char)
         if style=="default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)

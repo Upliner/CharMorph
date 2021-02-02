@@ -420,7 +420,7 @@ def get_children(char):
     if char.name in char_cache:
         return char_cache[char.name]
     else:
-        children = [ obj.name for obj in bpy.data.objects if obj.type=="MESH" and obj.parent == char  and 'charmorph_fit_id' in obj.data]
+        children = [ obj.name for obj in char.children if obj.type=="MESH" and 'charmorph_fit_id' in obj.data]
         char_cache[char.name] = children
         return children
 
