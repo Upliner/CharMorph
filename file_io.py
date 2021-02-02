@@ -23,6 +23,16 @@ import bpy, bpy_extras
 
 from . import yaml, library, morphing, materials
 
+class UIProps:
+    export_format: bpy.props.EnumProperty(
+        name="Format",
+        description="Export format",
+        default="yaml",
+        items=[
+            ("yaml","CharMorph (yaml)",""),
+            ("json","MB-Lab (json)","")
+        ])
+
 class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_label = "Import/Export"
     bl_parent_id = "VIEW3D_PT_CharMorph"

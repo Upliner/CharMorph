@@ -21,8 +21,6 @@
 import os, logging
 import bpy
 
-from . import library, morphing
-
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
     # While CharMorph is in alpha stage, use debug logging level
@@ -59,214 +57,6 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     def draw(self, context):
         pass
 
-def get_meshes(ui, context):
-    result = [(o.name,o.name,"") for o in bpy.data.objects if o.type == "MESH"]
-    if not result:
-        return [("","<None>","")]
-    return result
-
-#TODO: Use multiple inheritance to move props to corresponding modules?
-class CharMorphUIProps(bpy.types.PropertyGroup):
-    # Library
-    base_model: bpy.props.EnumProperty(
-        name = "Base",
-        items = lambda ui, context: [(name, conf.title,"") for name, conf in library.chars.items()],
-        description = "Choose a base model")
-    material_mode: bpy.props.EnumProperty(
-        name = "Materials",
-        default = "TS",
-        description = "Share materials between different Charmorph characters or not",
-        items = [
-            ("NS", "Non-Shared", "Use unique material for each character"),
-            ("TS", "Shared textures only", "Use same texture for all characters"),
-            ("MS", "Shared", "Use same materials for all characters")]
-    )
-    material_local: bpy.props.BoolProperty(
-        name = "Use local materials", default=True,
-        description = "Use local copies of materials for faster loading")
-    import_shapekeys: bpy.props.BoolProperty(
-        name = "Import shape keys", default=False,
-        description = "Import and morph character using shape keys")
-
-    # Morphing
-    preset_mix: bpy.props.BoolProperty(
-        name="Mix with current",
-        description="Mix selected preset with current morphs",
-        default=False)
-    relative_meta: bpy.props.BoolProperty(
-        name="Relative meta props",
-        description="Adjust meta props relatively",
-        default=True)
-    meta_materials: bpy.props.EnumProperty(
-        name="Materials",
-        description="How changing meta properties will affect materials",
-        default="A",
-        items = [
-            ("N", "None", "Don't change materials"),
-            ("A", "Absolute", "Change materials according to absolute value of meta property"),
-            ("R", "Relative", "Change materials according to relative value of meta property")])
-
-    # Import/export
-    export_format: bpy.props.EnumProperty(
-        name="Format",
-        description="Export format",
-        default="yaml",
-        items=[
-            ("yaml","CharMorph (yaml)",""),
-            ("json","MB-Lab (json)","")
-        ])
-
-    # Randomize
-    randomize_morphs: bpy.props.BoolProperty(
-        name = "Morphs", default=True,
-        description = "Randomize morphs")
-    randomize_mats: bpy.props.BoolProperty(
-        name = "Materials", default=False,
-        description = "Randomize materials")
-    randomize_incl: bpy.props.StringProperty(
-        name = "Incl. regex")
-    randomize_excl: bpy.props.StringProperty(
-        name = "Excl. regex", default=r"^Fantasy\_")
-    randomize_segs: bpy.props.IntProperty(
-        name = "Segments",
-        default=7,
-        min=2, soft_max=25,
-        description = "Segment count for segmented randomization"
-    )
-    randomize_mode: bpy.props.EnumProperty(
-        name="Mode",
-        default = "RL1",
-        items = [
-            ("OVR","Overwrite current", "Overwrite current morphing"),
-            ("RL1","Relative to non-random", "Relative to last hand-edited morphing"),
-            ("RL2","Relative to current", "Relative to current morphing"),
-            ("SEG","Segmented", "Split every property to segments and remain within them"),
-        ],
-        description = "Randomization mode (doesn't affect material colors)")
-    randomize_strength: bpy.props.FloatProperty(
-        name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
-
-    # Fitting
-    fitting_char: bpy.props.EnumProperty(
-        name="Char",
-        description="Character for fitting",
-        items=get_meshes)
-    fitting_asset: bpy.props.EnumProperty(
-        name="Local asset",
-        description="Asset for fitting",
-        items=get_meshes)
-    fitting_mask: bpy.props.EnumProperty(
-        name="Mask",
-        default = "COMB",
-        items = [
-            ("NONE", "No mask","Don't mask character at all"),
-            ("SEPR", "Separate","Use separate mask vertex groups and modifiers for each asset"),
-            ("COMB", "Combined","Use combined vertex group and modifier for all character assets"),
-        ],
-        description="Mask parts of character that are invisible under clothing")
-    fitting_transforms: bpy.props.BoolProperty(
-        name="Apply transforms",
-        default=True,
-        description="Apply object transforms before fitting")
-    fitting_armature: bpy.props.BoolProperty(
-        name="Transfer armature",
-        default=True,
-        description="Transfer character armature modifiers to the asset")
-    fitting_library_asset: bpy.props.EnumProperty(
-        name="Library asset",
-        description="Select asset from library",
-        items = library.get_fitting_assets)
-    fitting_library_dir: bpy.props.StringProperty(
-        name = "Library dir",
-        description = "Additional library directory",
-        update = library.update_fitting_assets,
-        subtype = 'DIR_PATH')
-
-    # Hair
-    hair_scalp: bpy.props.BoolProperty(
-        name="Use scalp mesh",
-        description="Use scalp mesh as emitter instead of whole body")
-    hair_deform: bpy.props.BoolProperty(
-        name="Live deform",
-        description="Refit hair in real time (slower than clothing)")
-    hair_color: bpy.props.EnumProperty(
-        name="Hair color",
-        description="Hair color",
-        items = library.get_hair_colors)
-    hair_style: bpy.props.EnumProperty(
-        name="Hairstyle",
-        description="Hairstyle",
-        items = library.get_hairstyles)
-
-    # Finalize
-    fin_morph: bpy.props.EnumProperty(
-        name="Apply morphs",
-        default = "SK",
-        items = [
-            ("NO", "Don't apply","Keep all morphing shape keys"),
-            ("SK", "Keep original basis","Keep original basis shape key (recommended if you plan to fit more assets)"),
-            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
-        ],
-        description="Apply current shape key mix")
-    fin_rig: bpy.props.EnumProperty(
-        name="Rig",
-        items=library.get_rigs,
-        description="Rigging options")
-    fin_rigify_mode: bpy.props.EnumProperty(
-        name="Rigify mode",
-        default = "RG",
-        items = [
-            ("MR", "Metarig only", "Generate metarig only"),
-            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
-        ],
-        description="Rigify rigging options")
-    fin_rigify_pivot: bpy.props.BoolProperty(
-        name="Add custom pivot",
-        description = "Create a rotation pivot control that can be repositioned arbitrarily"
-    )
-    fin_subdivision: bpy.props.EnumProperty(
-        name="Subdivision",
-        default = "RO",
-        items = [
-            ("NO", "No", "No subdivision surface"),
-            ("RO", "Render only", "Use subdivision only for rendering"),
-            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
-        ],
-        description="Use subdivision surface for smoother look")
-    fin_csmooth: bpy.props.EnumProperty(
-        name="Corrective smooth",
-        default = "L_LENGTH_WEIGHTED",
-        items = [
-            ("NO", "None", "No corrective smooth"),
-            ("L_SIMPLE", "Limited Simple", ""),
-            ("L_LENGTH_WEIGHTED", "Limited Length weighted", ""),
-            ("U_SIMPLE", "Unlimited Simple", ""),
-            ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
-        ],
-        description="Use corrective smooth to fix armature deform artifacts")
-    fin_subdiv_assets: bpy.props.BoolProperty(
-        name="Subdivide assets",
-        default = False,
-        description="Subdivide assets together with character")
-    fin_cmooth_assets: bpy.props.BoolProperty(
-        name="Corrective smooth for assets",
-        default = True,
-        description="Use corrective smooth for assets too")
-    fin_vg_cleanup: bpy.props.BoolProperty(
-        name="Cleanup vertex groups",
-        default = True,
-        description="Remove unused vertex groups after finalization")
-
-    # Pose
-    pose_ik2fk: bpy.props.BoolProperty(
-        name="Apply pose to IK controllers",
-        default = True,
-        description="Apply poses designed for FK to IK controllers too (might be slow)")
-    pose: bpy.props.EnumProperty(
-        name="Pose",
-        items = library.get_poses,
-        description="Select pose from library")
-
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
 
@@ -278,13 +68,19 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
     def draw(self, context):
         self.layout.prop(self,"adult_mode")
 
+from . import library, morphing
+
 def on_select_object():
     if morphing.bad_object():
         morphing.del_charmorphs()
-    obj = bpy.context.active_object
+    obj = bpy.context.object
     if obj is None:
         return
     ui = bpy.context.window_manager.charmorph_ui
+
+    if obj is morphing.last_object:
+        return
+
     if obj.type == "MESH":
         asset = None
         if (obj.parent and obj.parent.type == "MESH" and
@@ -308,8 +104,6 @@ def on_select_object():
         if arm:
             obj = arm
 
-    if obj == morphing.last_object:
-        return
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent
@@ -326,12 +120,20 @@ bpy.app.handlers.undo_post.append(select_handler)
 bpy.app.handlers.redo_post.append(select_handler)
 bpy.app.handlers.depsgraph_update_post.append(select_handler)
 
-classes = [CharMorphPrefs, CharMorphUIProps, VIEW3D_PT_CharMorph]
+classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
+
+uiprops = [bpy.types.PropertyGroup]
 
 from . import randomize, file_io, materials, fitting, hair, finalize, pose, editing
 
 for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, pose]:
     classes.extend(module.classes)
+    if hasattr(module, "UIProps"):
+        uiprops.append(module.UIProps)
+
+CharMorphUIProps = type("CharMorphUIProps", tuple(uiprops), {})
+
+classes[0] = CharMorphUIProps
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 

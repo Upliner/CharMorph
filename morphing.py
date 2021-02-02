@@ -392,6 +392,24 @@ def bad_object():
     except ReferenceError:
         return True
 
+class UIProps:
+    preset_mix: bpy.props.BoolProperty(
+        name="Mix with current",
+        description="Mix selected preset with current morphs",
+        default=False)
+    relative_meta: bpy.props.BoolProperty(
+        name="Relative meta props",
+        description="Adjust meta props relatively",
+        default=True)
+    meta_materials: bpy.props.EnumProperty(
+        name="Materials",
+        description="How changing meta properties will affect materials",
+        default="A",
+        items = [
+            ("N", "None", "Don't change materials"),
+            ("A", "Absolute", "Change materials according to absolute value of meta property"),
+            ("R", "Relative", "Change materials according to relative value of meta property")])
+
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
     bl_parent_id = "VIEW3D_PT_CharMorph"

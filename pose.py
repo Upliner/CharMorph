@@ -226,6 +226,16 @@ class OpApplyPose(bpy.types.Operator):
         apply_pose(context.window_manager.charmorph_ui, context)
         return {"FINISHED"}
 
+class UIProps:
+    pose_ik2fk: bpy.props.BoolProperty(
+        name="Apply pose to IK controllers",
+        default = True,
+        description="Apply poses designed for FK to IK controllers too (might be slow)")
+    pose: bpy.props.EnumProperty(
+        name="Pose",
+        items = library.get_poses,
+        description="Select pose from library")
+
 class CHARMORPH_PT_Pose(bpy.types.Panel):
     bl_label = "Pose"
     bl_parent_id = "VIEW3D_PT_CharMorph"

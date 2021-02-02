@@ -21,12 +21,9 @@
 import os, json, logging, numpy
 import bpy
 
-from . import yaml, morphing, materials, fitting
+from . import yaml
 
 logger = logging.getLogger(__name__)
-
-data_dir=""
-adult_mode=False
 
 data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 logger.debug("Looking for the char library in the folder %s...", data_dir)
@@ -99,12 +96,6 @@ def get_fitting_assets(ui, context):
     obj = bpy.data.objects.get(ui.fitting_char)
     char = obj_char(obj)
     return [ ("char_" + k,k,'') for k in sorted(char.assets.keys()) ] + [ ("add_" + k,k,'') for k in sorted(additional_assets.keys()) ]
-
-def cur_char(context):
-    m = morphing.morpher
-    if m:
-        return m.char
-    return obj_char(context.active_object)
 
 def get_rigs(ui, context):
     return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in cur_char(context).armature.items() ]
@@ -198,23 +189,6 @@ def load_library():
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
 
-def import_obj(file, obj, typ = "MESH", link = True):
-    fitting.invalidate_cache()
-    with bpy.data.libraries.load(file) as (data_from, data_to):
-        if obj not in data_from.objects:
-            if len(data_from.objects) == 1:
-                obj = data_from.objects[0]
-            else:
-                return None
-        data_to.objects = [obj]
-    obj = data_to.objects[0]
-    if obj.type != typ:
-        bpy.data.objects.remove(obj)
-        return None
-    if link:
-        bpy.context.collection.objects.link(obj)
-    return obj
-
 def is_adult_mode():
     prefs = bpy.context.preferences.addons.get(__package__, None)
     if not prefs:
@@ -274,6 +248,27 @@ def import_shapekeys(obj, char_name):
                     sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(dir, file, file2))
 
+class UIProps:
+    base_model: bpy.props.EnumProperty(
+        name = "Base",
+        items = lambda ui, context: [(name, conf.title,"") for name, conf in chars.items()],
+        description = "Choose a base model")
+    material_mode: bpy.props.EnumProperty(
+        name = "Materials",
+        default = "TS",
+        description = "Share materials between different Charmorph characters or not",
+        items = [
+            ("NS", "Non-Shared", "Use unique material for each character"),
+            ("TS", "Shared textures only", "Use same texture for all characters"),
+            ("MS", "Shared", "Use same materials for all characters")]
+    )
+    material_local: bpy.props.BoolProperty(
+        name = "Use local materials", default=True,
+        description = "Use local copies of materials for faster loading")
+    import_shapekeys: bpy.props.BoolProperty(
+        name = "Import shape keys", default=False,
+        description = "Import and morph character using shape keys")
+
 class CHARMORPH_PT_Library(bpy.types.Panel):
     bl_label = "Character library"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -298,6 +293,31 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         self.layout.prop(ui, 'material_local')
         self.layout.prop(ui, 'import_shapekeys')
         self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
+
+from . import morphing, materials, fitting
+
+def import_obj(file, obj, typ = "MESH", link = True):
+    fitting.invalidate_cache()
+    with bpy.data.libraries.load(file) as (data_from, data_to):
+        if obj not in data_from.objects:
+            if len(data_from.objects) == 1:
+                obj = data_from.objects[0]
+            else:
+                return None
+        data_to.objects = [obj]
+    obj = data_to.objects[0]
+    if obj.type != typ:
+        bpy.data.objects.remove(obj)
+        return None
+    if link:
+        bpy.context.collection.objects.link(obj)
+    return obj
+
+def cur_char(context):
+    m = morphing.morpher
+    if m:
+        return m.char
+    return obj_char(context.active_object)
 
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
@@ -334,6 +354,7 @@ class OpImport(bpy.types.Operator):
 
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
+        ui.fitting_char = obj.name
 
         if char.default_armature and ui.fin_rig=='-':
             ui.fin_rig = char.default_armature

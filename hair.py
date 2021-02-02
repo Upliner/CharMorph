@@ -460,6 +460,22 @@ class OpRecolorHair(bpy.types.Operator):
             s.material = get_material_slot(context, obj, "hair")
         return {"FINISHED"}
 
+class UIProps:
+    hair_scalp: bpy.props.BoolProperty(
+        name="Use scalp mesh",
+        description="Use scalp mesh as emitter instead of whole body")
+    hair_deform: bpy.props.BoolProperty(
+        name="Live deform",
+        description="Refit hair in real time (slower than clothing)")
+    hair_color: bpy.props.EnumProperty(
+        name="Hair color",
+        description="Hair color",
+        items = library.get_hair_colors)
+    hair_style: bpy.props.EnumProperty(
+        name="Hairstyle",
+        description="Hairstyle",
+        items = library.get_hairstyles)
+
 class CHARMORPH_PT_Hair(bpy.types.Panel):
     bl_label = "Hair"
     bl_parent_id = "VIEW3D_PT_CharMorph"

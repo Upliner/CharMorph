@@ -325,6 +325,64 @@ class OpFinalize(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class UIProps:
+    fin_morph: bpy.props.EnumProperty(
+        name="Apply morphs",
+        default = "SK",
+        items = [
+            ("NO", "Don't apply","Keep all morphing shape keys"),
+            ("SK", "Keep original basis","Keep original basis shape key (recommended if you plan to fit more assets)"),
+            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
+        ],
+        description="Apply current shape key mix")
+    fin_rig: bpy.props.EnumProperty(
+        name="Rig",
+        items=library.get_rigs,
+        description="Rigging options")
+    fin_rigify_mode: bpy.props.EnumProperty(
+        name="Rigify mode",
+        default = "RG",
+        items = [
+            ("MR", "Metarig only", "Generate metarig only"),
+            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
+        ],
+        description="Rigify rigging options")
+    fin_rigify_pivot: bpy.props.BoolProperty(
+        name="Add custom pivot",
+        description = "Create a rotation pivot control that can be repositioned arbitrarily"
+    )
+    fin_subdivision: bpy.props.EnumProperty(
+        name="Subdivision",
+        default = "RO",
+        items = [
+            ("NO", "No", "No subdivision surface"),
+            ("RO", "Render only", "Use subdivision only for rendering"),
+            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
+        ],
+        description="Use subdivision surface for smoother look")
+    fin_csmooth: bpy.props.EnumProperty(
+        name="Corrective smooth",
+        default = "L_LENGTH_WEIGHTED",
+        items = [
+            ("NO", "None", "No corrective smooth"),
+            ("L_SIMPLE", "Limited Simple", ""),
+            ("L_LENGTH_WEIGHTED", "Limited Length weighted", ""),
+            ("U_SIMPLE", "Unlimited Simple", ""),
+            ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
+        ],
+        description="Use corrective smooth to fix armature deform artifacts")
+    fin_subdiv_assets: bpy.props.BoolProperty(
+        name="Subdivide assets",
+        default = False,
+        description="Subdivide assets together with character")
+    fin_cmooth_assets: bpy.props.BoolProperty(
+        name="Corrective smooth for assets",
+        default = True,
+        description="Use corrective smooth for assets too")
+    fin_vg_cleanup: bpy.props.BoolProperty(
+        name="Cleanup vertex groups",
+        default = True,
+        description="Remove unused vertex groups after finalization")
 
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
     bl_label = "Finalization"

@@ -350,7 +350,7 @@ def do_fit(char, assets):
         hair.fit_all_hair(bpy.context, char, diff_arr, False)
 
 def masking_enabled(asset):
-    asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']
+    return asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']
 
 def recalc_comb_mask(char, new_asset=None):
     t = Timer()
@@ -431,6 +431,57 @@ def refit_char_assets(char):
     assets = get_assets(char)
     if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(char)):
         do_fit(char, assets)
+
+def traverse_collection(c):
+    if not c.is_visible:
+        return
+    for obj in c.collection.objects:
+        if obj.type == "MESH":
+            yield obj
+    for child in c.children:
+        yield from traverse_collection(child)
+
+def get_visible_meshes(ui, context):
+    result = [ (o.name, o.name, "") for o in traverse_collection(context.layer_collection) ]
+    if len(result) == 0:
+        return [("","<None>","")]
+    return result
+
+class UIProps:
+    fitting_char: bpy.props.EnumProperty(
+        name="Char",
+        description="Character for fitting",
+        items=get_visible_meshes)
+    fitting_asset: bpy.props.EnumProperty(
+        name="Local asset",
+        description="Asset for fitting",
+        items=get_visible_meshes)
+    fitting_mask: bpy.props.EnumProperty(
+        name="Mask",
+        default = "COMB",
+        items = [
+            ("NONE", "No mask","Don't mask character at all"),
+            ("SEPR", "Separate","Use separate mask vertex groups and modifiers for each asset"),
+            ("COMB", "Combined","Use combined vertex group and modifier for all character assets"),
+        ],
+        description="Mask parts of character that are invisible under clothing")
+    fitting_transforms: bpy.props.BoolProperty(
+        name="Apply transforms",
+        default=True,
+        description="Apply object transforms before fitting")
+    fitting_armature: bpy.props.BoolProperty(
+        name="Transfer armature",
+        default=True,
+        description="Transfer character armature modifiers to the asset")
+    fitting_library_asset: bpy.props.EnumProperty(
+        name="Library asset",
+        description="Select asset from library",
+        items = library.get_fitting_assets)
+    fitting_library_dir: bpy.props.StringProperty(
+        name = "Library dir",
+        description = "Additional library directory",
+        update = library.update_fitting_assets,
+        subtype = 'DIR_PATH')
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Assets"

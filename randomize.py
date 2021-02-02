@@ -75,6 +75,36 @@ def save_props(cm, version):
         if prop.startswith("prop_"):
             saved_props[prop[5:]] = getattr(cm, prop)
 
+class UIProps:
+    randomize_morphs: bpy.props.BoolProperty(
+        name = "Morphs", default=True,
+        description = "Randomize morphs")
+    randomize_mats: bpy.props.BoolProperty(
+        name = "Materials", default=False,
+        description = "Randomize materials")
+    randomize_incl: bpy.props.StringProperty(
+        name = "Incl. regex")
+    randomize_excl: bpy.props.StringProperty(
+        name = "Excl. regex", default=r"^Fantasy\_")
+    randomize_segs: bpy.props.IntProperty(
+        name = "Segments",
+        default=7,
+        min=2, soft_max=25,
+        description = "Segment count for segmented randomization"
+    )
+    randomize_mode: bpy.props.EnumProperty(
+        name="Mode",
+        default = "RL1",
+        items = [
+            ("OVR","Overwrite current", "Overwrite current morphing"),
+            ("RL1","Relative to non-random", "Relative to last hand-edited morphing"),
+            ("RL2","Relative to current", "Relative to current morphing"),
+            ("SEG","Segmented", "Split every property to segments and remain within them"),
+        ],
+        description = "Randomization mode (doesn't affect material colors)")
+    randomize_strength: bpy.props.FloatProperty(
+        name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
+
 class OpRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
     bl_label = "Randomize"
