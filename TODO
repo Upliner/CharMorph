@@ -44,12 +44,10 @@ Assets:
 Rigging:
   - Add chest and abdomen bones for breathing
   - Limit corrective smooth with vertex groups
-  - More weight paint checking
   - Allow to re-rig MB-Lab character?
   - Live regular rig deform
   - Import MB-Lab expression shape keys alongside with Rigify
   - Rigify morphing? Maybe even create an own Rigify-like rig system?
-  - Import pose library from MB-Lab
   - Blenrig
 
 Editing:
@@ -58,5 +56,6 @@ Editing:
   - Fix L2__Body_Size_min and export it back to MB-Lab
 
 Pose:
+  - Fix glitchy capture poses
   - Different mix modes
   - Native pose support (not just MB-Lab)
