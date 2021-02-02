@@ -115,11 +115,6 @@ def load_handler(dummy):
 def select_handler(dummy):
     on_select_object()
 
-bpy.app.handlers.load_post.append(load_handler)
-bpy.app.handlers.undo_post.append(select_handler)
-bpy.app.handlers.redo_post.append(select_handler)
-bpy.app.handlers.depsgraph_update_post.append(select_handler)
-
 classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
@@ -148,11 +143,26 @@ def register():
         key = (bpy.types.LayerObjects, "active"),
         args=(),
         notify = on_select_object)
+
+    bpy.app.handlers.load_post.append(load_handler)
+    bpy.app.handlers.undo_post.append(select_handler)
+    bpy.app.handlers.redo_post.append(select_handler)
+    bpy.app.handlers.depsgraph_update_post.append(select_handler)
+
     editing.register()
 
 def unregister():
     print("Charmorph unregister")
     editing.unregister()
+
+    for hlist in bpy.app.handlers:
+        if not isinstance(hlist, list):
+            continue
+        for handler in hlist:
+            if handler == load_handler or handler == select_handler:
+                hlist.remove(handler)
+                break
+
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.WindowManager.charmorph_ui
     morphing.del_charmorphs()
