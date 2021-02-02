@@ -330,16 +330,18 @@ def diff_array(context, char):
 
     restore_modifiers = disable_modifiers(char)
 
-    bm = bmesh.new()
     try:
-        bm.from_object(char, context.evaluated_depsgraph_get())
-        result = numpy.empty((len(bm.verts),3))
+        deformed = char.evaluated_get(context.evaluated_depsgraph_get()).to_mesh()
         verts = char.data.vertices
-        for i, vert in enumerate(bm.verts):
-            result[i] = vert.co-verts[i].co
-        return result
+        l = len(verts)*3
+        result = numpy.empty(l)
+        basis = numpy.empty(l)
+        deformed.vertices.foreach_get("co",result)
+        verts.foreach_get("co",basis)
+        result -= basis
+        return result.reshape(-1,3)
     finally:
-        bm.free()
+        char.to_mesh_clear()
         for m in restore_modifiers:
             m.show_viewport = True
 
