@@ -35,7 +35,7 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 
 ## Development notes
 
-This project uses git submodules so you need to checkout submodules alongside with code:
+This project uses git submodules so you to use git clone --recursive when cloning this repository. If you forgot it, you can do this:
 
 * git clone https://github.com/Upliner/CharMorph
 * cd CharMorph
