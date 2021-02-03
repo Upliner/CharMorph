@@ -347,7 +347,7 @@ def do_fit(char, assets):
 
     t.time("fit")
     if bpy.context.window_manager.charmorph_ui.hair_deform:
-        hair.fit_all_hair(bpy.context, char, diff_arr, False)
+        hair.fit_all_hair(bpy.context, char, diff_arr)
 
 def masking_enabled(asset):
     return asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']
