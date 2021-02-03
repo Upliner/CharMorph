@@ -291,12 +291,6 @@ def import_obj(file, obj, typ = "MESH", link = True):
         bpy.context.collection.objects.link(obj)
     return obj
 
-def cur_char(context):
-    m = morphing.morpher
-    if m:
-        return m.char
-    return obj_char(context.active_object)
-
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
     bl_label = "Import character"
