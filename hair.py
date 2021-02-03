@@ -328,8 +328,8 @@ def diff_array(context, char):
     if not char.find_armature():
         return fitting.diff_array(char)
 
-    echar = char.evaluated_get(context.evaluated_depsgraph_get())
     restore_modifiers = disable_modifiers(char)
+    echar = char.evaluated_get(context.evaluated_depsgraph_get())
     try:
         deformed = echar.to_mesh()
         verts = char.data.vertices
@@ -453,7 +453,7 @@ class OpCreateHair(bpy.types.Operator):
         for m in list(dst_obj.modifiers):
             cnt -= 1
             if is_obstructive_modifier(m):
-                for j in range(cnt):
+                for _ in range(cnt):
                     if bpy.ops.object.modifier_move_down.poll(override):
                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
                 cnt += 1

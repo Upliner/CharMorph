@@ -168,13 +168,17 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         m = morphing.morpher
         typemap = { v["title"]:k for k,v in m.char.types.items() if "title" in v }
         m.lock()
-        for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
-            if not name:
-                continue
-            if m.set_L1(name):
-                break
+        try:
+            for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
+                if not name:
+                    continue
+                if m.set_L1(name):
+                    break
 
-        m.apply_morph_data(context.window_manager.charmorphs, data, False)
+            m.apply_morph_data(context.window_manager.charmorphs, data, False)
+        except:
+            m.unlock()
+            raise
         return {"FINISHED"}
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]

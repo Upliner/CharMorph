@@ -140,18 +140,20 @@ class Morpher(metaclass=abc.ABCMeta):
         morph_props = data.get("morphs", {})
         meta_props = data.get("meta", {})
         self.lock()
-        for prop in dir(charmorphs):
-            if prop.startswith("prop_"):
-                value = morph_props.get(prop[5:], 0)
-                if preset_mix:
-                    value = (value+getattr(charmorphs, prop))/2
-                setattr(charmorphs, prop, value)
-            elif prop.startswith("meta_"):
-                # TODO handle preset_mix?
-                value = meta_props.get(prop[5:],0)
-                self.meta_prev[prop[5:]] = value
-                self.obj.data["cmorph_" + prop] = value
-        self.unlock()
+        try:
+            for prop in dir(charmorphs):
+                if prop.startswith("prop_"):
+                    value = morph_props.get(prop[5:], 0)
+                    if preset_mix:
+                        value = (value+getattr(charmorphs, prop))/2
+                    setattr(charmorphs, prop, value)
+                elif prop.startswith("meta_"):
+                    # TODO handle preset_mix?
+                    value = meta_props.get(prop[5:],0)
+                    self.meta_prev[prop[5:]] = value
+                    self.obj.data["cmorph_" + prop] = value
+        finally:
+            self.unlock()
         materials.apply_props(data.get("materials"))
 
     # Reset all meta properties to 0
@@ -184,30 +186,31 @@ class Morpher(metaclass=abc.ABCMeta):
                 return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
             self.lock()
-            for k, coeffs in data.get("morphs",{}).items():
-                propname = "prop_" + k
-                if not hasattr(cm, propname):
-                    continue
+            try:
+                for k, coeffs in data.get("morphs",{}).items():
+                    propname = "prop_" + k
+                    if not hasattr(cm, propname):
+                        continue
 
-                if not ui.relative_meta:
-                    setattr(cm, propname, calc_val(value))
-                    continue
+                    if not ui.relative_meta:
+                        setattr(cm, propname, calc_val(value))
+                        continue
 
-                propval = getattr(cm, propname)
+                    propval = getattr(cm, propname)
 
-                val_prev = calc_val(prev_value)
-                val_cur = calc_val(value)
+                    val_prev = calc_val(prev_value)
+                    val_cur = calc_val(value)
 
-                # assign absolute prop value if current property value is out of range
-                # or add a delta if it is within (-0.999 .. 0.999)
-                sign = -1 if val_cur-val_prev < 0 else 1
-                if propval*sign<-0.999 and val_prev*sign < -1:
-                     propval = val_cur
-                else:
-                    propval += val_cur-val_prev
-                setattr(cm, propname, propval)
-
-            self.unlock()
+                    # assign absolute prop value if current property value is out of range
+                    # or add a delta if it is within (-0.999 .. 0.999)
+                    sign = -1 if val_cur-val_prev < 0 else 1
+                    if propval*sign<-0.999 and val_prev*sign < -1:
+                         propval = val_cur
+                    else:
+                        propval += val_cur-val_prev
+                    setattr(cm, propname, propval)
+            finally:
+                self.unlock()
 
             if ui.meta_materials != "N":
                 for k, coeffs in data.get("materials",{}).items():

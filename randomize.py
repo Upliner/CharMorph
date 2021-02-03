@@ -126,24 +126,26 @@ class OpRandomize(bpy.types.Operator):
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_morphs:
             m.lock()
-            for prop in dir(cm):
-                if not prop.startswith("prop_"):
-                    continue
-                propname = prop[5:]
-                if excl.search(propname) or not incl.search(propname):
-                    continue
-                if ui.randomize_mode == "OVR":
-                    m.reset_meta()
-                if ui.randomize_mode == "SEG":
-                    val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
-                else:
-                    val = (ui.randomize_strength * (random.random() * 2 - 1))
-                if ui.randomize_mode == "RL1":
-                    val += saved_props.get(propname, 0)
-                elif ui.randomize_mode == "RL2":
-                    val += getattr(cm, prop)
-                setattr(cm, prop, val)
-            m.unlock()
+            try:
+                for prop in dir(cm):
+                    if not prop.startswith("prop_"):
+                        continue
+                    propname = prop[5:]
+                    if excl.search(propname) or not incl.search(propname):
+                        continue
+                    if ui.randomize_mode == "OVR":
+                        m.reset_meta()
+                    if ui.randomize_mode == "SEG":
+                        val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
+                    else:
+                        val = (ui.randomize_strength * (random.random() * 2 - 1))
+                    if ui.randomize_mode == "RL1":
+                        val += saved_props.get(propname, 0)
+                    elif ui.randomize_mode == "RL2":
+                        val += getattr(cm, prop)
+                    setattr(cm, prop, val)
+            finally:
+                m.unlock()
         if ui.randomize_mode == "RL1":
             saved_version = m.version
         return {"FINISHED"}
