@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, random, numpy
+import logging, random, numpy, struct
 import bpy, mathutils, bmesh
 
 from . import library, fitting
@@ -130,7 +130,6 @@ def create_default_hair(context, obj, char, scalp):
 
     override = context.copy()
     override["object"] = obj
-    override["active_object"] = obj
     hair = obj.modifiers.new("hair_default", 'PARTICLE_SYSTEM').particle_system
 
     s = hair.settings
@@ -185,7 +184,60 @@ def calc_weights(char, arr):
 def invalidate_cache():
     obj_cache.clear()
 
-def get_data(char, psys, new):
+def np_particles_data(obj, particles):
+    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
+    total = 0
+    mx = 1
+    for i, p in enumerate(particles):
+        c = len(p.hair_keys)-1
+        cnt[i] = c
+        total += c
+        if c>mx:
+            mx = c
+
+    data = numpy.empty((total, 3))
+    tmp = numpy.empty(mx*3+3)
+    i = 0
+    for p in particles:
+        t2 = tmp[:len(p.hair_keys)*3]
+        p.hair_keys.foreach_get("co_local", t2)
+        t2 = t2[3:].reshape((-1,3))
+        data[i:i+len(t2)] = t2
+        i += len(t2)
+
+    mat = obj.matrix_world.inverted()
+
+    data.dot(numpy.array(mat.to_3x3().transposed()), data)
+    data += numpy.array(mat.translation)
+
+    return cnt, data.astype(dtype=">f", casting="same_kind")
+
+def serialize_data(obj, psys):
+    is_global = psys.is_global_hair
+    override = {"object": obj,"particle_system": psys}
+    if not is_global:
+        bpy.ops.particle.disconnect_hair(override)
+    cnt, data = np_particles_data(obj, psys.particles)
+    if not is_global:
+        bpy.ops.particle.connect_hair(override)
+    return b"CMH1" + struct.pack(">II",len(cnt),len(data)) + cnt.tobytes() + data.tobytes()
+
+def load_data(psys):
+    data = psys.settings.charmorph_hair_data
+    if not data.startswith(b"CMH1"):
+        print("hair.load_data() error!!!")
+        return None, None
+
+    lcnt, ldata = struct.unpack(">II",data[4:12])
+
+    d2 = 12+lcnt
+
+    cnt = numpy.frombuffer(data[12:d2], dtype=numpy.uint8)
+    data = numpy.frombuffer(data[d2:], dtype=">f").reshape(ldata,3)
+
+    return cnt, data
+
+def get_data(char, obj, psys, new):
     if not psys.is_edited:
         return None, None, None
     id = psys.settings.get("charmorph_fit_id")
@@ -198,21 +250,19 @@ def get_data(char, psys, new):
             return None, None, None
         psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
 
-    char_conf = library.obj_char(char)
-    style = psys.settings.get("charmorph_hairstyle")
-    if not char_conf or not style:
-        return None, None, None
-    try:
-        arr = numpy.load(char_conf.path("hairstyles/%s.npz" % style))
-    except Exception as e:
-        logger.error(str(e))
+    if new:
+        eobj = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        psys.settings.charmorph_hair_data = serialize_data(eobj, eobj.particle_systems[psys.name])
+
+    cnts, data = load_data(psys)
+
+    if cnts is None or data is None:
+        logger.error("No fitting data was found")
         return None, None, None
 
-    cnts = arr["cnt"]
-    data = arr["data"].astype(dtype=numpy.float64, casting="same_kind")
 
     if len(cnts) != len(psys.particles):
-        logger.error("Mismatch between current hairsyle and .npz!")
+        logger.error("Mismatch between current hairsyle and stored data!")
         invalidate_cache()
         return None, None, None
 
@@ -240,14 +290,14 @@ def fit_all_hair(context, char, diff_arr):
 
 def has_hair(char):
     for psys in char.particle_systems:
-        cnts, data, weights = get_data(char, psys, False)
+        cnts, data, weights = get_data(char, char, psys, False)
         if cnts is not None and data is not None and weights:
            return True
     return False
 
 def fit_hair(context, char, obj, psys, idx, diff_arr, new):
     t = fitting.Timer()
-    cnts, data, weights = get_data(char, psys, new)
+    cnts, data, weights = get_data(char, obj, psys, new)
     if cnts is None or data is None or not weights:
         return False
     t.time("prepare")

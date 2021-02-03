@@ -136,6 +136,7 @@ def register():
     library.load_library()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
+    bpy.types.ParticleSettings.charmorph_hair_data = bpy.props.StringProperty(subtype="BYTE_STRING", options={"HIDDEN"})
 
     bpy.msgbus.subscribe_rna(
         owner=owner,
@@ -163,6 +164,7 @@ def unregister():
                 break
 
     bpy.msgbus.clear_by_owner(owner)
+    del bpy.types.ParticleSettings.charmorph_hair_data
     del bpy.types.WindowManager.charmorph_ui
     morphing.del_charmorphs()
 
