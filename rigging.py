@@ -338,16 +338,12 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     bone.bbone_x = tweak_size
     bone.bbone_z = tweak_size
 
-    bones["DEF-{}.{}".format(lower_bone, side)].use_connect = False
+    lower_bone = bones["DEF-{}.{}".format(lower_bone, side)]
+    lower_bone.use_connect = False
 
-    bone = bones.new("MCH-{}.{}".format(upper_bone, side))
-    bone.parent = bones["DEF-{}.{}.001".format(upper_bone, side)]
-    bone.use_connect = True
-    bone.tail = tweak_tail
-    bone.layers = mch_layer
-    bone.align_roll(org_roll)
-    bone.bbone_x = tweak_size
-    bone.bbone_z = tweak_size
+    bone = bones["DEF-{}.{}.001".format(upper_bone, side)]
+    bone.bbone_handle_type_end = "TANGENT"
+    bone.bbone_custom_handle_end = lower_bone
 
 def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     bones = rig.pose.bones
@@ -379,12 +375,6 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     c.target = rig
     c.subtarget = "root"
     c.use_make_uniform = True
-
-    c = bones["MCH-{}.{}".format(upper_bone, side)].constraints.new("COPY_ROTATION")
-    c.target = rig
-    c.subtarget = "DEF-{}.{}".format(lower_bone, side)
-    c.owner_space = "POSE"
-    c.target_space = "POSE"
 
     def replace_tweak(bone):
         for c in bone.constraints:
