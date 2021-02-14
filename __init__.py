@@ -118,9 +118,9 @@ classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-from . import randomize, file_io, materials, fitting, hair, finalize, pose, editing
+from . import randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
 
-for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, pose]:
+for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose]:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)

@@ -391,13 +391,7 @@ def recalc_comb_mask(char, new_asset=None):
 
 def apply_transforms(obj):
     obj.data.transform(obj.matrix_world)
-    obj.location = (0,0,0)
-    obj.delta_location = (0,0,0)
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = (1,0,0,0)
-    obj.delta_rotation_quaternion = (1,0,0,0)
-    obj.scale = (1,1,1)
-    obj.delta_scale = (1,1,1)
+    rigging.reset_transforms(obj)
 
 def fit_new(char, asset):
     ui = bpy.context.window_manager.charmorph_ui
@@ -433,7 +427,8 @@ def refit_char_assets(char):
         do_fit(char, assets)
 
 def traverse_collection(c):
-    if not c.is_visible:
+    # Some versions of Blender have bugs with LayerCollection.is_visible, so using this visibility check instead
+    if c.hide_viewport or c.exclude or c.collection.hide_viewport:
         return
     for obj in c.collection.objects:
         if obj.type == "MESH":

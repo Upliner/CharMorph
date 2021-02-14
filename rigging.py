@@ -68,10 +68,14 @@ def get_vg_avg(char, verts):
         data_item[1] += co*gw.weight
     return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
 
+def vg_names(file):
+    if isinstance(file, str):
+        file = numpy.load(file)
+    return [ n.decode("utf-8") for n in bytes(file["names"]).split(b'\0') ]
 
 def process_vg_file(file, callback):
     z = numpy.load(file)
-    names = [ n.decode("utf-8") for n in bytes(z["names"]).split(b'\0') ]
+    names = vg_names(z)
     i = 0
     idx = z["idx"]
     weights = z["weights"]
@@ -79,6 +83,17 @@ def process_vg_file(file, callback):
         i2 = i+cnt
         callback(name, zip(idx[i:i2], weights[i:i2]))
         i = i2
+
+def char_rig_vg_names(char, rig):
+    conf = char.armature.get(rig.data.get("charmorph_rig_type"))
+    if conf:
+        weights = conf.get("weights")
+        if weights:
+            try:
+                return vg_names(char.path(weights))
+            except:
+                pass
+    return []
 
 def import_vg(obj, file, overwrite):
     def callback(name, data):
@@ -106,56 +121,55 @@ def add_joints_from_file(verts, avg, file):
             item[1] += verts[i].co*weight
     process_vg_file(file, callback)
 
-def vg_to_locs(char, verts, jfile):
-    avg = get_vg_avg(char, verts)
-    if jfile:
-        add_joints_from_file(verts, avg, jfile)
-    return avg
+class Rigger:
+    def __init__(self, context, char, verts = None, jfile = None, opts = None):
+        self.context = context
+        self.locs = get_vg_avg(char, verts)
+        if jfile:
+            add_joints_from_file(verts, self.locs, jfile)
+        self.opts = opts
 
-def joints_to_vg(context, char, lst, verts, jfile = None):
-    joints_to_locs(context, char, lst, vg_to_locs(char, verts, jfile))
+    def run(self, lst):
+        result = True
+        bones = set()
+        edit_bones = self.context.object.data.edit_bones
+        def get_opt(bone, opt):
+            if self.opts:
+                bo = self.opts.get(bone.name)
+                if bo:
+                  val = bo.get(opt)
+                  if val:
+                      return val
+            return bone.get("charmorph_" + opt)
+        for name, (_, bone, attr) in lst.items():
+            item = self.locs.get(name)
+            if item and item[0]>0.1:
+                eb = edit_bones[bone.name]
+                bones.add(eb)
+                pos = item[1]/item[0]
+                offs = get_opt(bone,"offs_" + attr)
+                if offs and len(offs) == 3:
+                    pos += Vector(tuple(offs))
+                setattr(eb, attr, pos)
+            else:
+                logger.error("No vg for " + name)
+                if item:
+                    logger.error(item[0])
+                result = False
 
-def joints_to_locs(context, obj, lst, locs, opts = None):
-    result = True
-    bones = set()
-    edit_bones = context.object.data.edit_bones
-    def get_opt(bone, opt):
-        if opts:
-            bo = opts.get(bone.name)
-            if bo:
-              val = bo.get(opt)
-              if val:
-                  return val
-        return bone.get("charmorph_" + opt)
-    for name, (_, bone, attr) in lst.items():
-        item = locs.get(name)
-        if item and item[0]>0.1:
-            eb = edit_bones[bone.name]
-            bones.add(eb)
-            pos = item[1]/item[0]
-            offs = get_opt(bone,"offs_" + attr)
-            if offs and len(offs) == 3:
-                pos += Vector(tuple(offs))
-            setattr(eb, attr, pos)
-        else:
-            logger.error("No vg for " + name)
-            if item:
-                logger.error(item[0])
-            result = False
-
-    # Bone roll
-    for bone in bones:
-        axis = get_opt(bone, "axis_z")
-        flip = False
-        if not axis:
-            axis = get_opt(bone, "axis_x")
-            flip = True
-        if axis and len(axis) == 3:
-            axis = Vector(tuple(axis))
-            if flip:
-                axis = Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
-            bone.align_roll(axis)
-    return result
+        # Bone roll
+        for bone in bones:
+            axis = get_opt(bone, "axis_z")
+            flip = False
+            if not axis:
+                axis = get_opt(bone, "axis_x")
+                flip = True
+            if axis and len(axis) == 3:
+                axis = Vector(tuple(axis))
+                if flip:
+                    axis = Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
+                bone.align_roll(axis)
+        return result
 
 def rigify_add_deform(context, char):
     for vg in char.vertex_groups:
@@ -273,6 +287,15 @@ def apply_tweak(rig, tweak):
         return
     for attr, val in tweak.get("set").items():
         setattr(obj, attr, val)
+
+def reset_transforms(obj):
+    obj.location = (0,0,0)
+    obj.delta_location = (0,0,0)
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = (1,0,0,0)
+    obj.delta_rotation_quaternion = (1,0,0,0)
+    obj.scale = (1,1,1)
+    obj.delta_scale = (1,1,1)
 
 def lock_obj(obj, is_lock):
     obj.lock_location = (is_lock, is_lock, is_lock)

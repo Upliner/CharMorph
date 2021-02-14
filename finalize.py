@@ -16,12 +16,12 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging
 import bpy, mathutils
 
-from . import library, morphing, rigging, fitting
+from . import library, morphing, fitting, rigging, rigify
 
 logger = logging.getLogger(__name__)
 
@@ -35,109 +35,92 @@ def copy_transform(target, source):
     target.rotation_quaternion = source.rotation_quaternion
     target.scale = source.scale
 
-def add_rig(obj, conf, mode, verts):
-    char = library.obj_char(obj)
+def remove_armature_modifiers(obj):
+    for m in list(obj.modifiers):
+        if m.type == "ARMATURE":
+            obj.modifiers.remove(m)
+
+def delete_old_rig(obj, rig):
+    rigify.remove_rig(rig)
+    remove_armature_modifiers(obj)
+
+def clear_old_weights(obj, char, rig):
+    vgs = obj.vertex_groups
+    for bone in rig.data.bones:
+        if bone.use_deform:
+            vg = vgs.get(bone.name)
+            if vg:
+                vgs.remove(vg)
+    vg_names = set(rigging.char_rig_vg_names(char, rig))
+    if vg_names:
+        for vg in list(vgs):
+            if vg.name in vg_names:
+                vgs.remove(vg)
+
+def clear_old_weights_with_assets(obj, char, rig):
+    clear_old_weights(obj, char, rig)
+    for asset in fitting.get_assets(obj):
+        clear_old_weights(asset, char, rig)
+
+def delete_old_rig_with_assets(obj, rig):
+    delete_old_rig(obj, rig)
+    for asset in fitting.get_assets(obj):
+        remove_armature_modifiers(asset)
+
+def add_rig(obj, char, rig_name, verts):
+    conf = char.armature.get(rig_name)
+    if not conf:
+        raise RigException("Rig is not found")
+
     rig_type = conf.get("type")
-    if rig_type not in ["rigify","regular"]:
+    if rig_type not in ["rigify", "regular"]:
         raise RigException("Rig type {} is not supported".format(rig_type))
 
-    metarig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
-    if not metarig:
+    rig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
+    if not rig:
         raise RigException("Rig import failed")
 
     try:
-        spine = metarig.pose.bones.get("spine")
-        if spine:
-            spine.rigify_parameters.make_custom_pivot = bpy.context.window_manager.charmorph_ui.fin_rigify_pivot
-
-        # Trying to override the context leads to crash :( TODO: learn more about it, maybe even try to gdb blender
-        #override = context.copy()
-        #override["object"] = metarig
-        #override["active_object"] = metarig
-
-        joints = rigging.all_joints(metarig)
-
         bone_opts = None
         bones_file = conf.get("bones", char.bones)
         if bones_file:
             bone_opts = char.get_yaml(bones_file)
 
-        bpy.context.view_layer.objects.active = metarig
+        bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
 
-        locs = rigging.vg_to_locs(obj, verts, char.path(conf.get("joints")))
+        rigger = rigging.Rigger(bpy.context,obj, verts, char.path(conf.get("joints")), bone_opts)
 
-        if not rigging.joints_to_locs(bpy.context, obj, joints, locs, bone_opts):
-            raise RigException("Metarig fitting failed")
+        if not rigger.run(rigging.all_joints(rig)):
+            raise RigException("Rig fitting failed")
 
         bpy.ops.object.mode_set(mode="OBJECT")
+
+        old_rig = obj.find_armature()
+        if old_rig:
+            clear_old_weights_with_assets(obj, char, old_rig)
 
         weights = conf.get("weights")
         if weights:
             rigging.import_vg(obj, char.path(weights), False)
 
+        attach = True
         if rig_type == "rigify":
-            if mode != "RG":
-                copy_transform(metarig, obj)
+            rigify.apply_parameters(rig)
+            if bpy.context.window_manager.charmorph_ui.rigify_metarig_only or not hasattr(rig.data, "rigify_generate_mode"):
+                copy_transform(rig, obj)
+                attach = False
             else:
-                add_rigify(obj, metarig, conf, locs, bone_opts)
-        else:
-            attach_rig(obj, metarig)
-    except:
-        try:
-            bpy.data.armatures.remove(metarig.data)
-        except:
-            pass
-        raise
+                rig = rigify.do_rig(obj, conf, rigger)
 
-def add_mixin(obj, conf, rig):
-    obj_name = conf.get("mixin")
-    if not obj_name:
-        return (None, None)
-    mixin = library.import_obj(library.obj_char(obj).path(conf["file"]), obj_name, "ARMATURE")
-    bones = [ b.name for b in mixin.data.bones ]
-    joints = rigging.all_joints(mixin)
-    override = bpy.context.copy()
-    override["object"] = rig
-    override["selected_editable_objects"] = [rig, mixin]
-    bpy.ops.object.join(override)
+        rig.data["charmorph_template"] = obj.data.get("charmorph_template","")
+        rig.data["charmorph_rig_type"] = rig_name
 
-    return (bones, joints)
+        if old_rig:
+            delete_old_rig_with_assets(obj, old_rig)
 
-def add_rigify(obj, metarig, conf, locs, opts):
-    metarig.data.rigify_generate_mode = "new"
-    bpy.ops.pose.rigify_generate()
-    rig = bpy.context.object
-    try:
-        bpy.data.armatures.remove(metarig.data)
-        rig.name = obj.name + "_rig"
-        new_bones, new_joints = add_mixin(obj, conf, rig)
-
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(library.obj_char(obj).path("."), conf.get("tweaks",[]))
-        bpy.ops.object.mode_set(mode="EDIT")
-
-        if new_joints and not rigging.joints_to_locs(bpy.context, rig, new_joints, locs, opts):
-            raise RigException("Mixin fitting failed")
-
-        rigging.rigify_add_deform(bpy.context, obj)
-
-        for tweak in editmode_tweaks:
-            rigging.apply_editmode_tweak(bpy.context, tweak)
-        bpy.ops.object.mode_set(mode="OBJECT")
-        for tweak in tweaks:
-            rigging.apply_tweak(rig, tweak)
-
-        # adjust bone constraints for mixin
-        if new_bones:
-            for name in new_bones:
-                bone = rig.pose.bones.get(name)
-                if not bone:
-                    continue
-                for c in bone.constraints:
-                    if c.type == "STRETCH_TO":
-                        c.rest_length = bone.length
-
-        attach_rig(obj, rig)
+        if attach:
+            attach_rig(obj, rig)
     except:
         try:
             bpy.data.armatures.remove(rig.data)
@@ -148,15 +131,10 @@ def add_rigify(obj, metarig, conf, locs, opts):
 def attach_rig(obj, rig):
     copy_transform(rig, obj)
 
-    obj.location = (0,0,0)
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = (1,0,0,0)
-    obj.scale = (1,1,1)
+    rigging.reset_transforms(obj)
     obj.parent = rig
 
     rigging.lock_obj(obj, True)
-
-    rig.data["charmorph_template"] = obj.data.get("charmorph_template","")
 
     mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
     mod.use_deform_preserve_volume = True
@@ -167,16 +145,6 @@ def attach_rig(obj, rig):
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
 
-def get_obj(context):
-    m = morphing.morpher
-    if m:
-        return m.obj, m.char
-    if context.object and context.object.type == "MESH":
-        char = library.obj_char(context.object)
-        if char.name:
-            return context.object, char
-    return (None, None)
-
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
     bl_label = "Finalize"
@@ -185,11 +153,15 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode=="OBJECT" and get_obj(context)[0]
+        return context.mode=="OBJECT" and library.get_obj_char(context)[0]
 
     def execute(self, context):
+        if context.view_layer != bpy.context.view_layer:
+            self.report({'ERROR'}, "Bad context")
+            return {"CANCELLED"}
+
         ui = context.window_manager.charmorph_ui
-        obj, char = get_obj(context)
+        obj, char = library.get_obj_char(context)
         if not char.name or not char.config:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
@@ -236,20 +208,11 @@ class OpFinalize(bpy.types.Operator):
             nonlocal vg_cleanup
             if ui.fin_rig == "-":
                 return True
-            if obj.find_armature() and ui.fin_rigify_mode != "MR":
-                self.report({"WARNING"}, "Character is already attached to an armature, skipping rig")
-                return True
-            rig = char.armature.get(ui.fin_rig)
-            if not rig:
-                self.report({"ERROR"}, "Rig is not found")
-                return False
-            rigify_mode = ui.fin_rigify_mode
-            if rigify_mode == "RG" and not hasattr(bpy.types.Armature, "rigify_generate_mode"):
+            if not hasattr(bpy.types.Armature, "rigify_generate_mode"):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
-                rigify_mode = "MR"
                 vg_cleanup = False
             try:
-                add_rig(obj, rig, rigify_mode, fin_sk.data if fin_sk else None)
+                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else None)
             except RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
@@ -320,13 +283,36 @@ class OpFinalize(bpy.types.Operator):
                         vg.name.startswith("hair_") and vg.name[5:] in unused_l1):
                     obj.vertex_groups.remove(vg)
 
-        if ui.fin_morph != "NO":
-            morphing.del_charmorphs()
+        morphing.del_charmorphs()
+
+        return {"FINISHED"}
+
+class OpUnrig(bpy.types.Operator):
+    bl_idname = "charmorph.unrig"
+    bl_label = "Unrig"
+    bl_description = "Remove all riging data and all its assets so you can continue morphing it"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != "OBJECT":
+            return False
+        obj = library.get_obj_char(context)[0]
+        return obj.find_armature()
+
+    def execute(self, context):
+        obj, char = library.get_obj_char(context)
+
+        old_rig = obj.find_armature()
+        if old_rig:
+            clear_old_weights_with_assets(obj, char, old_rig)
+
+        delete_old_rig_with_assets(obj, old_rig)
 
         return {"FINISHED"}
 
 def get_rigs(ui, context):
-    char = get_obj(context)[1]
+    char = library.get_obj_char(context)[1]
     if not char:
         return []
     return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in char.armature.items() ]
@@ -345,18 +331,6 @@ class UIProps:
         name="Rig",
         items=get_rigs,
         description="Rigging options")
-    fin_rigify_mode: bpy.props.EnumProperty(
-        name="Rigify mode",
-        default = "RG",
-        items = [
-            ("MR", "Metarig only", "Generate metarig only"),
-            ("RG", "Rigify", "Use rigify to generate full rig (Rigify addon must be enabled!)"),
-        ],
-        description="Rigify rigging options")
-    fin_rigify_pivot: bpy.props.BoolProperty(
-        name="Add custom pivot",
-        description = "Create a rotation pivot control that can be repositioned arbitrarily"
-    )
     fin_subdivision: bpy.props.EnumProperty(
         name="Subdivision",
         default = "RO",
@@ -387,7 +361,7 @@ class UIProps:
         description="Use corrective smooth for assets too")
     fin_vg_cleanup: bpy.props.BoolProperty(
         name="Cleanup vertex groups",
-        default = True,
+        default = False,
         description="Remove unused vertex groups after finalization")
 
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
@@ -399,22 +373,19 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and get_obj(context)[0]
+        return context.mode == "OBJECT" and library.get_obj_char(context)[0]
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        char = get_obj(context)[1]
-        self.layout.prop(ui, "fin_morph")
-        self.layout.prop(ui, "fin_rig")
-        rig = char.armature.get(ui.fin_rig)
-        if rig and rig.get("type") == "rigify":
-            self.layout.prop(ui, "fin_rigify_mode")
-            self.layout.prop(ui, "fin_rigify_pivot")
-        self.layout.prop(ui, "fin_subdivision")
-        self.layout.prop(ui, "fin_csmooth")
-        self.layout.prop(ui, "fin_vg_cleanup")
-        self.layout.prop(ui, "fin_subdiv_assets")
-        self.layout.prop(ui, "fin_cmooth_assets")
-        self.layout.operator("charmorph.finalize")
+        l = self.layout
+        l.prop(ui, "fin_morph")
+        l.prop(ui, "fin_rig")
+        l.prop(ui, "fin_subdivision")
+        l.prop(ui, "fin_csmooth")
+        l.prop(ui, "fin_vg_cleanup")
+        l.prop(ui, "fin_subdiv_assets")
+        l.prop(ui, "fin_cmooth_assets")
+        l.operator("charmorph.finalize")
+        l.operator("charmorph.unrig")
 
-classes = [OpFinalize, CHARMORPH_PT_Finalize]
+classes = [OpFinalize, OpUnrig, CHARMORPH_PT_Finalize]

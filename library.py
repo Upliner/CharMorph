@@ -26,7 +26,7 @@ from . import yaml
 logger = logging.getLogger(__name__)
 
 data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-logger.debug("Looking for the char library in the folder %s...", data_dir)
+logger.debug("Looking for the char library in the folder %s", data_dir)
 
 chars = {}
 additional_assets = {}
@@ -35,6 +35,8 @@ hair_colors = {}
 def char_file(char, file):
     if not char or not file:
         return ""
+    if file == ".":
+        os.path.join(data_dir, "characters", char)
     return os.path.join(data_dir, "characters", char, file)
 
 def parse_file(path, parse_func, default={}):
@@ -273,6 +275,16 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
 from . import morphing, materials, fitting
+
+def get_obj_char(context):
+    m = morphing.morpher
+    if m:
+        return m.obj, m.char
+    if context.object and context.object.type == "MESH":
+        char = obj_char(context.object)
+        if char.name:
+            return context.object, char
+    return (None, None)
 
 def import_obj(file, obj, typ = "MESH", link = True):
     fitting.invalidate_cache()

@@ -128,7 +128,7 @@ class OpJointsToVG(bpy.types.Operator):
         return editable_bones_poll(context)
 
     def execute(self, context):
-        rigging.joints_to_vg(context, get_char(context), joint_list_extended(context, False), None)
+        rigging.Rigger(context, get_char(context)).run(joint_list_extended(context, False))
         return {"FINISHED"}
 
 def kdtree_from_verts(verts):
