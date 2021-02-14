@@ -251,8 +251,9 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
         return poll(cls, context)
 
     def draw(self, context):
-        self.layout.prop(context.window_manager.charmorph_ui, "pose_ik2fk")
-        self.layout.prop(context.window_manager.charmorph_ui, "pose")
-        self.layout.operator("charmorph.apply_pose")
+        l = self.layout
+        for prop in UIProps.__annotations__.keys():
+            l.prop(context.window_manager.charmorph_ui, prop)
+        l.operator("charmorph.apply_pose")
 
 classes = [CHARMORPH_PT_Pose, OpApplyPose]

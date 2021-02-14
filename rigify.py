@@ -146,9 +146,9 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
             return False
         result =  rig.get("type") == "rigify"
         return result
+
     def draw(self, context):
-        ui = context.window_manager.charmorph_ui
         for prop in UIProps.__annotations__.keys():
-            self.layout.prop(ui, prop)
+            self.layout.prop(context.window_manager.charmorph_ui, prop)
 
 classes = [CHARMORPH_PT_RigifySettings]

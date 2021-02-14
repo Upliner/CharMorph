@@ -140,7 +140,7 @@ def attach_rig(obj, rig):
     mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
-    rigging.reposition_armature_modifier(bpy.context, obj)
+    rigging.reposition_armature_modifier(obj)
 
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
@@ -376,10 +376,9 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         return context.mode == "OBJECT" and library.get_obj_char(context)[0]
 
     def draw(self, context):
-        ui = context.window_manager.charmorph_ui
         l = self.layout
         for prop in UIProps.__annotations__.keys():
-            l.prop(ui, prop)
+            l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")
 

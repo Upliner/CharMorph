@@ -288,7 +288,7 @@ def transfer_armature(char, asset):
             newmod.invert_vertex_group = mod.invert_vertex_group
             newmod.use_bone_envelopes = mod.use_bone_envelopes
             newmod.use_vertex_groups = mod.use_vertex_groups
-            rigging.reposition_armature_modifier(bpy.context, asset)
+            rigging.reposition_armature_modifier(asset)
             for bone in mod.object.data.bones:
                 if bone.use_deform:
                     bones.add(bone.name)

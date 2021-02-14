@@ -26,7 +26,7 @@ from . import morphing
 saved_props = None
 saved_version = -1
 
-class UIProps:
+class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(
         name = "Morphs", default=True,
         description = "Randomize morphs")
@@ -37,12 +37,8 @@ class UIProps:
         name = "Incl. regex")
     randomize_excl: bpy.props.StringProperty(
         name = "Excl. regex", default=r"^Fantasy\_")
-    randomize_segs: bpy.props.IntProperty(
-        name = "Segments",
-        default=7,
-        min=2, soft_max=25,
-        description = "Segment count for segmented randomization"
-    )
+
+class UIProps(WhatToProps):
     randomize_mode: bpy.props.EnumProperty(
         name="Mode",
         default = "RL1",
@@ -53,6 +49,12 @@ class UIProps:
             ("SEG","Segmented", "Split every property to segments and remain within them"),
         ],
         description = "Randomization mode (doesn't affect material colors)")
+    randomize_segs: bpy.props.IntProperty(
+        name = "Segments",
+        default=7,
+        min=2, soft_max=25,
+        description = "Segment count for segmented randomization"
+    )
     randomize_strength: bpy.props.FloatProperty(
         name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
 
@@ -84,10 +86,8 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
 
         col = self.layout.column(align=True)
         col.label(text="What to randomize:")
-        col.prop(ui, "randomize_morphs")
-        col.prop(ui, "randomize_mats")
-        col.prop(ui, "randomize_incl")
-        col.prop(ui, "randomize_excl")
+        for prop in WhatToProps.__annotations__.keys():
+            col.prop(ui, prop)
 
         self.layout.separator()
         if ui.randomize_mode=="SEG":

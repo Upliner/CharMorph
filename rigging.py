@@ -176,9 +176,8 @@ def rigify_add_deform(context, char):
         if vg.name.startswith("ORG-") or vg.name.startswith("MCH-"):
             context.object.data.edit_bones[vg.name].use_deform = True
 
-def reposition_armature_modifier(context, char):
-    override = context.copy()
-    override["object"] = char
+def reposition_armature_modifier( char):
+    override = {"object": char}
     pos = len(char.modifiers)-1
     name = char.modifiers[pos].name
 
