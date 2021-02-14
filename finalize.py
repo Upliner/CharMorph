@@ -290,7 +290,7 @@ class OpFinalize(bpy.types.Operator):
 class OpUnrig(bpy.types.Operator):
     bl_idname = "charmorph.unrig"
     bl_label = "Unrig"
-    bl_description = "Remove all riging data and all its assets so you can continue morphing it"
+    bl_description = "Remove all riging data from the character and all its assets so you can continue morphing it"
     bl_options = {"UNDO"}
 
     @classmethod
