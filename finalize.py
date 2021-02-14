@@ -351,6 +351,10 @@ class UIProps:
             ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
         ],
         description="Use corrective smooth to fix armature deform artifacts")
+    fin_vg_cleanup: bpy.props.BoolProperty(
+        name="Cleanup vertex groups",
+        default = False,
+        description="Remove unused vertex groups after finalization")
     fin_subdiv_assets: bpy.props.BoolProperty(
         name="Subdivide assets",
         default = False,
@@ -359,10 +363,6 @@ class UIProps:
         name="Corrective smooth for assets",
         default = True,
         description="Use corrective smooth for assets too")
-    fin_vg_cleanup: bpy.props.BoolProperty(
-        name="Cleanup vertex groups",
-        default = False,
-        description="Remove unused vertex groups after finalization")
 
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
     bl_label = "Finalization"
@@ -378,13 +378,8 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
         l = self.layout
-        l.prop(ui, "fin_morph")
-        l.prop(ui, "fin_rig")
-        l.prop(ui, "fin_subdivision")
-        l.prop(ui, "fin_csmooth")
-        l.prop(ui, "fin_vg_cleanup")
-        l.prop(ui, "fin_subdiv_assets")
-        l.prop(ui, "fin_cmooth_assets")
+        for prop in UIProps.__annotations__.keys():
+            l.prop(ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")
 
