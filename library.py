@@ -23,7 +23,7 @@ import bpy
 
 try:
     from yaml import load as yload, CSafeLoader as SafeLoader
-except:
+except ModuleNotFoundError:
     from .yaml import load as yload, SafeLoader
 
 logger = logging.getLogger(__name__)
