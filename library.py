@@ -228,52 +228,6 @@ def import_shapekeys(obj, char_name):
                     sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(dir, file, file2))
 
-class UIProps:
-    base_model: bpy.props.EnumProperty(
-        name = "Base",
-        items = lambda ui, context: [(name, conf.title,"") for name, conf in chars.items()],
-        description = "Choose a base model")
-    material_mode: bpy.props.EnumProperty(
-        name = "Materials",
-        default = "TS",
-        description = "Share materials between different Charmorph characters or not",
-        items = [
-            ("NS", "Non-Shared", "Use unique material for each character"),
-            ("TS", "Shared textures only", "Use same texture for all characters"),
-            ("MS", "Shared", "Use same materials for all characters")]
-    )
-    material_local: bpy.props.BoolProperty(
-        name = "Use local materials", default=True,
-        description = "Use local copies of materials for faster loading")
-    import_shapekeys: bpy.props.BoolProperty(
-        name = "Import shape keys", default=False,
-        description = "Import and morph character using shape keys")
-
-class CHARMORPH_PT_Library(bpy.types.Panel):
-    bl_label = "Character library"
-    bl_parent_id = "VIEW3D_PT_CharMorph"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_order = 1
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT"
-
-    def draw(self, context):
-        if data_dir == "":
-            self.layout.label(text = "Data dir is not found. Creation is not available.")
-            return
-        if not chars:
-            self.layout.label(text = "No characters found at {}. Nothing to create.".format(data_dir))
-            return
-        ui = context.window_manager.charmorph_ui
-        self.layout.prop(ui, 'base_model')
-        self.layout.prop(ui, 'material_mode')
-        self.layout.prop(ui, 'material_local')
-        self.layout.prop(ui, 'import_shapekeys')
-        self.layout.operator('charmorph.import_char', icon='ARMATURE_DATA')
-
 from . import morphing, materials, fitting
 
 def get_obj_char(context):
@@ -302,6 +256,15 @@ def import_obj(file, obj, typ = "MESH", link = True):
     if link:
         bpy.context.collection.objects.link(obj)
     return obj
+
+class OpReloadLib(bpy.types.Operator):
+    bl_idname = "charmorph.reload_library"
+    bl_label = "Reload library"
+    bl_description = "Reload character library"
+
+    def execute(self, context):
+        load_library()
+        return {"FINISHED"}
 
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
@@ -345,4 +308,50 @@ class OpImport(bpy.types.Operator):
 
         return {"FINISHED"}
 
-classes = [OpImport, CHARMORPH_PT_Library]
+class UIProps:
+    base_model: bpy.props.EnumProperty(
+        name = "Base",
+        items = lambda ui, context: [(name, conf.title,"") for name, conf in chars.items()],
+        description = "Choose a base model")
+    material_mode: bpy.props.EnumProperty(
+        name = "Materials",
+        default = "TS",
+        description = "Share materials between different Charmorph characters or not",
+        items = [
+            ("NS", "Non-Shared", "Use unique material for each character"),
+            ("TS", "Shared textures only", "Use same texture for all characters"),
+            ("MS", "Shared", "Use same materials for all characters")]
+    )
+    material_local: bpy.props.BoolProperty(
+        name = "Use local materials", default=True,
+        description = "Use local copies of materials for faster loading")
+    import_shapekeys: bpy.props.BoolProperty(
+        name = "Import shape keys", default=False,
+        description = "Import and morph character using shape keys")
+
+class CHARMORPH_PT_Library(bpy.types.Panel):
+    bl_label = "Character library"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_order = 1
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def draw(self, context):
+        l = self.layout
+        l.operator('charmorph.reload_library')
+        l.separator()
+        if data_dir == "":
+            l.label(text = "Data dir is not found. Importing is not available.")
+            return
+        if not chars:
+            l.label(text = "No characters found at {}. Nothing to import.".format(data_dir))
+            return
+        for prop in UIProps.__annotations__.keys():
+            l.prop(context.window_manager.charmorph_ui, prop)
+        l.operator('charmorph.import_char', icon='ARMATURE_DATA')
+
+classes = [OpReloadLib, OpImport, CHARMORPH_PT_Library]

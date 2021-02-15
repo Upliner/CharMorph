@@ -1,5 +1,5 @@
 General:
-  - Proper context override?
+  - Proper context handling (use bpy.context only if really necessary)
 
 Art:
   - Compare bumping with MB-Lab?

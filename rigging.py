@@ -24,6 +24,7 @@ from . import yaml, library
 
 from bpy import ops, context
 from mathutils import Vector, Matrix
+from rna_prop_ui import rna_idprop_ui_create
 
 logger = logging.getLogger(__name__)
 
@@ -375,12 +376,14 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     old_tweak = "{}_tweak.{}.002".format(upper_bone, side)
 
     obone = bones[old_tweak]
-    del obone["rubber_tweak"] # DEF bones aren't connected anymore so rubber tweak is not possible now
     bone = bones[tweak_name]
     bone.custom_shape = obone.custom_shape
     bone.bone_group = obone.bone_group
     bone.lock_rotation = (True, False, True)
     bone.lock_scale = (False, True, False)
+
+    # Make rubber tweak property, but lock it to zero
+    rna_idprop_ui_create(bone, "rubber_tweak", default=0, min=0, max=0)
 
     lock_obj(bones[mch_name], True)
 
