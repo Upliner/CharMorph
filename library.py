@@ -18,10 +18,13 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging, numpy
+import os, json, logging, numpy, time
 import bpy
 
-from . import yaml
+try:
+    from yaml import load as yload, CSafeLoader as SafeLoader
+except:
+    from .yaml import load as yload, SafeLoader
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +52,13 @@ def parse_file(path, parse_func, default={}):
         logger.error(e)
         return default
 
+def load_yaml(data):
+    return yload(data, Loader=SafeLoader)
+
 class Character:
     def __init__(self, name):
         self.name = name
         self.config = {}
-        self.morphs_meta = {}
         self.assets = {}
         self.poses = {}
         self.conf_default = {
@@ -74,7 +79,15 @@ class Character:
         v = self.config.get(item)
         if v is not None:
             return v
-        return self.conf_default[item]
+
+        if item == "morphs_meta":
+            self.morphs_meta = self.get_yaml("morphs_meta.yaml")
+            return self.morphs_meta
+
+        def_item = self.conf_default[item]
+        self.config[item] = def_item
+
+        return def_item
 
     def path(self, file):
         return char_file(self.name, file)
@@ -82,7 +95,7 @@ class Character:
     def get_yaml(self, file, default={}):
         if self.name == "":
             return default
-        return parse_file(self.path(file), yaml.safe_load, default)
+        return parse_file(self.path(file), load_yaml, default)
 
     def blend_file(self):
         return self.path(self.char_file)
@@ -133,10 +146,19 @@ def load_json_dir(dir):
             result[name] = parse_file(full_path, json.load, {})
     return result
 
+class Timer:
+    def __init__(self):
+        self.t = time.monotonic()
+    def time(self, name):
+        t2 = time.monotonic()
+        logger.debug("{}: {}".format(name, t2-self.t))
+        self.t = t2
+
 def load_library():
+    t = Timer()
     global hair_colors
     chars.clear()
-    hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), yaml.safe_load)
+    hair_colors = parse_file(os.path.join(data_dir,"hair_colors.yaml"), load_yaml)
     chardir = os.path.join(data_dir,"characters")
     if not os.path.isdir(chardir):
         logger.error("Directory {} is not found.".format(chardir))
@@ -148,7 +170,6 @@ def load_library():
         if not os.path.isfile(char.blend_file()):
             logger.error("Character {} doesn't have char file {}.".format(char_name, char.blend_file()))
             continue
-        char.morphs_meta = char.get_yaml("morphs_meta.yaml")
         char.assets = load_assets_dir(char.path("assets"))
         char.poses = load_json_dir(char.path("poses"))
         if isinstance(char.armature, list):
@@ -165,6 +186,8 @@ def load_library():
                     char.config["default_armature"] = k
             char.config["armature"] = d
         chars[char_name] = char
+
+    t.time("Library load")
 
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at {}".format(data_dir))
@@ -353,5 +376,9 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         for prop in UIProps.__annotations__.keys():
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator('charmorph.import_char', icon='ARMATURE_DATA')
+        if is_adult_mode():
+            l.label(text = "Adult mode is on. The character will be naked.")
+        else:
+            l.label(text = "Adult mode is off. Default underwear will be added.")
 
 classes = [OpReloadLib, OpImport, CHARMORPH_PT_Library]

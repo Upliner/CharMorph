@@ -132,7 +132,7 @@ classes[0] = CharMorphUIProps
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def register():
-    print("Charmorph register")
+    logger.debug("Charmorph register")
     library.load_library()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
@@ -151,7 +151,7 @@ def register():
     editing.register()
 
 def unregister():
-    print("Charmorph unregister")
+    logger.debug("Charmorph unregister")
     editing.unregister()
 
     for hlist in bpy.app.handlers:

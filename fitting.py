@@ -21,6 +21,8 @@
 import os, time, random, logging, numpy
 import bpy, bpy_extras, mathutils, bmesh
 
+from .library import Timer
+
 from . import library, hair, rigging
 
 logger = logging.getLogger(__name__)
@@ -31,15 +33,6 @@ epsilon = 1e-30
 obj_cache = {}
 char_cache = {}
 basis_cache = {}
-
-# As realtime fitting is performance-critical I use timers for performance debugging
-class Timer:
-    def __init__(self):
-        self.t = time.monotonic()
-    def time(self, name):
-        t2 = time.monotonic()
-        logger.debug("{}: {}".format(name, t2-self.t))
-        self.t = t2
 
 def kdtree_from_verts(verts):
     kd = mathutils.kdtree.KDTree(len(verts))
