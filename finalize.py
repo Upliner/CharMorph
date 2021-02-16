@@ -305,6 +305,9 @@ class OpUnrig(bpy.types.Operator):
 
         old_rig = obj.find_armature()
         if old_rig:
+            if obj.parent is old_rig:
+                copy_transform(obj, old_rig)
+                rigging.lock_obj(obj, False)
             clear_old_weights_with_assets(obj, char, old_rig)
 
         delete_old_rig_with_assets(obj, old_rig)

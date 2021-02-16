@@ -257,10 +257,15 @@ def get_obj_char(context):
     m = morphing.morpher
     if m:
         return m.obj, m.char
-    if context.object and context.object.type == "MESH":
-        char = obj_char(context.object)
+    obj = context.object
+    if obj.type == "ARMATURE":
+        children = obj.children
+        if len(children) == 1:
+            obj = children[0]
+    if obj and obj.type == "MESH":
+        char = obj_char(obj)
         if char.name:
-            return context.object, char
+            return obj, char
     return (None, None)
 
 def import_obj(file, obj, typ = "MESH", link = True):
