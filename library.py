@@ -258,14 +258,15 @@ def get_obj_char(context):
     if m:
         return m.obj, m.char
     obj = context.object
-    if obj.type == "ARMATURE":
-        children = obj.children
-        if len(children) == 1:
-            obj = children[0]
-    if obj and obj.type == "MESH":
-        char = obj_char(obj)
-        if char.name:
-            return obj, char
+    if obj:
+        if obj.type == "ARMATURE":
+            children = obj.children
+            if len(children) == 1:
+                obj = children[0]
+        if obj.type == "MESH":
+            char = obj_char(obj)
+            if char.name:
+                return obj, char
     return (None, None)
 
 def import_obj(file, obj, typ = "MESH", link = True):
@@ -318,6 +319,9 @@ class OpImport(bpy.types.Operator):
             return {"CANCELLED"}
 
         obj.location = context.scene.cursor.location
+        if ui.import_cursor_z:
+            obj.rotation_mode = "XYZ"
+            obj.rotation_euler = (0,0,context.scene.cursor.rotation_euler[2])
 
         obj.data["charmorph_template"] = ui.base_model
         materials.init_materials(obj, char)
@@ -350,6 +354,9 @@ class UIProps:
             ("TS", "Shared textures only", "Use same texture for all characters"),
             ("MS", "Shared", "Use same materials for all characters")]
     )
+    import_cursor_z: bpy.props.BoolProperty(
+        name = "Use Z cursor rotation", default=True,
+        description = "Take 3D cursor Z rotation into account when creating the character")
     material_local: bpy.props.BoolProperty(
         name = "Use local materials", default=True,
         description = "Use local copies of materials for faster loading")
