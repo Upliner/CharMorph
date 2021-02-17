@@ -21,9 +21,9 @@
 import logging, re
 import bpy
 
-from . import library
-
 from mathutils import Matrix, Vector # pylint: disable=import-error
+
+from . import library
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +32,23 @@ m2 = m1.copy()
 m2[1][1] = -1
 m2[3][3] = -1
 flip_x_z = {
-    "L":Matrix(((1,0,0,0),(0,0,0, 1),(0,0,-1,0),(0,-1,0,0))),
-    "R":Matrix(((1,0,0,0),(0,0,0,-1),(0,0, 1,0),(0, 1,0,0))),
+    "L":Matrix(((1, 0, 0, 0), (0, 0, 0, 1), (0, 0,-1, 0), (0,-1, 0, 0))),
+    "R":Matrix(((1, 0, 0, 0), (0, 0, 0,-1), (0, 0, 1, 0), (0, 1, 0, 0))),
 }
 def qrotation(mat):
     def rot(v):
-        return (v[3],v[0],v[1],v[2])
-    return Matrix((rot(mat[3]),rot(mat[0]),rot(mat[1]),rot(mat[2])))
+        return (v[3], v[0], v[1], v[2])
+    return Matrix((rot(mat[3]), rot(mat[0]), rot(mat[1]), rot(mat[2])))
 
 shoulder_angle = 1.3960005939006805
 shoulder_rot = {
-    "L":qrotation(Matrix.Rotation( shoulder_angle, 4, (0,1,0))),
-    "R":qrotation(Matrix.Rotation(-shoulder_angle, 4, (0,1,0))),
+    "L":qrotation(Matrix.Rotation( shoulder_angle, 4, (0, 1, 0))),
+    "R":qrotation(Matrix.Rotation(-shoulder_angle, 4, (0, 1, 0))),
 }
 
 bone_map = {
     "root":   ("root", m2),
-    "pelvis": ("torso", qrotation(Matrix.Rotation(1.4466689567595232,4,(1,0,0)))),
+    "pelvis": ("torso", qrotation(Matrix.Rotation(1.4466689567595232, 4, (1, 0, 0)))),
     "spine01": ("spine_fk.001", m1),
     "spine02": ("spine_fk.002", m1),
     "spine03": ("spine_fk.003", m1),
@@ -66,12 +66,11 @@ for side in ["L", "R"]:
     bone_map["upperarm_" + side] = ("upper_arm_fk." + side, m1)
     bone_map["lowerarm_" + side] = ("forearm_fk." + side, m1)
     bone_map["hand_" + side] = ("hand_fk." + side, flip_x_z[side])
-    for i in range(1,4):
-        is_master = "_master" if i==1 else ""
+    for i in range(1, 4):
+        is_master = "_master" if i == 1 else ""
         bone_map["thumb0%d_%s" % (i, side)] = ("thumb.0%d%s.%s" % (i, is_master, side), m2)
         for finger in ["index", "middle", "ring", "pinky"]:
             bone_map["%s0%d_%s" % (finger, i, side)] = ("f_%s.0%d%s.%s" % (finger, i, is_master, side), m2)
-
 
 # Different rigify versions use different parameters for IK2FK so we need to scan its modules
 
@@ -105,13 +104,13 @@ def scan_rigify_modules():
                 if not m:
                     break
                 props[m.group(1)] = m.group(2)
-            if len(props)>0:
+            if len(props) > 0:
                 limbs.append(props)
-        if len(limbs)>0:
+        if len(limbs) > 0:
             ik2fk_map[rig_id] = limbs
 
 def apply_pose(ui, context):
-    if not ui.pose or ui.pose==" ":
+    if not ui.pose or ui.pose == " ":
         return
     rig = context.active_object
     pose = library.obj_char(rig).poses.get(ui.pose)
@@ -124,8 +123,8 @@ def apply_pose(ui, context):
     ik_fk = {}
     rig.pose.bones["torso"]["neck_follow"] = 1.0
     rig.pose.bones["torso"]["head_follow"] = 1.0
-    for side in ["L","R"]:
-        for limb in ["upper_arm","thigh"]:
+    for side in ["L", "R"]:
+        for limb in ["upper_arm", "thigh"]:
             bone = rig.pose.bones["{}_parent.{}".format(limb, side)]
             bone["fk_limb_follow"] = 0.0
             ik_fk[bone.name] = bone.get("IK_FK", 1.0)
@@ -134,20 +133,20 @@ def apply_pose(ui, context):
     # TODO: different mix modes
     override = context.copy()
     old_mode = context.mode
-    bpy.ops.object.mode_set(override,mode="POSE")
-    bpy.ops.pose.select_all(override,action="SELECT")
+    bpy.ops.object.mode_set(override, mode="POSE")
+    bpy.ops.pose.select_all(override, action="SELECT")
     bpy.ops.pose.loc_clear(override)
     bpy.ops.pose.rot_clear(override)
     bpy.ops.pose.scale_clear(override)
-    bpy.ops.object.mode_set(override,mode=old_mode)
+    bpy.ops.object.mode_set(override, mode=old_mode)
 
     for k, v in pose.items():
-        name, matrix = bone_map.get(k,("", None))
+        name, matrix = bone_map.get(k, ("", None))
         target_bone = rig.pose.bones.get(name)
         if not target_bone:
-            logger.debug("no target for " + k)
+            logger.debug("no target for %s", k)
             continue
-        target_bone.rotation_mode="QUATERNION"
+        target_bone.rotation_mode = "QUATERNION"
         target_bone.rotation_quaternion = matrix @ Vector(v)
 
     spine_fk = rig.pose.bones.get("spine_fk")
@@ -167,7 +166,7 @@ def apply_pose(ui, context):
         for bone in erig.pose.bones:
             if not bone.name.startswith("ORG-"):
                 continue
-            for attr in ["head","tail"]:
+            for attr in ["head", "tail"]:
                 val = getattr(bone, attr)
                 if val[2] < min_z:
                     min_z = val[2]
@@ -192,7 +191,7 @@ def apply_pose(ui, context):
             logger.error("Rigify UI doesn't seem to be available. IK2FK is disabled")
             pass
     if ik2fk_operator and ik2fk_limbs:
-        fail=False
+        fail = False
         for limb in ik2fk_limbs:
             result = ik2fk_operator(**limb)
             if "FINISHED" not in result:
@@ -204,7 +203,7 @@ def apply_pose(ui, context):
             for k, v in ik_fk.items():
                 rig.pose.bones[k]["IK_FK"] = v
 
-def poll(cls, context):
+def poll(context):
     if not (context.mode in ["OBJECT", "POSE"] and context.active_object and
             context.active_object.type == "ARMATURE" and
             context.active_object.data.get("rig_id")):
@@ -220,23 +219,23 @@ class OpApplyPose(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return poll(cls, context)
+        return poll(context)
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         apply_pose(context.window_manager.charmorph_ui, context)
         return {"FINISHED"}
 
-def get_poses(ui, context):
-    return [(" ","<select pose>","")] + [ (k,k,"") for k in sorted(library.obj_char(context.object).poses.keys()) ]
+def get_poses(_, context):
+    return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(library.obj_char(context.object).poses.keys())]
 
 class UIProps:
     pose_ik2fk: bpy.props.BoolProperty(
         name="Apply pose to IK controllers",
-        default = True,
+        default=True,
         description="Apply poses designed for FK to IK controllers too (might be slow)")
     pose: bpy.props.EnumProperty(
         name="Pose",
-        items = get_poses,
+        items=get_poses,
         description="Select pose from library")
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):
@@ -248,11 +247,11 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return poll(cls, context)
+        return poll(context)
 
     def draw(self, context):
         l = self.layout
-        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
+        for prop in UIProps.__annotations__: # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.apply_pose")
 

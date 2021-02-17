@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging, re, abc
+import os, logging, re, abc
 import bpy
 
-from . import yaml, library, materials, file_io, fitting
+from . import library, materials, file_io, fitting
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +37,11 @@ def morph_category_name(name):
     return name
 
 def morph_categories_prop(morphs):
-    return [("category",bpy.props.EnumProperty(
+    return [("category", bpy.props.EnumProperty(
         name="Category",
-        items=[("<None>","<None>","Hide all morphs"), ("<All>","<All>","Show all morphs")] +
-            [(name,name,"") for name in sorted(set(morph_category_name(morph) for morph in morphs.keys()))],
+        items=
+        [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] +
+        [(name, name, "") for name in sorted(set(morph_category_name(morph) for morph in morphs.keys()))],
         description="Select morphing categories to show"))]
 
 d_minmax = {"min": 0, "max": 1}
@@ -62,6 +63,7 @@ class Morpher(metaclass=abc.ABCMeta):
         self.morphs_l1 = None
         self.morphs_l2 = {}
         self.morphs_combo = {}
+        self.meta_prev = {}
         self.version = 0
         self.L1 = self.get_L1()
         materials.update_props(obj)
@@ -114,7 +116,7 @@ class Morpher(metaclass=abc.ABCMeta):
         signIdx = convertSigns(signArr)
 
         if len(names) == 0 or len(names) != len(signArr):
-            logger.error("Invalid L2 morph name: {}, skipping".format(name))
+            logger.error("Invalid L2 morph name: %s, skipping", name)
             return
 
         morph_name = nameParts[0]+"_"+nameParts[1]
@@ -128,7 +130,7 @@ class Morpher(metaclass=abc.ABCMeta):
         if morph_name in arr:
             morph = arr[morph_name]
             if len(morph) != cnt:
-                logger.error("L2 combo morph conflict: different dimension count on {}, skipping".format(name))
+                logger.error("L2 combo morph conflict: different dimension count on %s, skipping", name)
                 return
         else:
             morph = [None] * cnt
@@ -149,7 +151,7 @@ class Morpher(metaclass=abc.ABCMeta):
                     setattr(charmorphs, prop, value)
                 elif prop.startswith("meta_"):
                     # TODO handle preset_mix?
-                    value = meta_props.get(prop[5:],0)
+                    value = meta_props.get(prop[5:], 0)
                     self.meta_prev[prop[5:]] = value
                     self.obj.data["cmorph_" + prop] = value
         finally:
@@ -187,7 +189,7 @@ class Morpher(metaclass=abc.ABCMeta):
 
             self.lock()
             try:
-                for k, coeffs in data.get("morphs",{}).items():
+                for k, coeffs in data.get("morphs", {}).items():
                     propname = "prop_" + k
                     if not hasattr(cm, propname):
                         continue
@@ -204,8 +206,8 @@ class Morpher(metaclass=abc.ABCMeta):
                     # assign absolute prop value if current property value is out of range
                     # or add a delta if it is within (-0.999 .. 0.999)
                     sign = -1 if val_cur-val_prev < 0 else 1
-                    if propval*sign<-0.999 and val_prev*sign < -1:
-                         propval = val_cur
+                    if propval*sign < -0.999 and val_prev*sign < -1:
+                        propval = val_cur
                     else:
                         propval += val_cur-val_prev
                     setattr(cm, propname, propval)
@@ -213,19 +215,20 @@ class Morpher(metaclass=abc.ABCMeta):
                 self.unlock()
 
             if ui.meta_materials != "N":
-                for k, coeffs in data.get("materials",{}).items():
+                for k, coeffs in data.get("materials", {}).items():
                     if materials.props and k in materials.props:
                         if ui.meta_materials == "R":
                             materials.props[k].default_value += calc_val(value)-calc_val(prev_value)
                         else:
                             materials.props[k].default_value = calc_val(value)
 
-        return bpy.props.FloatProperty(name=name,
-            min = -1.0, max = 1.0,
-            precision = 3,
-            get = lambda _: self.obj.data.get(pname, 0.0),
-            set = setter,
-            update = update)
+        return bpy.props.FloatProperty(
+            name=name,
+            min=-1.0, max=1.0,
+            precision=3,
+            get=lambda _: self.obj.data.get(pname, 0.0),
+            set=setter,
+            update=update)
 
     def preset_prop(self):
         presets = self.load_presets()
@@ -251,11 +254,11 @@ class Morpher(metaclass=abc.ABCMeta):
         def load_dir(path):
             path = os.path.join(library.data_dir, path)
             if not os.path.isdir(path):
-                return {}
+                return
             for fn in os.listdir(path):
                 if os.path.isfile(os.path.join(path, fn)):
                     data = file_io.load_morph_data(os.path.join(path, fn))
-                    if data != None:
+                    if data is not None:
                         result[fn[:-5]] = data
         try:
             load_dir(self.char.path("presets"))
@@ -264,18 +267,19 @@ class Morpher(metaclass=abc.ABCMeta):
             logger.error(e)
         return result
 
-    def basic_morph_prop(self, name, getter, setter_base, soft_min = -1):
+    def basic_morph_prop(self, name, getter, setter_base, soft_min=-1):
         def setter(cm, value):
             if self.clamp:
                 value = max(min(value, 1), -1)
             self.version += 1
             setter_base(cm, value)
             self.update()
-        return bpy.props.FloatProperty(name=name,
-            soft_min = soft_min, soft_max = 1.0,
-            precision = 3,
-            get = getter,
-            set = setter)
+        return bpy.props.FloatProperty(
+            name=name,
+            soft_min=soft_min, soft_max=1.0,
+            precision=3,
+            get=getter,
+            set=setter)
 
     def clamp_prop(self):
         def setter(_, value):
@@ -283,9 +287,9 @@ class Morpher(metaclass=abc.ABCMeta):
         prop = bpy.props.BoolProperty(
             name="Clamp props",
             description="Clamp properties to (-1..1) so they remain in realistic range",
-            get = lambda _: self.clamp,
-            set = setter,
-            update = lambda cm, ctx: self.update(),
+            get=lambda _: self.clamp,
+            set=setter,
+            update=lambda cm, ctx: self.update(),
             default=True)
         return ("clamp", prop)
 
@@ -296,14 +300,20 @@ class Morpher(metaclass=abc.ABCMeta):
         if not self.morphs_l2:
             return
 
-        self.meta_prev = {}
+        self.meta_prev.clear()
 
-        propGroup = type("CharMorpher_Dyn_PropGroup",
+        propGroup = type(
+            "CharMorpher_Dyn_PropGroup",
             (bpy.types.PropertyGroup,),
-            {"__annotations__":
-                dict([self.clamp_prop()] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
+            {
+                "__annotations__":
+                dict(
+                    [self.clamp_prop()] + self.preset_prop() + morph_categories_prop(self.morphs_l2) +
                     [prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items()] +
-                    [prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.char.morphs_meta.items()])})
+                    [prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.char.morphs_meta.items()]
+                    )
+            }
+        )
 
         bpy.utils.register_class(propGroup)
 
@@ -342,7 +352,7 @@ def create_charmorphs(obj):
     if m.char.default_armature and ui.fin_rig not in m.char.armature:
         ui.fin_rig = m.char.default_armature
 
-    items = [(name, m.char.types.get(name, {}).get("title",name), "") for name in sorted(m.morphs_l1.keys())]
+    items = [(name, m.char.types.get(name, {}).get("title", name), "") for name in sorted(m.morphs_l1.keys())]
 
     if not m.L1 and "default_type" in m.char.config:
         m.set_L1(m.char.default_type)
@@ -353,7 +363,7 @@ def create_charmorphs(obj):
             L1_idx = i
             break
 
-    def chartype_setter(self, value):
+    def chartype_setter(_, value):
         nonlocal L1_idx
         if value == L1_idx:
             return
@@ -408,7 +418,7 @@ class UIProps:
         name="Materials",
         description="How changing meta properties will affect materials",
         default="A",
-        items = [
+        items=[
             ("N", "None", "Don't change materials"),
             ("A", "Absolute", "Change materials according to absolute value of meta property"),
             ("R", "Relative", "Change materials according to relative value of meta property")])
@@ -422,17 +432,17 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager,'charmorphs')
+        return hasattr(context.window_manager, 'charmorphs')
 
     def draw(self, context):
         morphs = context.window_manager.charmorphs
         ui = context.window_manager.charmorph_ui
         propList = sorted(dir(morphs))
-        self.layout.label(text= "Character type")
+        self.layout.label(text="Character type")
         col = self.layout.column(align=True)
 
-        col.prop(context.window_manager,"chartype")
-        if hasattr(morphs,"preset"):
+        col.prop(context.window_manager, "chartype")
+        if hasattr(morphs, "preset"):
             col.prop(morphs, "preset")
             col.prop(ui, "preset_mix")
 
@@ -440,7 +450,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         meta_morphs = [p for p in propList if p.startswith("meta_")]
         if meta_morphs:
-            self.layout.label(text = "Meta morphs")
+            self.layout.label(text="Meta morphs")
             col = self.layout.column(align=True)
             col.prop(ui, "meta_materials")
             col.prop(ui, "relative_meta")

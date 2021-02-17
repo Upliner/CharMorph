@@ -28,35 +28,35 @@ saved_version = -1
 
 class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(
-        name = "Morphs", default=True,
-        description = "Randomize morphs")
+        name="Morphs", default=True,
+        description="Randomize morphs")
     randomize_mats: bpy.props.BoolProperty(
-        name = "Materials", default=False,
-        description = "Randomize materials")
+        name="Materials", default=False,
+        description="Randomize materials")
     randomize_incl: bpy.props.StringProperty(
-        name = "Incl. regex")
+        name="Incl. regex")
     randomize_excl: bpy.props.StringProperty(
-        name = "Excl. regex", default=r"^Fantasy\_")
+        name="Excl. regex", default=r"^Fantasy\_")
 
 class UIProps(WhatToProps):
     randomize_mode: bpy.props.EnumProperty(
         name="Mode",
-        default = "RL1",
-        items = [
-            ("OVR","Overwrite current", "Overwrite current morphing"),
-            ("RL1","Relative to non-random", "Relative to last hand-edited morphing"),
-            ("RL2","Relative to current", "Relative to current morphing"),
-            ("SEG","Segmented", "Split every property to segments and remain within them"),
+        default="RL1",
+        items=[
+            ("OVR", "Overwrite current", "Overwrite current morphing"),
+            ("RL1", "Relative to non-random", "Relative to last hand-edited morphing"),
+            ("RL2", "Relative to current", "Relative to current morphing"),
+            ("SEG", "Segmented", "Split every property to segments and remain within them"),
         ],
-        description = "Randomization mode (doesn't affect material colors)")
+        description="Randomization mode (doesn't affect material colors)")
     randomize_segs: bpy.props.IntProperty(
-        name = "Segments",
+        name="Segments",
         default=7,
         min=2, soft_max=25,
-        description = "Segment count for segmented randomization"
+        description="Segment count for segmented randomization"
     )
     randomize_strength: bpy.props.FloatProperty(
-        name = "Strength", min=0, max=1, default=0.2, precision=2, description = "Randomization strength", subtype = "FACTOR")
+        name="Strength", min=0, max=1, default=0.2, precision=2, description="Randomization strength", subtype="FACTOR")
 
 class CHARMORPH_PT_Randomize(bpy.types.Panel):
     bl_label = "Randomize"
@@ -71,7 +71,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
         global saved_props
         if context.window_manager.charmorph_ui.randomize_mode != "RL1":
             saved_props = None
-        if not hasattr(context.window_manager,'charmorphs'):
+        if not hasattr(context.window_manager, 'charmorphs'):
             return False
         m = morphing.morpher
         if not m:
@@ -86,11 +86,11 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
 
         col = self.layout.column(align=True)
         col.label(text="What to randomize:")
-        for prop in WhatToProps.__annotations__.keys(): # pylint: disable=no-member
+        for prop in WhatToProps.__annotations__: # pylint: disable=no-member
             col.prop(ui, prop)
 
         self.layout.separator()
-        if ui.randomize_mode=="SEG":
+        if ui.randomize_mode == "SEG":
             self.layout.prop(ui, "randomize_segs")
         else:
             self.layout.prop(ui, "randomize_strength")
@@ -114,7 +114,7 @@ class OpRandomize(bpy.types.Operator):
     def poll(cls, context):
         return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         global saved_version
         scn = context.window_manager
         ui = scn.charmorph_ui

@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, numpy, os
+import logging, os
 import bpy, mathutils # pylint: disable=import-error
 
-from . import yaml, rigging
+from . import yaml, edit_io, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class VIEW3D_PT_CMEdit(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
     bl_order = 2
 
-    def draw(self, context):
+    def draw(self, _): # pylint: disable=no-self-use
         pass
 
 class CMEDIT_PT_Rigging(bpy.types.Panel):
@@ -72,18 +72,20 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_category = "CharMorph"
     bl_order = 2
 
-    def draw(self, context):
+    def draw(self, _):
         l = self.layout
         l.operator("cmedit.cleanup_joints")
         l.operator("cmedit.check_symmetry")
         l.operator("cmedit.symmetrize_vg")
 
-def obj_by_type(name, type):
+def obj_by_type(name, typ):
     if not name:
         return None
     obj = bpy.data.objects.get(name)
-    if obj and obj.type == type:
+    if obj and obj.type == typ:
         return obj
+    return None
+
 def get_char(context):
     return obj_by_type(context.window_manager.cmedit_ui.rig_char, "MESH")
 
@@ -91,8 +93,8 @@ def kdtree_from_bones(bones):
     kd = mathutils.kdtree.KDTree(len(bones)*2)
     for i, bone in enumerate(bones):
         if not bone.use_connect:
-            kd.insert(bone.head,i*2)
-        kd.insert(bone.tail,i*2+1)
+            kd.insert(bone.head, i*2)
+        kd.insert(bone.tail, i*2+1)
     kd.balance()
     return kd
 
@@ -104,11 +106,11 @@ def joint_list_extended(context, xmirror):
         co = tup[0]
         checklist = [co]
         if xmirror:
-            checklist.append(mathutils.Vector((-co[0],co[1],co[2])))
+            checklist.append(mathutils.Vector((-co[0], co[1], co[2])))
         for co2 in checklist:
             for co3, jid, _ in kd.find_range(co2, 0.00001):
                 bone = bones[jid//2]
-                attr = "head" if jid&1==0 else "tail"
+                attr = "head" if jid&1 == 0 else "tail"
                 name = "joint_{}_{}".format(bone.name, attr)
                 if name not in result:
                     result[name] = (co3, bone, attr)
@@ -127,61 +129,54 @@ class OpJointsToVG(bpy.types.Operator):
     def poll(cls, context):
         return editable_bones_poll(context)
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         rigging.Rigger(context, get_char(context)).run(joint_list_extended(context, False))
         return {"FINISHED"}
 
-def kdtree_from_verts(verts):
-    kd = mathutils.kdtree.KDTree(len(verts))
-    for idx, vert in enumerate(verts):
-        kd.insert(vert.co, idx)
-    kd.balance()
-    return kd
-
 def closest_point_on_face(face, co):
-    if len(face)==3:
+    if len(face) == 3:
         return mathutils.geometry.closest_point_on_tri(co, face[0], face[1], face[2])
     results = []
     for _ in range(len(face)):
         results.append(mathutils.geometry.closest_point_on_tri(co, face[0], face[1], face[2]))
-        face=face[1:]+face[:1]
+        face = face[1:]+face[:1]
     results.sort(key=lambda elem: (elem-co).length)
     return (results[0]+results[1])/2
 
 def recalc_bb(char, co, name):
-    lst = [(None,None,None) for _ in range(8)]
+    lst = [(None, None, None) for _ in range(8)]
     for idx, vert in enumerate(char.data.vertices):
         vco = vert.co
         for bv in range(8):
             for coord in range(3):
-                if bv>>coord&1 != (1 if vco[coord]>co[coord] else 0):
+                if bv>>coord&1 != (1 if vco[coord] > co[coord] else 0):
                     break
             else:
                 dist = sum(abs(vco[coord]-co[coord]) for coord in range(3))
-                if lst[bv][2]==None or lst[bv][2]>dist:
+                if lst[bv][2] is None or lst[bv][2] > dist:
                     lst[bv] = (vco, idx, dist)
                 break
     for item in lst:
-        if item[0] == None:
+        if item[0] is None:
             logger.error("Not all bbox points was found")
-            return False
+            return
 
     front_face = [item[0] for item in lst[:4]]
     back_face = [item[0] for item in lst[4:]]
 
-    front_face[2],front_face[3] = front_face[3],front_face[2]
-    back_face[2],back_face[3] = back_face[3],back_face[2]
+    front_face[2], front_face[3] = front_face[3], front_face[2]
+    back_face[2], back_face[3] = back_face[3], back_face[2]
 
     weights_front = mathutils.interpolate.poly_3d_calc(front_face, closest_point_on_face(front_face, co))
     weights_back = mathutils.interpolate.poly_3d_calc(back_face, closest_point_on_face(back_face, co))
 
-    avg_front = sum((co*weight for co, weight in zip(front_face,weights_front)), mathutils.Vector())
-    avg_back = sum((co*weight for co, weight in zip(back_face,weights_back)), mathutils.Vector())
+    avg_front = sum((co*weight for co, weight in zip(front_face, weights_front)), mathutils.Vector())
+    avg_back = sum((co*weight for co, weight in zip(back_face, weights_back)), mathutils.Vector())
     axis = avg_back-avg_front
-    offs = min(max((co-avg_front).dot(axis)/axis.dot(axis),0),1)
+    offs = min(max((co-avg_front).dot(axis)/axis.dot(axis), 0), 1)
 
-    weights_front[2],weights_front[3] = weights_front[3],weights_front[2]
-    weights_back[2],weights_back[3] = weights_back[3],weights_back[2]
+    weights_front[2], weights_front[3] = weights_front[3], weights_front[2]
+    weights_back[2], weights_back[3] = weights_back[3], weights_back[2]
 
     weights = [w*(1-offs) for w in weights_front]+[w*offs for w in weights_back]
 
@@ -227,9 +222,9 @@ def calc_emap(char):
 
 def dist_edge(co, v1, v2):
     co2, dist = mathutils.geometry.intersect_point_line(co, v1, v2)
-    if dist<=0:
+    if dist <= 0:
         return (v1-co).length
-    if dist>=1:
+    if dist >= 1:
         return (v2-co).length
     return (co2-co).length
 
@@ -240,9 +235,9 @@ def recalc_ne(char, co, name, kd, emap):
     mindist = 1e30
     for _, vert, _ in kd.find_n(co, 4):
         for edge in emap[vert]:
-            v1, v2 = tuple((verts[i].co,i) for i in edges[edge].vertices)
+            v1, v2 = tuple((verts[i].co, i) for i in edges[edge].vertices)
             dist = dist_edge(co, v1[0], v2[0])
-            if dist<mindist:
+            if dist < mindist:
                 mindist = dist
                 lst = [v1, v2]
     if lst is None:
@@ -273,7 +268,7 @@ class OpCalcVg(bpy.types.Operator):
     def poll(cls, context):
         return editable_bones_poll(context)
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         char = get_char(context)
         ui = context.window_manager.cmedit_ui
         typ = ui.rig_vg_calc
@@ -286,12 +281,12 @@ class OpCalcVg(bpy.types.Operator):
                 co = tup[0]
                 vg = char.vertex_groups.get(name)
                 if not vg:
-                    logger.error(name + " doesn't have current vertex group")
+                    logger.error("%s doesn't have current vertex group", name)
                     continue
-                recalc_cu(vg, vgroups.get(name,[]), co)
+                recalc_cu(vg, vgroups.get(name, []), co)
         else:
-            if typ == "NP" or typ == "NR" or typ == "NE":
-                kd = kdtree_from_verts(char.data.vertices)
+            if typ in ("NP", "NR", "NE"):
+                kd = utils.kdtree_from_verts(char.data.vertices)
                 if typ == "NE":
                     emap = calc_emap(char)
             elif typ == "NF":
@@ -319,12 +314,12 @@ class OpCalcVg(bpy.types.Operator):
                 if item:
                     offs = co-(item[1]/item[0])
                     k = "charmorph_offs_"+attr
-                    if offs.length>0.0001:
+                    if offs.length > 0.0001:
                         bone[k] = list(offs)
                     elif k in bone:
                         del bone[k]
                 else:
-                    logger.error("Can't calculate offset for " + name)
+                    logger.error("Can't calculate offset for %s", name)
         elif ui.rig_vg_offs == "C":
             for _, bone, attr in joints.values():
                 k = "charmorph_offs_"+attr
@@ -343,7 +338,7 @@ class OpRigifyFinalize(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "ARMATURE" and get_char(context)
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         rigging.rigify_finalize(context.object, get_char(context))
         return {"FINISHED"}
 
@@ -355,14 +350,14 @@ class OpRigifyTweaks(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.object.type=="ARMATURE"
+        return context.object and context.object.type == "ARMATURE"
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         file = context.window_manager.cmedit_ui.rig_tweaks_file
         with open(file) as f:
             tweaks = yaml.safe_load(f)
         editmode_tweaks, tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
-        if len(editmode_tweaks)>0:
+        if len(editmode_tweaks) > 0:
             old_mode = context.mode
             override = context.copy()
             bpy.ops.object.mode_set(override, mode="EDIT")
@@ -382,17 +377,17 @@ def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
 
 def swap_l_r(name):
-    new_name = name.replace(".L",".R").replace("_L_","_R_")
+    new_name = name.replace(".L", ".R").replace("_L_", "_R_")
     if new_name != name:
         return new_name
-    return name.replace(".R",".L").replace("_R_","_L_")
+    return name.replace(".R", ".L").replace("_R_", "_L_")
 
 def counterpart_vertex(verts, kd, v):
-    counterparts = kd.find_range(mathutils.Vector((-v.co[0],v.co[1],v.co[2])), 0.00001)
+    counterparts = kd.find_range(mathutils.Vector((-v.co[0], v.co[1], v.co[2])), 0.00001)
     if len(counterparts) == 0:
         print(v.index, v.co, "no counterpart")
         return None
-    elif len(counterparts) > 1:
+    if len(counterparts) > 1:
         print(v.index, v.co, "multiple counterparts:", counterparts)
         return None
     return verts[counterparts[0][1]]
@@ -405,10 +400,10 @@ class OpCheckSymmetry(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "MESH"
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         obj = context.object
         mesh = obj.data
-        kd = kdtree_from_verts(mesh.vertices)
+        kd = utils.kdtree_from_verts(mesh.vertices)
         def groups_to_list(group):
             return [(obj.vertex_groups[g.group].name, g.weight) for g in group]
         for v in mesh.vertices:
@@ -438,7 +433,7 @@ class OpCheckSymmetry(bpy.types.Operator):
                     continue
 
 
-            if abs(wgt-1)>=0.0001:
+            if abs(wgt-1) >= 0.0001:
                 print(v.index, v.co, "not normalized:", wgt)
         return {"FINISHED"}
 
@@ -456,23 +451,23 @@ class OpSymmetrizeWeights(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
         mesh = obj.data
-        kd = kdtree_from_verts(mesh.vertices)
+        kd = utils.kdtree_from_verts(mesh.vertices)
         for v in mesh.vertices:
             if not v.select:
                 continue
-            def normalize():
+            def normalize(v):
                 groups = []
                 wgt = 0
                 for ge in v.groups:
                     if is_deform(obj.vertex_groups[ge.group].name):
                         wgt += ge.weight
                         groups.append(ge)
-                if abs(wgt-1)<0.0001:
+                if abs(wgt-1) < 0.0001:
                     return
                 for ge in groups:
                     ge.weight /= wgt
             if v.co[0] == 0 or v.co[0] == -0:
-                normalize()
+                normalize(v)
                 continue
             v2 = counterpart_vertex(mesh.vertices, kd, v)
             if v2 is None:
@@ -494,13 +489,13 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                         print("removing non-deform vg", v.index, v2.index, v.co, vg.name)
                     vg.remove([v.index])
 
-            if wgt2<0.0001:
-                print(v.index,v2.index,"situation is too bad, please check")
+            if wgt2 < 0.0001:
+                print(v.index, v2.index, "situation is too bad, please check")
                 continue
-            if abs(wgt2-1)<0.0001:
-                wgt2=1
+            if abs(wgt2-1) < 0.0001:
+                wgt2 = 1
 
-            normalize()
+            normalize(v)
 
             for g1e in v.groups:
                 vg = obj.vertex_groups[g1e.group]
@@ -511,12 +506,12 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                 g2w = g2e.weight
                 if is_deform(g2name):
                     g2w /= wgt2
-                if g2w>1:
-                    print(v.index,v2.index,g2name,g2e.group,g2e.weight,g2w,wgt2)
+                if g2w > 1:
+                    print(v.index, v2.index, g2name, g2e.group, g2e.weight, g2w, wgt2)
                     self.report({'ERROR'}, "Bad g2 weight!")
                     return {"FINISHED"}
 
-                if abs(g1e.weight-g2w)>=0.00001:
+                if abs(g1e.weight-g2w) >= 0.00001:
                     if not is_deform(g2name):
                         print("Normalizing non-deform", v.index, v2.index, g2name)
                     #print("Normalizing", v.index, v2.index, g1e.weight, g2w, wgt2, g2name)
@@ -527,7 +522,7 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                     else:
                         g1e.weight = g2w
 
-            normalize()
+            normalize(v)
         return {"FINISHED"}
 
 class OpSymmetrizeJoints(bpy.types.Operator):
@@ -540,10 +535,10 @@ class OpSymmetrizeJoints(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "MESH" and context.mode == "OBJECT"
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         obj = context.object
         mesh = obj.data
-        kd = kdtree_from_verts(mesh.vertices)
+        kd = utils.kdtree_from_verts(mesh.vertices)
         vg_map = {}
         new_vg = set()
         for vg in obj.vertex_groups:
@@ -553,7 +548,7 @@ class OpSymmetrizeJoints(bpy.types.Operator):
             if cname in obj.vertex_groups:
                 cvg = obj.vertex_groups[cname]
             else:
-                cvg = obj.vertex_groups.new(name = cname)
+                cvg = obj.vertex_groups.new(name=cname)
                 new_vg.add(cvg.index)
             vg_map[vg.index] = cvg
 
@@ -574,8 +569,8 @@ class OpSymmetrizeJoints(bpy.types.Operator):
                         w2 = cvg.weight(v2.index)
                     except RuntimeError:
                         w2 = 0
-                    if abs(g.weight-w2)>=1e-5:
-                        print("assymetry:",cvg.name,v.index,g.weight,v2.index,w2)
+                    if abs(g.weight-w2) >= 1e-5:
+                        print("assymetry:", cvg.name, v.index, g.weight, v2.index, w2)
 
         return {"FINISHED"}
 
@@ -594,110 +589,110 @@ class OpCleanupJoints(bpy.types.Operator):
         joints = rigging.all_joints(context.object)
         if len(joints) == 0:
             self.report({'ERROR'}, "No joints found")
-            return
+            return {"CANCELLED"}
 
         for vg in list(char.vertex_groups):
             if vg.name.startswith("joint_") and vg.name not in joints:
-               char.vertex_groups.remove(vg)
+                char.vertex_groups.remove(vg)
 
         return {"FINISHED"}
 
-def objects_by_type(type):
-    return [(o.name,o.name,"") for o in bpy.data.objects if o.type == type]
+def objects_by_type(typ):
+    return [(o.name, o.name, "") for o in bpy.data.objects if o.type == typ]
 
 rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
 class CMEditUIProps(bpy.types.PropertyGroup):
     # Rigging
     rig_char: bpy.props.EnumProperty(
-        name = "Char",
-        items = lambda ui, context: objects_by_type("MESH"),
-        description = "Character mesh for rigging"
+        name="Char",
+        items=lambda ui, context: objects_by_type("MESH"),
+        description="Character mesh for rigging"
     )
     rig_xmirror: bpy.props.BoolProperty(
-        name = "X Mirror",
-        description = "Use X mirror for vertex group calculation",
+        name="X Mirror",
+        description="Use X mirror for vertex group calculation",
         default=True,
     )
     rig_vg_calc: bpy.props.EnumProperty(
-        name = "Recalc mode",
+        name="Recalc mode",
         default="NF",
-        items = [
-            ("CU", "Current","Use current vertex group members and recalc only weights"),
-            ("NP", "n nearest points","Recalculate vertex group based on n nearest points"),
-            ("NR", "By distance","Recalculate vertex group based on vertices within specified distance"),
-            ("NF", "Nearest face","Recalculate vertex group based on nearest face"),
-            ("NE", "Nearest edge","Recalculate vertex group based on nearest edge"),
-            ("BB", "Bounding box (exp)","Recalculate vertex group based on smallest bounding box vertices (experimental)"),
+        items=[
+            ("CU", "Current", "Use current vertex group members and recalc only weights"),
+            ("NP", "n nearest points", "Recalculate vertex group based on n nearest points"),
+            ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
+            ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
+            ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
+            ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
         ]
     )
     rig_vg_offs: bpy.props.EnumProperty(
-        name = "Offsets",
-        description = "Use offset if vertex group can't properly point at joint position",
+        name="Offsets",
+        description="Use offset if vertex group can't properly point at joint position",
         default="C",
         items=[
-            ("K","Keep","Keep current offsets"),
-            ("R","Recalculate","Recalculate offsets exactly point specified joint position"),
-            ("C","Clear","Clear any offsets, use only vertex group positions"),
+            ("K", "Keep", "Keep current offsets"),
+            ("R", "Recalculate", "Recalculate offsets exactly point specified joint position"),
+            ("C", "Clear", "Clear any offsets, use only vertex group positions"),
         ]
     )
     rig_vg_n: bpy.props.IntProperty(
-        name = "VG Point count",
-        description = "Point count for vertex group recalc",
+        name="VG Point count",
+        description="Point count for vertex group recalc",
         default=3,
         min=1, soft_max=20,
     )
     rig_vg_radius: bpy.props.FloatProperty(
-        name = "VG recalc radius",
-        description = "Radius for vertex group recalc",
+        name="VG recalc radius",
+        description="Radius for vertex group recalc",
         default=0.1,
         min=0, soft_max=0.5,
     )
     rig_vg_n: bpy.props.IntProperty(
-        name = "VG Point count",
-        description = "Point count for vertex group recalc",
+        name="VG Point count",
+        description="Point count for vertex group recalc",
         default=3,
         min=1, soft_max=20,
     )
     rig_tweaks_file: bpy.props.StringProperty(
-        name = "Tweaks file",
-        description = "Path to rigify tweaks yaml file",
-        default = rigify_tweaks_file,
-        subtype = 'FILE_PATH',
+        name="Tweaks file",
+        description="Path to rigify tweaks yaml file",
+        default=rigify_tweaks_file,
+        subtype='FILE_PATH',
     )
     rig_bones_mode: bpy.props.EnumProperty(
-        name = "Bones mode",
-        description = "Bones export mode",
-        default = "N",
-        items = [
+        name="Bones mode",
+        description="Bones export mode",
+        default="N",
+        items=[
             ("N", "Props only", "Export data only where charmorph_* custom props are present"),
             ("X", "X axis", "Export X axis for all bones"),
             ("Z", "Z axis", "Export Z axis for all bones"),
         ]
     )
     vg_regex: bpy.props.StringProperty(
-        name = "VG regex",
-        description = "Regular expression for vertex group export",
-        default = "^(DEF-|MCH-|ORG|corrective_smooth(_inv)?$)",
+        name="VG regex",
+        description="Regular expression for vertex group export",
+        default="^(DEF-|MCH-|ORG|corrective_smooth(_inv)?$)",
     )
     vg_overwrite: bpy.props.BoolProperty(
-        name = "VG overwrite",
-        description = "Overwrite existing vertex groups with imported ones",
+        name="VG overwrite",
+        description="Overwrite existing vertex groups with imported ones",
     )
     morph_float_precicion: bpy.props.EnumProperty(
-        name = "Precision",
-        description = "Floating point precision for morph npz files",
-        default = "32",
-        items = [
+        name="Precision",
+        description="Floating point precision for morph npz files",
+        default="32",
+        items=[
             ("32", "32 bits", "IEEE Single precision floating point"),
             ("64", "64 bits", "IEEE Double precision floating point"),
         ]
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
+classes = [
+    CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
     OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpRigifyTweaks, CMEDIT_PT_Utils]
 
-from . import edit_io
 classes.extend(edit_io.classes)
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)

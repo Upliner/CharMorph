@@ -19,21 +19,14 @@
 # Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging
-import bpy, mathutils # pylint: disable=import-error
+import bpy # pylint: disable=import-error
 
-from . import library, morphing, fitting, rigging, rigify
+from . import library, morphing, fitting, rigging, rigify, utils
 
 logger = logging.getLogger(__name__)
 
 class RigException(Exception):
     pass
-
-def copy_transform(target, source):
-    target.location = source.location
-    target.rotation_mode = source.rotation_mode
-    target.rotation_euler = source.rotation_euler
-    target.rotation_quaternion = source.rotation_quaternion
-    target.scale = source.scale
 
 def remove_armature_modifiers(obj):
     for m in list(obj.modifiers):
@@ -108,12 +101,12 @@ def add_rig(obj, char, rig_name, verts):
         if rig_type == "rigify":
             rigify.apply_parameters(rig)
             if bpy.context.window_manager.charmorph_ui.rigify_metarig_only or not hasattr(rig.data, "rigify_generate_mode"):
-                copy_transform(rig, obj)
+                utils.copy_transforms(rig, obj)
                 attach = False
             else:
                 rig = rigify.do_rig(obj, conf, rigger)
 
-        rig.data["charmorph_template"] = obj.data.get("charmorph_template","")
+        rig.data["charmorph_template"] = obj.data.get("charmorph_template", "")
         rig.data["charmorph_rig_type"] = rig_name
 
         if old_rig:
@@ -129,12 +122,11 @@ def add_rig(obj, char, rig_name, verts):
         raise
 
 def attach_rig(obj, rig):
-    copy_transform(rig, obj)
-
-    rigging.reset_transforms(obj)
+    utils.copy_transforms(rig, obj)
+    utils.reset_transforms(obj)
     obj.parent = rig
 
-    rigging.lock_obj(obj, True)
+    utils.lock_obj(obj, True)
 
     mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
     mod.use_deform_preserve_volume = True
@@ -153,7 +145,7 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode=="OBJECT" and library.get_obj_char(context)[0]
+        return context.mode == "OBJECT" and library.get_obj_char(context)[0]
 
     def execute(self, context):
         if context.view_layer != bpy.context.view_layer:
@@ -182,7 +174,7 @@ class OpFinalize(bpy.types.Operator):
             unknown_keys = False
 
             for key in keys.key_blocks:
-                if key.name.startswith("L1_") and key.value<0.01:
+                if key.name.startswith("L1_") and key.value < 0.01:
                     unused_l1.add(key.name[3:])
                 if ui.fin_morph != "NO" and key != keys.reference_key and key != fin_sk:
                     if key.name.startswith("L1_")  or key.name.startswith("L2_"):
@@ -262,7 +254,7 @@ class OpFinalize(bpy.types.Operator):
                 current_l1 = context.window_manager.chartype
                 m = morphing.morpher
                 if m and m.obj == obj and m.morphs_l1:
-                    for l1 in m.morphs_l1.keys():
+                    for l1 in m.morphs_l1:
                         if l1 != current_l1:
                             unused_l1.add(l1)
 
@@ -300,33 +292,33 @@ class OpUnrig(bpy.types.Operator):
         obj = library.get_obj_char(context)[0]
         return obj.find_armature()
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         obj, char = library.get_obj_char(context)
 
         old_rig = obj.find_armature()
         if old_rig:
             if obj.parent is old_rig:
-                copy_transform(obj, old_rig)
-                rigging.lock_obj(obj, False)
+                utils.copy_transforms(obj, old_rig)
+                utils.lock_obj(obj, False)
             clear_old_weights_with_assets(obj, char, old_rig)
 
         delete_old_rig_with_assets(obj, old_rig)
 
         return {"FINISHED"}
 
-def get_rigs(ui, context):
+def get_rigs(_, context):
     char = library.get_obj_char(context)[1]
     if not char:
         return []
-    return [("-","<None>","Don't generate rig")] + [ (name, rig.get("title", name),"") for name, rig in char.armature.items() ]
+    return [("-", "<None>", "Don't generate rig")] + [(name, rig.get("title", name), "") for name, rig in char.armature.items()]
 
 class UIProps:
     fin_morph: bpy.props.EnumProperty(
         name="Apply morphs",
-        default = "SK",
-        items = [
-            ("NO", "Don't apply","Keep all morphing shape keys"),
-            ("SK", "Keep original basis","Keep original basis shape key (recommended if you plan to fit more assets)"),
+        default="SK",
+        items=[
+            ("NO", "Don't apply", "Keep all morphing shape keys"),
+            ("SK", "Keep original basis", "Keep original basis shape key (recommended if you plan to fit more assets)"),
             ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
         ],
         description="Apply current shape key mix")
@@ -336,8 +328,8 @@ class UIProps:
         description="Rigging options")
     fin_subdivision: bpy.props.EnumProperty(
         name="Subdivision",
-        default = "RO",
-        items = [
+        default="RO",
+        items=[
             ("NO", "No", "No subdivision surface"),
             ("RO", "Render only", "Use subdivision only for rendering"),
             ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
@@ -345,8 +337,8 @@ class UIProps:
         description="Use subdivision surface for smoother look")
     fin_csmooth: bpy.props.EnumProperty(
         name="Corrective smooth",
-        default = "L_LENGTH_WEIGHTED",
-        items = [
+        default="L_LENGTH_WEIGHTED",
+        items=[
             ("NO", "None", "No corrective smooth"),
             ("L_SIMPLE", "Limited Simple", ""),
             ("L_LENGTH_WEIGHTED", "Limited Length weighted", ""),
@@ -356,15 +348,15 @@ class UIProps:
         description="Use corrective smooth to fix armature deform artifacts")
     fin_vg_cleanup: bpy.props.BoolProperty(
         name="Cleanup vertex groups",
-        default = False,
+        default=False,
         description="Remove unused vertex groups after finalization")
     fin_subdiv_assets: bpy.props.BoolProperty(
         name="Subdivide assets",
-        default = False,
+        default=False,
         description="Subdivide assets together with character")
     fin_cmooth_assets: bpy.props.BoolProperty(
         name="Corrective smooth for assets",
-        default = True,
+        default=True,
         description="Use corrective smooth for assets too")
 
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
@@ -380,7 +372,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
-        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
+        for prop in UIProps.__annotations__: # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")

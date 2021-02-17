@@ -48,7 +48,7 @@ def apply_parameters(metarig):
             bone.rigify_parameters.make_custom_pivot = True
         elif bone.rigify_type == "limbs.super_finger" and ui.rigify_finger_ik:
             bone.rigify_parameters.make_extra_ik_control = True
-        elif bone.rigify_type == "basic.super_copy" and bone.name.startswith("shoulder.") and hasattr(bone.rigify_parameters,"super_copy_widget_type"):
+        elif bone.rigify_type == "basic.super_copy" and bone.name.startswith("shoulder.") and hasattr(bone.rigify_parameters, "super_copy_widget_type"):
             # Special widget for shoulders is supported in new Rigify versions.
             # But for compatibility it isn't enabled in metarig by default
             params = bone.rigify_parameters
@@ -60,7 +60,7 @@ def add_mixin(char, conf, rig):
     if not obj_name:
         return (None, None)
     mixin = library.import_obj(char.path(conf["file"]), obj_name, "ARMATURE")
-    bones = [ b.name for b in mixin.data.bones ]
+    bones = [b.name for b in mixin.data.bones]
     joints = rigging.all_joints(mixin)
     bpy.ops.object.join({
         "object": rig,
@@ -83,7 +83,7 @@ def do_rig(obj, conf, rigger):
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.get("tweaks",[]))
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.get("tweaks", []))
         if len(editmode_tweaks) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
@@ -122,19 +122,19 @@ class UIProps:
         description="Generate only metarig for development purposes")
     rigify_spine_pivot: bpy.props.BoolProperty(
         name="Custom spine pivot",
-        description = "Create a rotation pivot control for spine"
+        description="Create a rotation pivot control for spine"
     )
     rigify_finger_ik: bpy.props.BoolProperty(
         name="Finger IK",
-        description = "Create finger IK controls"
+        description="Create finger IK controls"
     )
     rigify_palm_2sides: bpy.props.BoolProperty(
         name="Both palm sides contol",
-        description = "Create controls on both sides of palms"
+        description="Create controls on both sides of palms"
     )
     rigify_palm_fk: bpy.props.BoolProperty(
         name="Palm FK",
-        description = "Create extra FK controls for palms"
+        description="Create extra FK controls for palms"
     )
 
 class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
@@ -148,11 +148,11 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
         rig = library.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
         if not rig:
             return False
-        result =  rig.get("type") == "rigify"
+        result = rig.get("type") == "rigify"
         return result
 
     def draw(self, context):
-        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
+        for prop in UIProps.__annotations__: # pylint: disable=no-member
             self.layout.prop(context.window_manager.charmorph_ui, prop)
 
 classes = [CHARMORPH_PT_RigifySettings]

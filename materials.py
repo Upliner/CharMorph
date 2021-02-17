@@ -34,7 +34,7 @@ def init_materials(obj, char):
 def load_materials(obj, char):
     mtllist = char.materials
     if len(obj.data.materials) != len(mtllist):
-        logger.error("Material count mismatch in {}: {} != {}".format(char, len(obj.data.materials), len(mtllist)))
+        logger.error("Material count mismatch in %s: %d != %d", char, len(obj.data.materials), len(mtllist))
         return
 
     ui = bpy.context.window_manager.charmorph_ui
@@ -65,34 +65,34 @@ def load_materials(obj, char):
                 obj.data.materials[load_ids[i]] = mtl
 
     if adult_mode:
-        for i in range(len(mtllist)-1,0,-1):
+        for i in range(len(mtllist)-1, 0, -1):
             if "_censor" in mtllist[i]:
                 obj.data.materials.pop(index=i)
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(dir):
+def load_texdir(path):
     try:
-        with open(os.path.join(dir, "settings.yaml"), "r") as f:
+        with open(os.path.join(path, "settings.yaml"), "r") as f:
             settings = yaml.safe_load(f)
     except KeyError:
         settings = {}
     default_setting = settings.get("*")
 
     result = {}
-    for item in os.listdir(dir):
+    for item in os.listdir(path):
         name = os.path.splitext(item)[0]
-        full_path = os.path.join(dir, item)
+        full_path = os.path.join(path, item)
         if name[1] == ".yaml" or not os.path.isfile(full_path):
             continue
         if name in result:
-            logger.error("different extensions for texture {} at {}".format(name, dir))
+            logger.error("different extensions for texture %s at %s", name, path)
         result[name] = (full_path, settings.get(name, default_setting))
     return result
 
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
 def load_texmap(char):
     result = {}
-    char_texes = load_texdir(library.char_file(char,"textures"))
+    char_texes = load_texdir(library.char_file(char, "textures"))
     for k, v in load_texdir(os.path.join(library.data_dir, "textures")).items():
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
@@ -129,7 +129,7 @@ def load_textures(obj, char_name):
             if ui.material_local or ui.material_mode in ["MS", "TS"]:
                 for name in tex_try_names(char_name, [node.name, node.label]):
                     img = bpy.data.images.get(name)
-                    if img != None:
+                    if img is not None:
                         break
 
             if img is None:
@@ -141,16 +141,16 @@ def load_textures(obj, char_name):
                     if name.startswith("tex_"):
                         name = name[4:]
                     img_tuple = texmap.get(name)
-                    if img_tuple != None:
+                    if img_tuple is not None:
                         break
-                if img_tuple != None:
+                if img_tuple is not None:
                     img = bpy.data.images.load(img_tuple[0], check_existing=True)
                     img.name = img_tuple[1]
                     apply_tex_settings(img, img_tuple[2])
                     if not img.has_data:
                         img.reload()
 
-            if img != None:
+            if img is not None:
                 node.image = img
 
 def get_props(obj):
@@ -173,20 +173,21 @@ def update_props(obj):
     props = get_props(obj)
 
 def prop_values():
-    return { k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k,v in props.items() }
+    return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in props.items()}
 
 def parse_color(val):
     if isinstance(val, list):
-        if len(val)==3:
+        if len(val) == 3:
             return val + [1]
         return val
+    return [0, 0, 0, 0]
 
-def apply_props(data, mtl_props = None):
+def apply_props(data, mtl_props=None):
     if mtl_props is None:
         mtl_props = props
     if not data or not mtl_props:
         return
-    for k,v in data.items():
+    for k, v in data.items():
         prop = mtl_props.get(k)
         if not prop:
             continue
@@ -204,10 +205,10 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
     bl_order = 6
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return bool(props)
 
-    def draw(self, context):
+    def draw(self, _):
         for prop in props.values():
             if prop.node:
                 self.layout.prop(prop, "default_value", text=prop.node.label)

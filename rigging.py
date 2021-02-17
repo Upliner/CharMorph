@@ -16,15 +16,16 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, math, numpy, os
+import logging, math, os
+import numpy
 
-from . import yaml, library
-
-from bpy import ops, context                 # pylint: disable=import-error, no-name-in-module
+import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Matrix         # pylint: disable=import-error, no-name-in-module
 from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
+
+from . import yaml, utils
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,10 @@ def get_joints(bones, is_all):
             joints["joint_"+bone.name+"_tail"] = (bone.tail, bone, "tail")
     return joints
 
-def all_joints(obj):          return get_joints(obj.data.bones, True)
-def selected_joints(context): return get_joints(context.object.data.edit_bones, False)
+def all_joints(obj):
+    return get_joints(obj.data.bones, True)
+def selected_joints(context):
+    return get_joints(context.object.data.edit_bones, False)
 
 def get_vg_data(char, new, accumulate, verts):
     if verts is None:
@@ -64,7 +67,7 @@ def get_vg_data(char, new, accumulate, verts):
     return data
 
 def get_vg_avg(char, verts):
-    def accumulate(data_item, v, co, gw):
+    def accumulate(data_item, _, co, gw):
         data_item[0] += gw.weight
         data_item[1] += co*gw.weight
     return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
@@ -72,7 +75,7 @@ def get_vg_avg(char, verts):
 def vg_names(file):
     if isinstance(file, str):
         file = numpy.load(file)
-    return [ n.decode("utf-8") for n in bytes(file["names"]).split(b'\0') ]
+    return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
 
 def process_vg_file(file, callback):
     z = numpy.load(file)
@@ -103,7 +106,7 @@ def import_vg(obj, file, overwrite):
                 obj.vertex_groups.remove(obj.vertex_groups[name])
             else:
                 return
-        vg = obj.vertex_groups.new(name = name)
+        vg = obj.vertex_groups.new(name=name)
         for i, weight in data:
             vg.add([int(i)], weight, 'REPLACE')
 
@@ -123,7 +126,7 @@ def add_joints_from_file(verts, avg, file):
     process_vg_file(file, callback)
 
 class Rigger:
-    def __init__(self, context, char, verts = None, jfile = None, opts = None):
+    def __init__(self, context, char, verts=None, jfile=None, opts=None):
         self.context = context
         self.locs = get_vg_avg(char, verts)
         if jfile:
@@ -138,22 +141,22 @@ class Rigger:
             if self.opts:
                 bo = self.opts.get(bone.name)
                 if bo:
-                  val = bo.get(opt)
-                  if val:
-                      return val
+                    val = bo.get(opt)
+                    if val:
+                        return val
             return bone.get("charmorph_" + opt)
         for name, (_, bone, attr) in lst.items():
             item = self.locs.get(name)
-            if item and item[0]>0.1:
+            if item and item[0] > 0.1:
                 eb = edit_bones[bone.name]
                 bones.add(eb)
                 pos = item[1]/item[0]
-                offs = get_opt(bone,"offs_" + attr)
+                offs = get_opt(bone, "offs_" + attr)
                 if offs and len(offs) == 3:
                     pos += Vector(tuple(offs))
                 setattr(eb, attr, pos)
             else:
-                logger.error("No vg for " + name)
+                logger.error("No vg for %s", name)
                 if item:
                     logger.error(item[0])
                 result = False
@@ -168,18 +171,16 @@ class Rigger:
             if axis and len(axis) == 3:
                 axis = Vector(tuple(axis))
                 if flip:
-                    axis = Matrix.Rotation(-math.pi/2,4,bone.y_axis) @ axis
+                    axis = Matrix.Rotation(-math.pi/2, 4, bone.y_axis) @ axis
                 bone.align_roll(axis)
         return result
 
 bbone_attributes_pose = {
-     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
-     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
-     'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
+    'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
+    'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
+    'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
 }
-bbone_attributes_full = bbone_attributes_pose | {
-    'bbone_segments','bbone_handle_type_start','bbone_handle_type_end'
-}
+bbone_attributes_full = ['bbone_segments', 'bbone_handle_type_start', 'bbone_handle_type_end'] + list(bbone_attributes_pose)
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
@@ -216,22 +217,23 @@ def rigify_finalize(rig, char):
         for attr in bbone_attributes_pose:
             setattr(tbone, attr, getattr(sbone, attr))
 
-def reposition_armature_modifier( char):
+def reposition_armature_modifier(char):
     override = {"object": char}
     pos = len(char.modifiers)-1
     name = char.modifiers[pos].name
 
+    i = 0
     for i, mod in enumerate(char.modifiers):
         if mod.type != "MASK":
             break
     for i in range(pos-i):
-        if ops.object.modifier_move_up.poll(override):
-            ops.object.modifier_move_up(override, modifier=name)
+        if bpy.ops.object.modifier_move_up.poll(override):
+            bpy.ops.object.modifier_move_up(override, modifier=name)
 
 def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):
-    if depth>100:
-        logger.error("Too deep tweaks loading: " + repr(tweaks))
-        return
+    if depth > 100:
+        logger.error("Too deep tweaks loading: %s", repr(tweaks))
+        return ([], [])
 
     if editmode_tweaks is None:
         editmode_tweaks = []
@@ -243,14 +245,14 @@ def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth
 
     if not isinstance(tweaks, list):
         if tweaks is not None:
-            logger.error("Unknown tweaks format: " + repr(tweaks))
-        return
+            logger.error("Unknown tweaks format: %s", repr(tweaks))
+        return ([], [])
     for tweak in tweaks:
         if isinstance(tweak, str):
             newpath = os.path.join(path, tweak)
             with open(newpath) as f:
                 unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), editmode_tweaks, regular_tweaks, depth+1)
-        elif tweak.get("tweak")=="rigify_sliding_joint":
+        elif tweak.get("tweak") == "rigify_sliding_joint":
             editmode_tweaks.append(tweak)
             regular_tweaks.append(tweak)
         elif tweak.get("select") == "edit_bone" or tweak.get("tweak") in ["assign_parents", "align"]:
@@ -259,15 +261,17 @@ def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth
             regular_tweaks.append(tweak)
     return (editmode_tweaks, regular_tweaks)
 
-def constraint_by_type(bone, type):
+def constraint_by_type(bone, typ):
     for c in bone.constraints:
-        if c.type == type:
+        if c.type == typ:
             return c
+    return None
 
-def constraint_by_target(bone, rig, type, target):
+def constraint_by_target(bone, rig, typ, target):
     for c in bone.constraints:
-        if c.type == type and c.target == rig and c.subtarget == target:
+        if c.type == typ and c.target == rig and c.subtarget == target:
             return c
+    return None
 
 def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
@@ -286,23 +290,20 @@ def apply_editmode_tweak(context, tweak):
     elif tweak.get("select") == "edit_bone":
         bone = edit_bones.get(tweak.get("bone"))
         if not bone:
-            logger.error("Tweak bone not found: " + tweak.get("bone"))
+            logger.error("Tweak bone not found: %s", tweak.get("bone"))
             return
         for attr, val in tweak.get("set").items():
             setattr(bone, attr, val)
 
 def apply_tweak(rig, tweak):
-    if not rig.pose:
-        logger.error("No pose in rig " + repr(rig) + " no tweaks were applied")
-        return
     if tweak.get("tweak") == "rigify_sliding_joint":
         sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], tweak["side"], tweak["influence"])
         return
     bone_name = tweak.get("bone")
     select = tweak.get("select")
-    if select=="bone":
+    if select == "bone":
         obj = rig.data.bones.get(bone_name)
-    elif select=="pose_bone":
+    elif select == "pose_bone":
         obj = rig.pose.bones.get(bone_name)
         add = tweak.get("add")
         if add is None:
@@ -312,36 +313,20 @@ def apply_tweak(rig, tweak):
             if hasattr(obj, "target"):
                 obj.target = rig
         else:
-            logger.error("Invalid add operator: " + repr(tweak))
+            logger.error("Invalid add operator: %s", repr(tweak))
     elif select == "constraint":
         bone = rig.pose.bones.get(bone_name)
-        obj = bone.constraints.get(tweak.get("name",""))
+        obj = bone.constraints.get(tweak.get("name", ""))
         if not obj:
             obj = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
     else:
-        logger.error("Invalid tweak select: " + repr(tweak))
+        logger.error("Invalid tweak select: %s", repr(tweak))
         return
     if not obj:
-        logger.error("Tweak object not found: " + repr(tweak))
+        logger.error("Tweak object not found: %s", repr(tweak))
         return
     for attr, val in tweak.get("set").items():
         setattr(obj, attr, val)
-
-def reset_transforms(obj):
-    obj.location = (0,0,0)
-    obj.delta_location = (0,0,0)
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = (1,0,0,0)
-    obj.delta_rotation_quaternion = (1,0,0,0)
-    obj.scale = (1,1,1)
-    obj.delta_scale = (1,1,1)
-
-def lock_obj(obj, is_lock):
-    obj.lock_location = (is_lock, is_lock, is_lock)
-    obj.lock_rotation = (is_lock, is_lock, is_lock)
-    obj.lock_rotation_w = is_lock
-    obj.lock_rotations_4d = is_lock
-    obj.lock_scale = (is_lock, is_lock, is_lock)
 
 # My implementation of sliding joints on top of rigify
 # Thanks to DanPro for the idea!
@@ -424,7 +409,7 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     # Make rubber tweak property, but lock it to zero
     rna_idprop_ui_create(bone, "rubber_tweak", default=0, min=0, max=0)
 
-    lock_obj(bones[mch_name], True)
+    utils.lock_obj(bones[mch_name], True)
 
     c = bones[mch_name].constraints.new("COPY_ROTATION")
     c.target = rig

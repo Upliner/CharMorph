@@ -18,6 +18,8 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
+import os, numpy
+
 from . import morphing
 
 def get_combo_item_value(arr_idx, values):
@@ -53,10 +55,10 @@ class ShapeKeysMorpher(morphing.Morpher):
 
         # clear old L2 shape keys
         if not self.obj.data.shape_keys:
-             return
+            return
         for sk in self.obj.data.shape_keys.key_blocks:
-             if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith("L2_{}_".format(self.L1)):
-                 sk.value = 0
+            if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith("L2_{}_".format(self.L1)):
+                sk.value = 0
 
     # scan object shape keys and convert them to dictionary
     def get_L1(self):
@@ -82,7 +84,7 @@ class ShapeKeysMorpher(morphing.Morpher):
         if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
             return False
         for sk in self.obj.data.shape_keys.key_blocks:
-             if sk.name.startswith("L2_"):
+            if sk.name.startswith("L2_"):
                 return True
         return False
 
@@ -113,36 +115,38 @@ class ShapeKeysMorpher(morphing.Morpher):
 
     # create simple prop that drives one min and one max shapekey
     def morph_prop_simple(self, name, skmin, skmax, soft_min=-1.0):
-        def setter(cm, value):
+        def setter(_, value):
             if value < 0:
-                if skmax != None: skmax.value = 0
-                if skmin != None: skmin.value = -value
+                if skmax is not None: skmax.value = 0
+                if skmin is not None: skmin.value = -value
             else:
-                if skmin != None: skmin.value = 0
-                if skmax != None: skmax.value = value
-        return self.basic_morph_prop(name,
-            lambda _: (0 if skmax==None else skmax.value) - (0 if skmin==None else skmin.value),
-            setter, soft_min)
+                if skmin is not None: skmin.value = 0
+                if skmax is not None: skmax.value = value
+        return self.basic_morph_prop(
+            name,
+            lambda _: (0 if skmax is None else skmax.value) - (0 if skmin is None else skmin.value),
+            setter, soft_min,
+        )
 
     # create a prop that drives multple shapekeys
     def morph_prop_combo(self, name, arr):
-        def setter(cm, value):
+        def setter(_, value):
             for item in arr:
                 item[0].set(item[1], value)
 
-        return self.basic_morph_prop(name,
+        return self.basic_morph_prop(
+            name,
             lambda _: sum(item[0].get(item[1]) for item in arr)/len(arr),
-            setter)
+            setter,
+        )
 
     def morph_prop(self, name, data):
         if isinstance(data[0], tuple):
-            return self.morph_prop_combo(name,data)
-        elif len(data) == 1:
+            return self.morph_prop_combo(name, data)
+        if len(data) == 1:
             return self.morph_prop_simple(name, None, data[0], 0)
-        else:
-            return self.morph_prop_simple(name, data[0], data[1], -1)
 
-import os, numpy
+        return self.morph_prop_simple(name, data[0], data[1], -1)
 
 class NumpyMorpher(morphing.Morpher):
     def __init__(self, obj):
@@ -165,33 +169,33 @@ class NumpyMorpher(morphing.Morpher):
 
     def get_L1(self):
         self.morphs_l1 = {}
-        dir = self.char.path("morphs/L1")
-        if not os.path.isdir(dir):
+        path = self.char.path("morphs/L1")
+        if not os.path.isdir(path):
             return ""
-        for file in os.listdir(dir):
+        for file in os.listdir(path):
             if file[-4:] != ".npy":
                 continue
-            self.morphs_l1[file[:-4]] = os.path.join(dir, file)
-        L1 = self.obj.data.get("cmorph_L1","")
+            self.morphs_l1[file[:-4]] = os.path.join(path, file)
+        L1 = self.obj.data.get("cmorph_L1", "")
         if L1 not in self.morphs_l1:
-            L1 == ""
+            L1 = ""
         return L1
 
     def get_morphs_L2(self):
         self.morphs_l2.clear()
-        def load_dir(dir):
-            dir = self.char.path(dir)
-            if not os.path.isdir(dir):
+        def load_dir(path):
+            path = self.char.path(path)
+            if not os.path.isdir(path):
                 return
-            for file in os.listdir(dir):
+            for file in os.listdir(path):
                 if file[-4:] != ".npz":
                     continue
-                self.add_morph_l2(file[:-4], os.path.join(dir, file))
+                self.add_morph_l2(file[:-4], os.path.join(path, file))
         load_dir("morphs/L2")
         if self.L1:
             load_dir("morphs/L2/"+self.L1)
 
-        for k in self.morphs_combo.keys():
+        for k in self.morphs_combo:
             for name in enum_combo_names(k):
                 self.morphs_l2[name] = self.morphs_l2.get(name)
 
@@ -228,7 +232,7 @@ class NumpyMorpher(morphing.Morpher):
                     do_morph(data, 1, val)
 
         for name, data in self.morphs_combo.items():
-            values = [ self.obj.data.get("cmorph_L2_"+n, 0.0) for n in enum_combo_names(name) ]
+            values = [self.obj.data.get("cmorph_L2_"+n, 0.0) for n in enum_combo_names(name)]
             coeff = 2 / len(data)
             for i in range(len(data)):
                 do_morph(data, i, get_combo_item_value(i, values) * coeff)
@@ -251,8 +255,10 @@ class NumpyMorpher(morphing.Morpher):
         if isinstance(data, list) and len(data) == 1:
             soft_min = 0
         pname = "cmorph_L2_"+name
-        def setter(cm, value):
+        def setter(_, value):
             self.obj.data[pname] = value
-        return self.basic_morph_prop(name,
+        return self.basic_morph_prop(
+            name,
             lambda _: self.obj.data.get(pname, 0.0),
-            setter, soft_min)
+            setter, soft_min,
+        )

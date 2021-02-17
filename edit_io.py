@@ -19,9 +19,10 @@
 # Copyright (C) 2021 Michael Vigovsky
 
 import os, re, numpy
-import bpy, bpy_extras, idprop # pylint: disable=import-error
+import bpy, bpy_extras # pylint: disable=import-error
+import idprop          # pylint: disable=import-error
 
-from . import yaml, rigging
+from . import yaml, rigging, utils
 
 def np_particles_data(particles):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
@@ -31,7 +32,7 @@ def np_particles_data(particles):
         c = len(p.hair_keys)-1
         cnt[i] = c
         total += c
-        if c>mx:
+        if c > mx:
             mx = c
 
     data = numpy.empty((total, 3), dtype=numpy.float32)
@@ -40,7 +41,7 @@ def np_particles_data(particles):
     for p in particles:
         t2 = tmp[:len(p.hair_keys)*3]
         p.hair_keys.foreach_get("co_local", t2)
-        t2 = t2[3:].reshape((-1,3))
+        t2 = t2[3:].reshape((-1, 3))
         data[i:i+len(t2)] = t2
         i += len(t2)
     return {"cnt":cnt, "data":data}
@@ -88,9 +89,9 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         names = bytearray()
         for vg in context.object.vertex_groups:
             if r.search(vg.name):
-                m[vg.index]=len(arr)
+                m[vg.index] = len(arr)
                 arr.append([])
-                if len(names)>0:
+                if len(names) > 0:
                     names.append(0)
                 names.extend(vg.name.encode("utf-8"))
 
@@ -101,7 +102,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
                     continue
                 a = arr[i]
                 a.append((v.index, g.weight))
-                if len(a)>255:
+                if len(a) > 255:
                     dt = numpy.uint16
 
         cnt = numpy.empty(len(arr), dtype=dt)
@@ -140,12 +141,6 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         rigging.import_vg(context.object, self.filepath, context.window_manager.cmedit_ui.vg_overwrite)
         return {"FINISHED"}
 
-# set some yaml styles
-class MyDumper(yaml.Dumper):
-    pass
-MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style = True) )
-MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value,5)) )
-
 class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.bones_export"
     bl_label = "Export Bone settings"
@@ -168,9 +163,9 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             bones = a.bones
         for b in bones:
             bd = {}
-            for k,v in b.items():
+            for k, v in b.items():
                 if k.startswith("charmorph_"):
-                    if type(v) == idprop.types.IDPropertyArray:
+                    if isinstance(v, idprop.types.IDPropertyArray):
                         v = list(v)
                     bd[k[10:]] = v
 
@@ -180,11 +175,11 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
                 elif mode == "Z":
                     bd["axis_z"] = list(b.z_axis)
 
-            if len(bd)>0:
+            if len(bd) > 0:
                 result[b.name] = bd
 
         with open(self.filepath, "w") as f:
-            yaml.dump(result, f, Dumper=MyDumper)
+            yaml.dump(result, f, Dumper=utils.MyDumper)
 
         return {"FINISHED"}
 
@@ -207,7 +202,7 @@ class OpMorphsExport(bpy.types.Operator):
     def execute(self, context):
         m = context.object.data
         if not m.shape_keys or not m.shape_keys.key_blocks or not m.shape_keys.reference_key:
-            self.report({"ERROR"},"No shape keys!")
+            self.report({"ERROR"}, "No shape keys!")
             return {"CANCELLED"}
         keys = {}
 
@@ -232,7 +227,7 @@ class OpMorphsExport(bpy.types.Operator):
         for name, sk in keys.items():
             sk.data.foreach_get("co", morphed)
             morphed -= basis
-            m2 = morphed.reshape(-1,3)
+            m2 = morphed.reshape(-1, 3)
             idx = m2.any(1).nonzero()[0]
             numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
 
