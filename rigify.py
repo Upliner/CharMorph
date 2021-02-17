@@ -77,16 +77,18 @@ def do_rig(obj, conf, rigger):
     try:
         bpy.data.armatures.remove(metarig.data)
         rig.name = obj.name + "_rig"
+        rigging.rigify_finalize(rig, obj)
+
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
         editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.get("tweaks",[]))
-        bpy.ops.object.mode_set(mode="EDIT")
+        if len(editmode_tweaks) > 0 or len(new_joints) > 0:
+            bpy.ops.object.mode_set(mode="EDIT")
 
-        if new_joints and not rigger.run(new_joints):
-            raise RigException("Mixin fitting failed")
+            if new_joints and not rigger.run(new_joints):
+                raise RigException("Mixin fitting failed")
 
-        rigging.rigify_add_deform(bpy.context, obj)
 
         for tweak in editmode_tweaks:
             rigging.apply_editmode_tweak(bpy.context, tweak)

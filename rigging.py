@@ -172,10 +172,49 @@ class Rigger:
                 bone.align_roll(axis)
         return result
 
-def rigify_add_deform(context, char):
-    for vg in char.vertex_groups:
-        if vg.name.startswith("ORG-") or vg.name.startswith("MCH-"):
-            context.object.data.edit_bones[vg.name].use_deform = True
+bbone_attributes_pose = {
+     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
+     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
+     'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
+}
+bbone_attributes_full = bbone_attributes_pose | {
+    'bbone_segments','bbone_handle_type_start','bbone_handle_type_end'
+}
+
+def rigify_finalize(rig, char):
+    vgs = char.vertex_groups
+    bbones = []
+    for bone in rig.data.bones:
+        is_org = bone.name.startswith("ORG-")
+        if is_org or bone.name.startswith("MCH-"):
+            if bone.name in vgs:
+                bone.use_deform = True
+            if is_org:
+                def_start = None
+                def_end = None
+                b = bone.bbone_custom_handle_start
+                if b and b.name.startswith("ORG-"):
+                    def_start = rig.data.bones.get("DEF-"+b.name[4:])
+                b = bone.bbone_custom_handle_end
+                if b and b.name.startswith("ORG-"):
+                    def_end = rig.data.bones.get("DEF-"+b.name[4:])
+
+                if def_start or def_end:
+                    def_bone = rig.data.bones.get("DEF-"+bone.name[4:])
+                    if def_bone.bbone_segments == 1:
+                        bbones.append((def_bone.name, bone.name))
+                        for attr in bbone_attributes_full:
+                            setattr(def_bone, attr, getattr(bone, attr))
+                    if def_start:
+                        def_bone.bbone_custom_handle_start = def_start
+                    if def_end:
+                        def_bone.bbone_custom_handle_end = def_end
+
+    for target, source in bbones:
+        tbone = rig.pose.bones[target]
+        sbone = rig.pose.bones[source]
+        for attr in bbone_attributes_pose:
+            setattr(tbone, attr, getattr(sbone, attr))
 
 def reposition_armature_modifier( char):
     override = {"object": char}

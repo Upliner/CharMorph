@@ -60,7 +60,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
 
         l.operator("cmedit.calc_vg")
         l.operator("cmedit.symmetrize_joints")
-        l.operator("cmedit.add_rigify_deform")
+        l.operator("cmedit.rigify_finalize")
         l.prop(ui, "rig_tweaks_file")
         l.operator("cmedit.rigify_tweaks")
 
@@ -333,18 +333,18 @@ class OpCalcVg(bpy.types.Operator):
 
         return {"FINISHED"}
 
-class OpRigifyDeform(bpy.types.Operator):
-    bl_idname = "cmedit.add_rigify_deform"
-    bl_label = "Add Rigify deform"
-    bl_description = "Set deform flag for neccessary rigfy bones"
+class OpRigifyFinalize(bpy.types.Operator):
+    bl_idname = "cmedit.rigify_finalize"
+    bl_label = "Finalize Rigify rig"
+    bl_description = "Fix Rigify rig to make it suitable for char (in combo box). It adds deform flag to necessary bones and fixes facial bendy bones"
     bl_options = {"UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "EDIT_ARMATURE"
+        return context.object and context.object.type == "ARMATURE" and get_char(context)
 
     def execute(self, context):
-        rigging.rigify_add_deform(context, get_char(context))
+        rigging.rigify_finalize(context.object, get_char(context))
         return {"FINISHED"}
 
 class OpRigifyTweaks(bpy.types.Operator):
@@ -694,7 +694,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         ]
     )
 
-classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyDeform, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
+classes = [CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
     OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 from . import edit_io
