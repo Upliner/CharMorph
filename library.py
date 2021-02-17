@@ -395,9 +395,17 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         for prop in UIProps.__annotations__: # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator('charmorph.import_char', icon='ARMATURE_DATA')
+
+        l.alignment = "CENTER"
+        c = l.column(align=True)
         if is_adult_mode():
-            l.label(text="Adult mode is on. The character will be naked.")
+            labels = ["Adult mode is on", "The character will be naked"]
         else:
-            l.label(text="Adult mode is off. Default underwear will be added.")
+            labels = ["Adult mode is off", "Default underwear will be added"]
+        for text in labels:
+            r = c.row()
+            r.alignment = "CENTER"
+            r.label(text=text)
+
 
 classes = [OpReloadLib, OpImport, CHARMORPH_PT_Library]
