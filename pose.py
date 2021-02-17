@@ -23,7 +23,7 @@ import bpy
 
 from . import library
 
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Vector # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,7 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
-        for prop in UIProps.__annotations__.keys():
+        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.apply_pose")
 

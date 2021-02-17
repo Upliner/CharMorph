@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, json, logging, numpy, time
-import bpy
+import bpy # pylint: disable=import-error
 
 try:
     from yaml import load as yload, CSafeLoader as SafeLoader
@@ -385,7 +385,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if not chars:
             l.label(text = "No characters found at {}. Nothing to import.".format(data_dir))
             return
-        for prop in UIProps.__annotations__.keys():
+        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator('charmorph.import_char', icon='ARMATURE_DATA')
         if is_adult_mode():

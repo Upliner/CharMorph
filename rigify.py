@@ -77,22 +77,24 @@ def do_rig(obj, conf, rigger):
     try:
         bpy.data.armatures.remove(metarig.data)
         rig.name = obj.name + "_rig"
+
         rigging.rigify_finalize(rig, obj)
 
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
         editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.get("tweaks",[]))
-        if len(editmode_tweaks) > 0 or len(new_joints) > 0:
+        if len(editmode_tweaks) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
             if new_joints and not rigger.run(new_joints):
                 raise RigException("Mixin fitting failed")
 
+            for tweak in editmode_tweaks:
+                rigging.apply_editmode_tweak(bpy.context, tweak)
 
-        for tweak in editmode_tweaks:
-            rigging.apply_editmode_tweak(bpy.context, tweak)
-        bpy.ops.object.mode_set(mode="OBJECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
+
         for tweak in tweaks:
             rigging.apply_tweak(rig, tweak)
 
@@ -150,7 +152,7 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
         return result
 
     def draw(self, context):
-        for prop in UIProps.__annotations__.keys():
+        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
             self.layout.prop(context.window_manager.charmorph_ui, prop)
 
 classes = [CHARMORPH_PT_RigifySettings]

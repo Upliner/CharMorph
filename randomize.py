@@ -86,7 +86,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
 
         col = self.layout.column(align=True)
         col.label(text="What to randomize:")
-        for prop in WhatToProps.__annotations__.keys():
+        for prop in WhatToProps.__annotations__.keys(): # pylint: disable=no-member
             col.prop(ui, prop)
 
         self.layout.separator()

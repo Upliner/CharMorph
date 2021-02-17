@@ -22,9 +22,9 @@ import logging, math, numpy, os
 
 from . import yaml, library
 
-from bpy import ops, context
-from mathutils import Vector, Matrix
-from rna_prop_ui import rna_idprop_ui_create
+from bpy import ops, context                 # pylint: disable=import-error, no-name-in-module
+from mathutils import Vector, Matrix         # pylint: disable=import-error, no-name-in-module
+from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@
 # Copyright (C) 2021 Michael Vigovsky
 
 import os, re, numpy
-import bpy, bpy_extras, idprop
+import bpy, bpy_extras, idprop # pylint: disable=import-error
 
 from . import yaml, rigging
 

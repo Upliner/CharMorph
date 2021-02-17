@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, time, random, logging, numpy
-import bpy, bpy_extras, mathutils, bmesh
+import bpy, bpy_extras, mathutils, bmesh # pylint: disable=import-error
 
 from .library import Timer
 
@@ -340,7 +340,7 @@ def do_fit(char, assets):
 
     t.time("fit")
     if bpy.context.window_manager.charmorph_ui.hair_deform:
-        hair.fit_all_hair(bpy.context, char, diff_arr)
+        hair.fit_all_hair(char, diff_arr)
 
 def masking_enabled(asset):
     return asset.data.get("charmorph_fit_mask","true").lower() in ['true', 1, '1', 'y', 'yes']

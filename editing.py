@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging, numpy, os
-import bpy, mathutils
+import bpy, mathutils # pylint: disable=import-error
 
 from . import yaml, rigging
 

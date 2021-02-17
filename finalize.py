@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging
-import bpy, mathutils
+import bpy, mathutils # pylint: disable=import-error
 
 from . import library, morphing, fitting, rigging, rigify
 
@@ -380,7 +380,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
-        for prop in UIProps.__annotations__.keys():
+        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")

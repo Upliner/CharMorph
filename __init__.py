@@ -21,6 +21,8 @@
 import os, logging
 import bpy
 
+from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
+
 rootLogger = logging.getLogger(None)
 if not rootLogger.hasHandlers():
     # While CharMorph is in alpha stage, use debug logging level
@@ -64,10 +66,8 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
         description="No censors, enable adult assets (genitails, pubic hair)",
     )
 
-    def draw(self, context):
-        self.layout.prop(self,"adult_mode")
-
-from . import library, morphing
+    def draw(self, _):
+        self.layout.prop(self, "adult_mode")
 
 def on_select_object():
     if morphing.bad_object():
@@ -106,19 +106,17 @@ def on_select_object():
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent
-def load_handler(dummy):
+def load_handler(_):
     morphing.del_charmorphs()
     on_select_object()
 
 @bpy.app.handlers.persistent
-def select_handler(dummy):
+def select_handler(_):
     on_select_object()
 
 classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
-
-from . import randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
 
 for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose]:
     classes.extend(module.classes)
@@ -139,9 +137,9 @@ def register():
 
     bpy.msgbus.subscribe_rna(
         owner=owner,
-        key = (bpy.types.LayerObjects, "active"),
+        key=(bpy.types.LayerObjects, "active"),
         args=(),
-        notify = on_select_object)
+        notify=on_select_object)
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)
@@ -158,7 +156,7 @@ def unregister():
         if not isinstance(hlist, list):
             continue
         for handler in hlist:
-            if handler == load_handler or handler == select_handler:
+            if handler in (load_handler, select_handler):
                 hlist.remove(handler)
                 break
 

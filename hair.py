@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random, numpy
-import bpy, mathutils, bmesh
+import bpy, mathutils, bmesh # pylint: disable=import-error
 
 from . import library, fitting
 from .materials import parse_color
@@ -513,7 +513,7 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
         l = self.layout
-        for prop in UIProps.__annotations__.keys():
+        for prop in UIProps.__annotations__.keys(): # pylint: disable=no-member
             l.prop(ui, prop)
         l.operator("charmorph.hair_create")
         l.operator("charmorph.hair_refit")
