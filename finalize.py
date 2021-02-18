@@ -25,9 +25,6 @@ from . import library, morphing, fitting, rigging, rigify, utils
 
 logger = logging.getLogger(__name__)
 
-class RigException(Exception):
-    pass
-
 def remove_armature_modifiers(obj):
     for m in list(obj.modifiers):
         if m.type == "ARMATURE":
@@ -60,47 +57,32 @@ def delete_old_rig_with_assets(obj, rig):
     for asset in fitting.get_assets(obj):
         remove_armature_modifiers(asset)
 
-def get_bone_opts(char, conf):
-    opts = conf.get("bones")
-    if not opts:
-        return None
-    if isinstance(opts, str):
-        opts = char.get_yaml(opts)
-        conf["bones"] = opts
-    return opts
-
 def add_rig(obj, char, rig_name, verts):
     conf = char.armature.get(rig_name)
     if not conf:
-        raise RigException("Rig is not found")
+        raise rigging.RigException("Rig is not found")
 
-    rig_type = conf.get("type")
+    rig_type = conf.type
     if rig_type not in ["rigify", "regular"]:
-        raise RigException("Rig type {} is not supported".format(rig_type))
+        raise rigging.RigException("Rig type {} is not supported".format(rig_type))
 
-    rig = library.import_obj(char.path(conf["file"]), conf["obj_name"], "ARMATURE")
+    rig = library.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
     if not rig:
-        raise RigException("Rig import failed")
+        raise rigging.RigException("Rig import failed")
 
     try:
-        bone_opts = get_bone_opts(char, conf)
-        if not bone_opts:
-            bone_opts = get_bone_opts(char, char.config)
-
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
 
         rigger = rigging.Rigger(bpy.context)
-        joints_file = char.path(conf.get("joints"))
-        if joints_file:
-            rigger.joints_from_file(joints_file, verts)
+        if conf.joints:
+            rigger.joints_from_file(conf.joints, verts)
         else:
             rigger.joints_from_char(obj, verts)
-        rigger.opts = bone_opts
-
+        rigger.opts = conf.bones
 
         if not rigger.run(rigging.all_joints(rig)):
-            raise RigException("Rig fitting failed")
+            raise rigging.RigException("Rig fitting failed")
 
         bpy.ops.object.mode_set(mode="OBJECT")
 
@@ -108,9 +90,8 @@ def add_rig(obj, char, rig_name, verts):
         if old_rig:
             clear_old_weights_with_assets(obj, char, old_rig)
 
-        weights = conf.get("weights")
-        if weights:
-            rigging.import_vg(obj, char.path(weights), False)
+        if conf.weights:
+            rigging.import_vg(obj, conf.weights, False)
 
         attach = True
         if rig_type == "rigify":
@@ -220,7 +201,7 @@ class OpFinalize(bpy.types.Operator):
                 vg_cleanup = False
             try:
                 add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else char.data.vertices)
-            except RigException as e:
+            except rigging.RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
             return True
@@ -325,7 +306,7 @@ def get_rigs(_, context):
     char = library.get_obj_char(context)[1]
     if not char:
         return []
-    return [("-", "<None>", "Don't generate rig")] + [(name, rig.get("title", name), "") for name, rig in char.armature.items()]
+    return [("-", "<None>", "Don't generate rig")] + [(name, rig.title, "") for name, rig in char.armature.items()]
 
 class UIProps:
     fin_morph: bpy.props.EnumProperty(

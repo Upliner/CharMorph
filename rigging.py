@@ -29,6 +29,9 @@ from . import yaml, utils
 
 logger = logging.getLogger(__name__)
 
+class RigException(Exception):
+    pass
+
 def get_joints(bones, is_all):
     joints = {}
     for bone in bones:

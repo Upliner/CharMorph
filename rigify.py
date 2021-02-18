@@ -56,10 +56,10 @@ def apply_parameters(metarig):
             params.super_copy_widget_type = "shoulder"
 
 def add_mixin(char, conf, rig):
-    obj_name = conf.get("mixin")
+    obj_name = conf.mixin
     if not obj_name:
         return (None, None)
-    mixin = library.import_obj(char.path(conf["file"]), obj_name, "ARMATURE")
+    mixin = library.import_obj(char.path(conf.file), obj_name, "ARMATURE")
     bones = [b.name for b in mixin.data.bones]
     joints = rigging.all_joints(mixin)
     bpy.ops.object.join({
@@ -83,12 +83,12 @@ def do_rig(obj, conf, rigger):
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.get("tweaks", []))
+        editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.tweaks)
         if len(editmode_tweaks) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
             if new_joints and not rigger.run(new_joints):
-                raise RigException("Mixin fitting failed")
+                raise rigging.RigException("Mixin fitting failed")
 
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(bpy.context, tweak)

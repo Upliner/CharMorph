@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging, time, numpy
+import os, json, logging, time, traceback, numpy
 import bpy # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
@@ -56,41 +56,64 @@ def parse_file(path, parse_func, default):
 def load_yaml(data):
     return yload(data, Loader=SafeLoader)
 
+def load_assets_dir(path):
+    result = {}
+    if not os.path.isdir(path):
+        if path:
+            logger.error("path is not found: %s", path)
+        return result
+    for file in os.listdir(path):
+        name, ext = os.path.splitext(file)
+        if ext == ".blend" and os.path.isfile(os.path.join(path, file)):
+            result[name] = (os.path.join(path, file), name)
+    return result
+
+def load_json_dir(path):
+    result = {}
+    if not os.path.isdir(path):
+        if path:
+            logger.error("path is not found: %s", path)
+        return result
+    for file in os.listdir(path):
+        name, ext = os.path.splitext(file)
+        full_path = os.path.join(path, file)
+        if ext == ".json" and os.path.isfile(full_path):
+            result[name] = parse_file(full_path, json.load, {})
+    return result
+
 _empty_dict = object()
 
 class Character:
     def __init__(self, name):
         self.name = name
-        self.config = {}
-        self.assets = {}
-        self.poses = {}
-        self.conf_default = {
+        self.armature = {}
+        self.config = {
             "title": name,
             "char_file": "char.blend",
             "char_obj": "char",
-            "bones": "",
             "default_type": "",
             "default_armature": "",
             "default_hair_length": 0.1,
-            "hairstyles": [],
             "armature": {},
+            "armature_defaults": {},
+            "hairstyles": [],
             "materials": [],
             "types": {},
+            "assets": {},
+            "poses": {},
         }
+        self.config.update(self.get_yaml("config.yaml"))
+        if self.name:
+            self.assets = load_assets_dir(self.path("assets"))
+            self.poses = load_json_dir(self.path("poses"))
+
+        self._parse_armature()
 
     def __getattr__(self, item):
-        v = self.config.get(item)
-        if v is not None:
-            return v
-
         if item == "morphs_meta":
             self.morphs_meta = self.get_yaml("morphs_meta.yaml")
             return self.morphs_meta
-
-        def_item = self.conf_default[item]
-        self.config[item] = def_item
-
-        return def_item
+        return self.config[item]
 
     def path(self, file):
         return char_file(self.name, file)
@@ -105,14 +128,69 @@ class Character:
     def blend_file(self):
         return self.path(self.char_file)
 
+    def _parse_armature(self):
+        data = self.config["armature"]
+        if isinstance(data, list):
+            self._parse_armature_list(data)
+        else:
+            self._parse_armature_dict(data)
+
+    def _parse_armature_list(self, data):
+        for i, a in enumerate(data):
+            title = a.get("title")
+            if title:
+                k = title.lower().replace(" ", "_")
+            else:
+                k = str(i)
+                a["title"] = "<unnamed %s>" % k
+            if not self.default_armature:
+                self.config["default_armature"] = k
+            self.armature[k] = Armature(self, k, a)
+
+    def _parse_armature_dict(self, data):
+        for k, v in data.items():
+            self.armature[k] = Armature(self, k, v)
+
+class Armature():
+    def __init__(self, char: Character, name, conf):
+        self.char = char
+        self.config = {
+            "title": name,
+            "tweaks": [],
+            "mixin": None,
+            "mixin_bones": {},
+        }
+        self.config.update(char.armature_defaults)
+        self.config.update(conf)
+
+        for item in ("weights", "joints"):
+            value = self.config.get(item)
+            if value:
+                value = char.path(value)
+            setattr(self, item, value)
+
+        if "bones" not in self.config: # Legacy
+            self.config["bones"] = char.config.get("bones", {})
+
+    def __getattr__(self, item):
+        if item == "bones":
+            b = self.config["bones"]
+            if isinstance(b, str):
+                b = self.char.get_yaml(b)
+            self.bones = b
+            return b
+        return self.config[item]
+
 empty_char = Character("")
 
 def obj_char(obj):
     if not obj:
         return empty_char
-    tpl = obj.data.get("charmorph_template", obj.get("charmorph_template"))
+    tpl = obj.data.get("charmorph_template")
     if tpl:
         return chars.get(tpl)
+
+    # MB-Lab characters support
     tpl = obj.get("manuellab_id")
     if not tpl:
         return empty_char
@@ -121,16 +199,6 @@ def obj_char(obj):
     if tpl in ("m_af01", "m_an03", "m_as01", "m_ca01", "m_ft01", "m_ft02", "m_la01"):
         return chars.get("mb_human_male")
     return empty_char
-
-def load_assets_dir(path):
-    result = {}
-    if not os.path.isdir(path):
-        return result
-    for file in os.listdir(path):
-        name, ext = os.path.splitext(file)
-        if ext == ".blend" and os.path.isfile(os.path.join(path, file)):
-            result[name] = (os.path.join(path, file), name)
-    return result
 
 def update_fitting_assets(ui, _):
     global additional_assets
@@ -149,17 +217,6 @@ def fitting_asset_data(context):
     if item.startswith("add_"):
         return additional_assets.get(item[4:])
     return None
-
-def load_json_dir(path):
-    result = {}
-    if not os.path.isdir(path):
-        return result
-    for file in os.listdir(path):
-        name, ext = os.path.splitext(file)
-        full_path = os.path.join(path, file)
-        if ext == ".json" and os.path.isfile(full_path):
-            result[name] = parse_file(full_path, json.load, {})
-    return result
 
 class Timer:
     def __init__(self):
@@ -180,26 +237,17 @@ def load_library():
         return
 
     for char_name in os.listdir(chardir):
-        char = Character(char_name)
-        char.config = char.get_yaml("config.yaml")
+        try:
+            char = Character(char_name)
+        except Exception as e:
+            logger.error("Error in character %s: %s", char_name, e)
+            logger.error(traceback.format_exc())
+            continue
+
         if not os.path.isfile(char.blend_file()):
             logger.error("Character %s doesn't have char file %s.", char_name, char.blend_file())
             continue
-        char.assets = load_assets_dir(char.path("assets"))
-        char.poses = load_json_dir(char.path("poses"))
-        if isinstance(char.armature, list):
-            d = {}
-            for i, a in enumerate(char.armature):
-                title = a.get("title")
-                if title:
-                    k = title.lower().replace(" ", "_")
-                else:
-                    k = str(i)
-                    a["title"] = "<unnamed %s>" % k
-                d[k] = a
-                if not char.default_armature:
-                    char.config["default_armature"] = k
-            char.config["armature"] = d
+
         chars[char_name] = char
 
     t.time("Library load")
