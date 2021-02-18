@@ -90,7 +90,14 @@ def add_rig(obj, char, rig_name, verts):
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
 
-        rigger = rigging.Rigger(bpy.context, obj, verts, char.path(conf.get("joints")), bone_opts)
+        rigger = rigging.Rigger(bpy.context)
+        joints_file = char.path(conf.get("joints"))
+        if joints_file:
+            rigger.joints_from_file(joints_file, verts)
+        else:
+            rigger.joints_from_char(obj, verts)
+        rigger.opts = bone_opts
+
 
         if not rigger.run(rigging.all_joints(rig)):
             raise RigException("Rig fitting failed")
@@ -212,7 +219,7 @@ class OpFinalize(bpy.types.Operator):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 vg_cleanup = False
             try:
-                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else None)
+                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else char.data.vertices)
             except RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False

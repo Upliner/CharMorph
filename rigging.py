@@ -50,7 +50,7 @@ def all_joints(obj):
 def selected_joints(context):
     return get_joints(context.object.data.edit_bones, False)
 
-def get_vg_data(char, new, accumulate, verts):
+def get_vg_data(char, new, accumulate, verts=None):
     if verts is None:
         verts = char.data.vertices
     data = {}
@@ -66,7 +66,7 @@ def get_vg_data(char, new, accumulate, verts):
             accumulate(data_item, v, verts[v.index].co, gw)
     return data
 
-def get_vg_avg(char, verts):
+def get_vg_avg(char, verts=None):
     def accumulate(data_item, _, co, gw):
         data_item[0] += gw.weight
         data_item[1] += co*gw.weight
@@ -112,26 +112,27 @@ def import_vg(obj, file, overwrite):
 
     process_vg_file(file, callback)
 
-def add_joints_from_file(verts, avg, file):
-    def callback(name, data):
-        if not name.startswith("joint_"):
-            return
-        if name in avg:
-            return
-        item = [0, Vector()]
-        avg[name] = item
-        for i, weight in data:
-            item[0] += weight
-            item[1] += verts[i].co*weight
-    process_vg_file(file, callback)
-
 class Rigger:
-    def __init__(self, context, char, verts=None, jfile=None, opts=None):
+    def __init__(self, context):
         self.context = context
-        self.locs = get_vg_avg(char, verts)
-        if jfile:
-            add_joints_from_file(verts, self.locs, jfile)
-        self.opts = opts
+        self.jdata = {}
+        self.opts = None
+
+    def joints_from_char(self, char, verts=None):
+        self.jdata = get_vg_avg(char, verts)
+
+    def joints_from_file(self, file, verts):
+        def callback(name, data):
+            if not name.startswith("joint_"):
+                return
+            if name in self.jdata:
+                return
+            item = [0, Vector()]
+            self.jdata[name] = item
+            for i, weight in data:
+                item[0] += weight
+                item[1] += verts[i].co*weight
+        process_vg_file(file, callback)
 
     def get_opt(self, bone, opt):
         if self.opts:
@@ -147,7 +148,7 @@ class Rigger:
         bones = set()
         edit_bones = self.context.object.data.edit_bones
         for name, (_, bone, attr) in lst.items():
-            item = self.locs.get(name)
+            item = self.jdata.get(name)
             if item and item[0] > 0.1:
                 eb = edit_bones[bone.name]
                 bones.add(eb)
@@ -176,12 +177,13 @@ class Rigger:
                 bone.align_roll(axis)
         return result
 
-bbone_attributes_pose = {
+bbone_attributes = [
+    'bbone_segments', 'use_endroll_as_inroll',
+    'bbone_handle_type_start', 'bbone_handle_type_end'
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
     'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
-}
-bbone_attributes_full = ['bbone_segments', 'bbone_handle_type_start', 'bbone_handle_type_end'] + list(bbone_attributes_pose)
+]
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
@@ -205,18 +207,14 @@ def rigify_finalize(rig, char):
                     def_bone = rig.data.bones.get("DEF-"+bone.name[4:])
                     if def_bone.bbone_segments == 1:
                         bbones.append((def_bone.name, bone.name))
-                        for attr in bbone_attributes_full:
+                        for attr in bbone_attributes:
                             setattr(def_bone, attr, getattr(bone, attr))
                     if def_start:
                         def_bone.bbone_custom_handle_start = def_start
                     if def_end:
                         def_bone.bbone_custom_handle_end = def_end
 
-    for target, source in bbones:
-        tbone = rig.pose.bones[target]
-        sbone = rig.pose.bones[source]
-        for attr in bbone_attributes_pose:
-            setattr(tbone, attr, getattr(sbone, attr))
+    # Set ease in/out for pose bones or not?
 
 def reposition_armature_modifier(char):
     override = {"object": char}

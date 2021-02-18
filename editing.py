@@ -130,7 +130,9 @@ class OpJointsToVG(bpy.types.Operator):
         return editable_bones_poll(context)
 
     def execute(self, context): # pylint: disable=no-self-use
-        rigging.Rigger(context, get_char(context)).run(joint_list_extended(context, False))
+        r = rigging.Rigger(context)
+        r.joints_from_char(get_char(context))
+        r.run(joint_list_extended(context, False))
         return {"FINISHED"}
 
 def closest_point_on_face(face, co):
@@ -276,7 +278,7 @@ class OpCalcVg(bpy.types.Operator):
         joints = joint_list_extended(context, ui.rig_xmirror)
 
         if typ == "CU":
-            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index)), None)
+            vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index)))
             for name, tup in joints.items():
                 co = tup[0]
                 vg = char.vertex_groups.get(name)
@@ -308,7 +310,7 @@ class OpCalcVg(bpy.types.Operator):
                     logger.error("Inavlid typ!")
 
         if ui.rig_vg_offs == "R":
-            avg = rigging.get_vg_avg(char, None)
+            avg = rigging.get_vg_avg(char)
             for name, (co, bone, attr) in joints.items():
                 item = avg.get(name)
                 if item:

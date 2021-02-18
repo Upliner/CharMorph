@@ -189,7 +189,6 @@ def apply_pose(ui, context):
                     logger.error("CharMorph doesn't support IK2FK for your Rigify version")
         except:
             logger.error("Rigify UI doesn't seem to be available. IK2FK is disabled")
-            pass
     if ik2fk_operator and ik2fk_limbs:
         fail = False
         for limb in ik2fk_limbs:

@@ -21,7 +21,7 @@
 import logging, random, numpy
 import bpy, mathutils, bmesh # pylint: disable=import-error
 
-from . import library, fitting
+from . import library, fitting, utils
 from .materials import parse_color
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,7 @@ def calc_weights(char, arr):
     char_faces = char.data.polygons
 
     # calculate weights based on n nearest vertices
-    kd_char = fitting.kdtree_from_verts(char_verts)
+    kd_char = utils.kdtree_from_verts(char_verts)
     weights = [{idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32)} for co in arr]
 
     t.time("hair_kdtree")

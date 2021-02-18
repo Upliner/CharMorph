@@ -110,7 +110,17 @@ empty_char = Character("")
 def obj_char(obj):
     if not obj:
         return empty_char
-    return chars.get(obj.data.get("charmorph_template"), chars.get(obj.get("charmorph_template"), empty_char))
+    tpl = obj.data.get("charmorph_template", obj.get("charmorph_template"))
+    if tpl:
+        return chars.get(tpl)
+    tpl = obj.get("manuellab_id")
+    if not tpl:
+        return empty_char
+    if tpl in ("f_af01", "f_an03", "f_as01", "f_ca01", "f_ft01", "f_la01"):
+        return chars.get("mb_human_female")
+    if tpl in ("m_af01", "m_an03", "m_as01", "m_ca01", "m_ft01", "m_ft02", "m_la01"):
+        return chars.get("mb_human_male")
+    return empty_char
 
 def load_assets_dir(path):
     result = {}
