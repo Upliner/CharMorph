@@ -60,6 +60,15 @@ def delete_old_rig_with_assets(obj, rig):
     for asset in fitting.get_assets(obj):
         remove_armature_modifiers(asset)
 
+def get_bone_opts(char, conf):
+    opts = conf.get("bones")
+    if not opts:
+        return None
+    if isinstance(opts, str):
+        opts = char.get_yaml(opts)
+        conf["bones"] = opts
+    return opts
+
 def add_rig(obj, char, rig_name, verts):
     conf = char.armature.get(rig_name)
     if not conf:
@@ -74,10 +83,9 @@ def add_rig(obj, char, rig_name, verts):
         raise RigException("Rig import failed")
 
     try:
-        bone_opts = None
-        bones_file = conf.get("bones", char.bones)
-        if bones_file:
-            bone_opts = char.get_yaml(bones_file)
+        bone_opts = get_bone_opts(char, conf)
+        if not bone_opts:
+            bone_opts = get_bone_opts(char, char.config)
 
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")

@@ -133,25 +133,26 @@ class Rigger:
             add_joints_from_file(verts, self.locs, jfile)
         self.opts = opts
 
+    def get_opt(self, bone, opt):
+        if self.opts:
+            bo = self.opts.get(bone.name)
+            if bo:
+                val = bo.get(opt)
+                if val:
+                    return val
+        return bone.get("charmorph_" + opt)
+
     def run(self, lst):
         result = True
         bones = set()
         edit_bones = self.context.object.data.edit_bones
-        def get_opt(bone, opt):
-            if self.opts:
-                bo = self.opts.get(bone.name)
-                if bo:
-                    val = bo.get(opt)
-                    if val:
-                        return val
-            return bone.get("charmorph_" + opt)
         for name, (_, bone, attr) in lst.items():
             item = self.locs.get(name)
             if item and item[0] > 0.1:
                 eb = edit_bones[bone.name]
                 bones.add(eb)
                 pos = item[1]/item[0]
-                offs = get_opt(bone, "offs_" + attr)
+                offs = self.get_opt(bone, "offs_" + attr)
                 if offs and len(offs) == 3:
                     pos += Vector(tuple(offs))
                 setattr(eb, attr, pos)
@@ -163,10 +164,10 @@ class Rigger:
 
         # Bone roll
         for bone in bones:
-            axis = get_opt(bone, "axis_z")
+            axis = self.get_opt(bone, "axis_z")
             flip = False
             if not axis:
-                axis = get_opt(bone, "axis_x")
+                axis = self.get_opt(bone, "axis_x")
                 flip = True
             if axis and len(axis) == 3:
                 axis = Vector(tuple(axis))
