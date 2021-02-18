@@ -145,7 +145,7 @@ def create_default_hair(context, obj, char, scalp):
 
 
 def calc_weights(char, arr):
-    t = library.Timer()
+    t = utils.Timer()
 
     char_verts = char.data.vertices
     char_faces = char.data.polygons
@@ -225,7 +225,7 @@ def fit_hair_asset(char, asset, diff_arr):
     return has_fit
 
 def fit_all_hair(char, diff_arr):
-    t = library.Timer()
+    t = utils.Timer()
     has_fit = False
     for i, psys in enumerate(char.particle_systems):
         has_fit |= fit_hair(char, char, psys, i, diff_arr, False)
@@ -244,7 +244,7 @@ def has_hair(char):
     return False
 
 def fit_hair(char, obj, psys, idx, diff_arr, new):
-    t = library.Timer()
+    t = utils.Timer()
     cnts, data, weights = get_data(char, psys, new)
     if cnts is None or data is None or not weights:
         return False

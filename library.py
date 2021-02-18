@@ -18,8 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, json, logging, time, traceback, numpy
+import os, json, logging, traceback, numpy
 import bpy # pylint: disable=import-error
+
+from . import utils
 
 logger = logging.getLogger(__name__)
 
@@ -218,16 +220,8 @@ def fitting_asset_data(context):
         return additional_assets.get(item[4:])
     return None
 
-class Timer:
-    def __init__(self):
-        self.t = time.monotonic()
-    def time(self, name):
-        t2 = time.monotonic()
-        logger.debug("%s: %s", name, t2-self.t)
-        self.t = t2
-
 def load_library():
-    t = Timer()
+    t = utils.Timer()
     global hair_colors
     chars.clear()
     hair_colors = parse_file(os.path.join(data_dir, "hair_colors.yaml"), load_yaml, {})

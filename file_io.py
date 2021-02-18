@@ -67,7 +67,7 @@ def morphs_to_data(context):
 
     if m.L1:
         typ.append(m.L1)
-        alt_name = m.char.types.get(m.L1).get("title")
+        alt_name = m.char.types.get(m.L1, {}).get("title")
         if alt_name:
             typ.append(alt_name)
 

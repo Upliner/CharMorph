@@ -24,7 +24,6 @@ import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
 from . import library, hair, rigging, utils
-from .library import Timer
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ def invalidate_cache():
     basis_cache.clear()
 
 def calc_weights(char, asset, mask):
-    t = Timer()
+    t = utils.Timer()
 
     # dg = bpy.context.view_layer.depsgraph
 
@@ -237,7 +236,7 @@ def get_obj_weights(char, asset, mask=False):
     return weights
 
 def transfer_weights(char, asset, bones):
-    t = Timer()
+    t = utils.Timer()
     weights = get_obj_weights(char, asset)
     char_verts = char.data.vertices
 
@@ -312,7 +311,7 @@ def diff_array(obj):
     return morphed.reshape(-1, 3)
 
 def do_fit(char, assets):
-    t = Timer()
+    t = utils.Timer()
 
     diff_arr = diff_array(char)
     for asset in assets:
@@ -340,7 +339,7 @@ def masking_enabled(asset):
     return asset.data.get("charmorph_fit_mask", "true").lower() in ['true', 1, '1', 'y', 'yes']
 
 def recalc_comb_mask(char, new_asset=None):
-    t = Timer()
+    t = utils.Timer()
     # Cleanup old masks
     for mod in char.modifiers:
         if mod.name == "cm_mask_combined":

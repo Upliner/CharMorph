@@ -1,6 +1,17 @@
+import time, logging
 import mathutils # pylint: disable=import-error
 
 from . import yaml
+
+logger = logging.getLogger(__name__)
+
+class Timer:
+    def __init__(self):
+        self.t = time.monotonic()
+    def time(self, name):
+        t2 = time.monotonic()
+        logger.debug("%s: %s", name, t2-self.t)
+        self.t = t2
 
 # set some yaml styles
 class MyDumper(yaml.Dumper):
