@@ -34,6 +34,13 @@ def delete_old_rig(obj, rig):
     rigify.remove_rig(rig)
     remove_armature_modifiers(obj)
 
+def clear_vg_names(vgs, vg_names):
+    if not vg_names:
+        return
+    for vg in list(vgs):
+        if vg.name in vg_names:
+            vgs.remove(vg)
+
 def clear_old_weights(obj, char, rig):
     vgs = obj.vertex_groups
     for bone in rig.data.bones:
@@ -41,11 +48,7 @@ def clear_old_weights(obj, char, rig):
             vg = vgs.get(bone.name)
             if vg:
                 vgs.remove(vg)
-    vg_names = set(rigging.char_rig_vg_names(char, rig))
-    if vg_names:
-        for vg in list(vgs):
-            if vg.name in vg_names:
-                vgs.remove(vg)
+    clear_vg_names(vgs, set(rigging.char_rig_vg_names(char, rig)))
 
 def clear_old_weights_with_assets(obj, char, rig):
     clear_old_weights(obj, char, rig)
@@ -70,18 +73,14 @@ def add_rig(obj, char, rig_name, verts):
     if not rig:
         raise rigging.RigException("Rig import failed")
 
+    new_vgs = None
     try:
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
 
         rigger = rigging.Rigger(bpy.context)
-        if conf.joints:
-            rigger.joints_from_file(conf.joints, verts)
-        else:
-            rigger.joints_from_char(obj, verts)
-        rigger.opts = conf.bones
-
-        if not rigger.run(rigging.all_joints(rig)):
+        rigger.configure(conf, obj, verts)
+        if not rigger.run():
             raise rigging.RigException("Rig fitting failed")
 
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -91,7 +90,7 @@ def add_rig(obj, char, rig_name, verts):
             clear_old_weights_with_assets(obj, char, old_rig)
 
         if conf.weights:
-            rigging.import_vg(obj, conf.weights, False)
+            new_vgs = rigging.import_vg(obj, conf.weights, False)
 
         attach = True
         if rig_type == "rigify":
@@ -112,6 +111,7 @@ def add_rig(obj, char, rig_name, verts):
             attach_rig(obj, rig)
     except:
         try:
+            clear_vg_names(obj.vertex_groups, new_vgs)
             bpy.data.armatures.remove(rig.data)
         except:
             pass

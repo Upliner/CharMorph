@@ -159,7 +159,7 @@ class Armature():
         self.config = {
             "title": name,
             "tweaks": [],
-            "mixin": None,
+            "mixin": "",
             "mixin_bones": {},
         }
         self.config.update(char.armature_defaults)
@@ -175,13 +175,12 @@ class Armature():
             self.config["bones"] = char.config.get("bones", {})
 
     def __getattr__(self, item):
-        if item == "bones":
-            b = self.config["bones"]
-            if isinstance(b, str):
-                b = self.char.get_yaml(b)
-            self.bones = b
-            return b
-        return self.config[item]
+        value = self.config[item]
+        if item in ("bones", "mixin_bones"):
+            if isinstance(value, str):
+                value = self.char.get_yaml(value)
+            setattr(self, item, value)
+        return value
 
 empty_char = Character("")
 

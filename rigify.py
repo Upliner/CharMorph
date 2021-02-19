@@ -87,8 +87,10 @@ def do_rig(obj, conf, rigger):
         if len(editmode_tweaks) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
-            if new_joints and not rigger.run(new_joints):
-                raise rigging.RigException("Mixin fitting failed")
+            if new_joints:
+                rigger.set_opts(conf.mixin_bones)
+                if not rigger.run(new_joints):
+                    raise rigging.RigException("Mixin fitting failed")
 
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(bpy.context, tweak)
@@ -148,7 +150,7 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
         rig = library.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
         if not rig:
             return False
-        result = rig.get("type") == "rigify"
+        result = rig.type == "rigify"
         return result
 
     def draw(self, context):

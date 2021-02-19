@@ -94,7 +94,7 @@ def process_vg_file(file, callback):
 def char_rig_vg_names(char, rig):
     conf = char.armature.get(rig.data.get("charmorph_rig_type"))
     if conf:
-        weights = conf.get("weights")
+        weights = conf.weights
         if weights:
             try:
                 return vg_names(char.path(weights))
@@ -103,7 +103,9 @@ def char_rig_vg_names(char, rig):
     return []
 
 def import_vg(obj, file, overwrite):
+    names = set()
     def callback(name, data):
+        names.add(name)
         if name in obj.vertex_groups:
             if overwrite:
                 obj.vertex_groups.remove(obj.vertex_groups[name])
@@ -114,12 +116,16 @@ def import_vg(obj, file, overwrite):
             vg.add([int(i)], weight, 'REPLACE')
 
     process_vg_file(file, callback)
+    return names
 
 class Rigger:
     def __init__(self, context):
         self.context = context
         self.jdata = {}
-        self.opts = None
+        self.opts = {}
+        self.default_opts = {}
+
+        self._bones = None
 
     def joints_from_char(self, char, verts=None):
         self.jdata = get_vg_avg(char, verts)
@@ -137,47 +143,105 @@ class Rigger:
                 item[1] += verts[i].co*weight
         process_vg_file(file, callback)
 
+    def set_opts(self, opts):
+        if not opts:
+            return
+        self.opts.clear()
+        if "bones" not in opts and "groups" not in opts and "default" not in opts:
+            self.opts.update(opts) # Legacy bones format
+            return
+        self.default_opts.update(opts.get("default", ""))
+        self.opts.update(opts.get("bones", ""))
+        for g in opts.get("groups", ""):
+            g_opts = g.get("opts", {})
+            for b in g.get("bones",""):
+                self.opts[b] = g_opts.copy()
+
+    def configure(self, conf, obj, verts):
+        if conf.joints:
+            self.joints_from_file(conf.joints, verts)
+        else:
+            self.joints_from_char(obj, verts)
+        self.set_opts(conf.bones)
+
     def get_opt(self, bone, opt):
-        if self.opts:
+        if self.opts or self.default_opts:
             bo = self.opts.get(bone.name)
+            if bo is None:
+                bo = self.default_opts
             if bo:
                 val = bo.get(opt)
                 if val:
                     return val
         return bone.get("charmorph_" + opt)
 
-    def run(self, lst):
-        result = True
-        bones = set()
-        edit_bones = self.context.object.data.edit_bones
-        for name, (_, bone, attr) in lst.items():
-            item = self.jdata.get(name)
-            if item and item[0] > 0.1:
-                eb = edit_bones[bone.name]
-                bones.add(eb)
-                pos = item[1]/item[0]
-                offs = self.get_opt(bone, "offs_" + attr)
-                if offs and len(offs) == 3:
-                    pos += Vector(tuple(offs))
-                setattr(eb, attr, pos)
-            else:
-                logger.error("No vg for %s", name)
-                if item:
-                    logger.error(item[0])
-                result = False
+    def _set_opt(self, bone_name, opt, value):
+        bo = self.opts.get(bone_name)
+        if bo:
+            bo[opt] = value
+        else:
+            self.opts[bone_name] = {opt: value}
 
-        # Bone roll
-        for bone in bones:
+    def _save_bone_data(self, bone):
+        if bone in self._bones:
+            return
+        self._bones.add(bone)
+
+        r = self.get_opt(bone, "roll")
+        if not r:
+            return
+        if r == "keep-z":
+            self._set_opt(bone.name, "axis_z", bone.z_axis)
+        elif r == "keep-x":
+            self._set_opt(bone.name, "axis_x", bone.x_axis)
+
+    def joint_position(self, bone, attr):
+        item = self.jdata.get("joint_%s_%s" % (bone.name, attr))
+        if not item or item[0] < 0.1:
+            return None
+        pos = item[1]/item[0]
+        offs = self.get_opt(bone, "offs_" + attr)
+        if offs and len(offs) == 3:
+            pos += Vector(tuple(offs))
+        return pos
+
+    def _set_bone_pos(self, lst):
+        result = True
+        edit_bones = self.context.object.data.edit_bones
+        for _, bone, attr in lst.values():
+            pos = self.joint_position(bone, attr)
+            if pos:
+                edit_bone = edit_bones[bone.name]
+                self._save_bone_data(edit_bone)
+                setattr(edit_bone, attr, pos)
+            else:
+                logger.error("No data for joint %s_%s", bone.name, attr)
+                result = False
+        return result
+
+    def _set_bone_roll(self):
+        for bone in self._bones:
             axis = self.get_opt(bone, "axis_z")
             flip = False
             if not axis:
                 axis = self.get_opt(bone, "axis_x")
                 flip = True
             if axis and len(axis) == 3:
-                axis = Vector(tuple(axis))
+                axis = Vector(axis)
                 if flip:
                     axis = Matrix.Rotation(-math.pi/2, 4, bone.y_axis) @ axis
+                print(bone.name, axis)
                 bone.align_roll(axis)
+
+    def run(self, lst = None):
+        if lst is None:
+            lst = all_joints(self.context.object.data.bones)
+
+        self._bones = set()
+        result = self._set_bone_pos(lst)
+        self._set_bone_roll()
+        self._bones = None
+
         return result
 
 bbone_attributes = [
