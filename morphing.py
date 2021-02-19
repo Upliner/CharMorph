@@ -21,7 +21,7 @@
 import os, logging, re, abc
 import bpy
 
-from . import library, materials, file_io, fitting
+from . import library, materials, fitting, utils
 
 logger = logging.getLogger(__name__)
 

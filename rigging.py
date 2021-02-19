@@ -22,7 +22,7 @@ import logging, math, os
 import numpy
 
 import bpy                                   # pylint: disable=import-error
-from mathutils import Vector, Matrix         # pylint: disable=import-error, no-name-in-module
+from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
 from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
 
 from . import yaml, utils
@@ -118,6 +118,64 @@ def import_vg(obj, file, overwrite):
     process_vg_file(file, callback)
     return names
 
+def bb_prev_roll(bone):
+    if bone.use_endroll_as_inroll:
+        p = bone.bbone_custom_handle_start
+        if p:
+            return p.bbone_rollout
+    return 0
+
+def bb_rollin_axis(bone, base_axis):
+    axis = getattr(bone, "%s_axis" % base_axis)
+    axis.rotate(Quaternion(bone.y_axis, bone.bbone_rollin + bb_prev_roll(bone)))
+    return axis
+
+def bb_next_axis(bone, axis):
+    p = bone.bbone_custom_handle_end
+    if p:
+        axis = getattr(p, "%s_axis" % axis)
+        # Use easein/easeout to control this???
+        #diff = p.y_axis.rotation_difference(bone.y_axis)
+        #diff.angle /= 2
+        #y_axis.rotate(diff)
+        #axis.rotate(diff)
+        return axis
+    return None
+
+def bb_rollout_axis(bone, base_axis):
+    axis = bb_next_axis(bone, base_axis)
+    if not axis:
+        axis = getattr(bone, "%s_axis" % base_axis)
+    axis.rotate(Quaternion(axis, bone.bbone_rollout))
+    return axis
+
+# TODO: more math checking!
+def bb_align_roll(bone, new_z, inout):
+    if not new_z:
+        return
+    x_axis = bone.x_axis
+    z_axis = bone.z_axis
+    if inout == "out":
+        p = bone.bbone_custom_handle_end
+        if p:
+            x_axis = p.x_axis
+            z_axis = p.z_axis
+
+    roll = math.asin(max(min(new_z.dot(x_axis), 1), -1))
+    if new_z.dot(z_axis) < 0:
+        if roll<0:
+            roll = -math.pi - roll
+        else:
+            roll = math.pi - roll
+
+    if inout == "in":
+        p = bone.bbone_custom_handle_start
+        if p:
+            roll -= p.bbone_rollout
+
+
+    setattr(bone, "bbone_roll" + inout, roll)
+
 class Rigger:
     def __init__(self, context):
         self.context = context
@@ -182,18 +240,23 @@ class Rigger:
         else:
             self.opts[bone_name] = {opt: value}
 
+    def _save_attr(self, bone, opt, get_value):
+        if self.get_opt(bone, opt) == "keep":
+            self._set_opt(bone.name, opt, get_value(bone))
+
     def _save_bone_data(self, bone):
         if bone in self._bones:
             return
         self._bones.add(bone)
 
-        r = self.get_opt(bone, "roll")
-        if not r:
-            return
-        if r == "keep-z":
-            self._set_opt(bone.name, "axis_z", bone.z_axis)
-        elif r == "keep-x":
-            self._set_opt(bone.name, "axis_x", bone.x_axis)
+        self._save_attr(bone, "axis_x", lambda bone: bone.x_axis)
+        self._save_attr(bone, "axis_z", lambda bone: bone.z_axis)
+
+        self._save_attr(bone, "bb_in_axis_x", lambda bone: bb_rollin_axis(bone, "x"))
+        self._save_attr(bone, "bb_in_axis_z", lambda bone: bb_rollin_axis(bone, "z"))
+
+        self._save_attr(bone, "bb_out_axis_x", lambda bone: bb_rollout_axis(bone, "x"))
+        self._save_attr(bone, "bb_out_axis_z", lambda bone: bb_rollout_axis(bone, "z"))
 
     def joint_position(self, bone, attr):
         item = self.jdata.get("joint_%s_%s" % (bone.name, attr))
@@ -219,19 +282,33 @@ class Rigger:
                 result = False
         return result
 
+    def get_roll_z(self, bone, prefix):
+        axis = self.get_opt(bone, prefix + "axis_z")
+        flip = False
+        if not axis:
+            axis = self.get_opt(bone, prefix + "axis_x")
+            flip = True
+        if not axis or len(axis) != 3:
+            return None
+        axis = Vector(axis)
+        if flip:
+            axis.rotate(Quaternion(bone.y_axis, -math.pi/2))
+        return axis
+
     def _set_bone_roll(self):
+        bbones = []
         for bone in self._bones:
-            axis = self.get_opt(bone, "axis_z")
-            flip = False
-            if not axis:
-                axis = self.get_opt(bone, "axis_x")
-                flip = True
-            if axis and len(axis) == 3:
-                axis = Vector(axis)
-                if flip:
-                    axis = Matrix.Rotation(-math.pi/2, 4, bone.y_axis) @ axis
-                print(bone.name, axis)
+            axis = self.get_roll_z(bone, "")
+            if axis:
                 bone.align_roll(axis)
+            if bone.bbone_segments > 1:
+                bbones.append(bone)
+
+        # TODO: bbone walking order
+        # Align bbone roll after adjusting regular roll
+        for bone in bbones:
+            for inout in ("in", "out"):
+                bb_align_roll(bone, self.get_roll_z(bone, "bb_%s_" % inout), inout)
 
     def run(self, lst = None):
         if lst is None:

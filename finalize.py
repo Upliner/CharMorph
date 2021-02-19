@@ -144,6 +144,7 @@ class OpFinalize(bpy.types.Operator):
         return context.mode == "OBJECT" and library.get_obj_char(context)[0]
 
     def execute(self, context):
+        t = utils.Timer()
         if context.view_layer != bpy.context.view_layer:
             self.report({'ERROR'}, "Bad context")
             return {"CANCELLED"}
@@ -272,6 +273,8 @@ class OpFinalize(bpy.types.Operator):
                     obj.vertex_groups.remove(vg)
 
         morphing.del_charmorphs()
+
+        t.time("total finalize")
 
         return {"FINISHED"}
 

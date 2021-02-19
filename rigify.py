@@ -25,7 +25,7 @@
 
 import bpy
 
-from . import library, rigging
+from . import library, rigging, utils
 
 def remove_rig(rig):
     try:
@@ -72,7 +72,9 @@ def add_mixin(char, conf, rig):
 def do_rig(obj, conf, rigger):
     metarig = bpy.context.object
     metarig.data.rigify_generate_mode = "new"
+    t = utils.Timer()
     bpy.ops.pose.rigify_generate()
+    t.time("rigify part")
     rig = bpy.context.object
     try:
         bpy.data.armatures.remove(metarig.data)
