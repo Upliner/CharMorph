@@ -130,49 +130,50 @@ def bb_rollin_axis(bone, base_axis):
     axis.rotate(Quaternion(bone.y_axis, bone.bbone_rollin + bb_prev_roll(bone)))
     return axis
 
-def bb_next_axis(bone, axis):
+def bb_rollout_axis(bone, base_axis):
     p = bone.bbone_custom_handle_end
     if p:
-        axis = getattr(p, "%s_axis" % axis)
-        # Use easein/easeout to control this???
-        #diff = p.y_axis.rotation_difference(bone.y_axis)
-        #diff.angle /= 2
-        #y_axis.rotate(diff)
-        #axis.rotate(diff)
-        return axis
-    return None
-
-def bb_rollout_axis(bone, base_axis):
-    axis = bb_next_axis(bone, base_axis)
-    if not axis:
+        axis = getattr(p, "%s_axis" % base_axis)
+        y_axis = p.y_axis
+    else:
         axis = getattr(bone, "%s_axis" % base_axis)
-    axis.rotate(Quaternion(axis, bone.bbone_rollout))
+        y_axis = bone.y_axis
+    axis.rotate(Quaternion(y_axis, bone.bbone_rollout))
     return axis
 
-# TODO: more math checking!
-def bb_align_roll(bone, new_z, inout):
-    if not new_z:
+def bb_align_roll(bone, vec, axis, inout):
+    if not vec:
         return
     x_axis = bone.x_axis
+    y_axis = bone.y_axis
     z_axis = bone.z_axis
+
     if inout == "out":
         p = bone.bbone_custom_handle_end
         if p:
             x_axis = p.x_axis
+            y_axis = p.y_axis
             z_axis = p.z_axis
 
-    roll = math.asin(max(min(new_z.dot(x_axis), 1), -1))
-    if new_z.dot(z_axis) < 0:
+    vec -= vec.project(y_axis)
+    vec.normalize()
+
+    if axis == "z":
+       axis1 = x_axis
+       axis2 = z_axis
+    else:
+       axis1 = -z_axis
+       axis2 = x_axis
+
+    roll = math.asin(max(min(vec.dot(axis1), 1), -1))
+    if vec.dot(axis2) < 0:
         if roll<0:
             roll = -math.pi - roll
         else:
             roll = math.pi - roll
 
     if inout == "in":
-        p = bone.bbone_custom_handle_start
-        if p:
-            roll -= p.bbone_rollout
-
+        roll -= bb_prev_roll(bone)
 
     setattr(bone, "bbone_roll" + inout, roll)
 
@@ -282,33 +283,46 @@ class Rigger:
                 result = False
         return result
 
-    def get_roll_z(self, bone, prefix):
-        axis = self.get_opt(bone, prefix + "axis_z")
-        flip = False
-        if not axis:
-            axis = self.get_opt(bone, prefix + "axis_x")
-            flip = True
-        if not axis or len(axis) != 3:
-            return None
-        axis = Vector(axis)
-        if flip:
-            axis.rotate(Quaternion(bone.y_axis, -math.pi/2))
-        return axis
+    def get_roll(self, bone, prefix):
+        for axis in ("z","x"):
+           value = self.get_opt(bone, prefix + "axis_" + axis)
+           if value and len(value) == 3:
+               return Vector(value), axis
+        return None, None
 
     def _set_bone_roll(self):
-        bbones = []
+        bbones = {}
         for bone in self._bones:
-            axis = self.get_roll_z(bone, "")
-            if axis:
-                bone.align_roll(axis)
+            vector, axis = self.get_roll(bone, "")
+            if vector:
+                if axis == "x":
+                    vector.rotate(Quaternion(bone.y_axis, -math.pi/2))
+                bone.align_roll(vector)
             if bone.bbone_segments > 1:
-                bbones.append(bone)
+                bbones[bone] = {}
 
-        # TODO: bbone walking order
-        # Align bbone roll after adjusting regular roll
-        for bone in bbones:
-            for inout in ("in", "out"):
-                bb_align_roll(bone, self.get_roll_z(bone, "bb_%s_" % inout), inout)
+        # Calculate bbone order. Parents need to be processed before childen
+        to_remove = []
+        for bone, children in bbones.items():
+            parent = bone.bbone_custom_handle_start
+            if not parent:
+                continue
+            d = bbones.get(parent)
+            if d is None:
+                d = {}
+                bbones[parent] = d
+            d[bone] = children
+            to_remove.append(bone)
+
+        for bone in to_remove:
+            del bbones[bone]
+
+        def walk(bone_tree):
+            for bone, children in bone_tree.items():
+                for inout in ("in", "out"):
+                    bb_align_roll(bone, *self.get_roll(bone, "bb_%s_" % inout), inout)
+                walk(children)
+        walk(bbones)
 
     def run(self, lst = None):
         if lst is None:
