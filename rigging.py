@@ -304,6 +304,8 @@ class Rigger:
         # Calculate bbone order. Parents need to be processed before childen
         to_remove = []
         for bone, children in bbones.items():
+            if not bone.use_endroll_as_inroll:
+                continue
             parent = bone.bbone_custom_handle_start
             if not parent:
                 continue
