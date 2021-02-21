@@ -311,8 +311,7 @@ class Rigger:
                 continue
             d = bbones.get(parent)
             if d is None:
-                d = {}
-                bbones[parent] = d
+                continue
             d[bone] = children
             to_remove.append(bone)
 

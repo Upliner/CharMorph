@@ -60,6 +60,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
 
         l.operator("cmedit.calc_vg")
         l.operator("cmedit.symmetrize_joints")
+        l.operator("cmedit.bbone_handles")
         l.operator("cmedit.rigify_finalize")
         l.prop(ui, "rig_tweaks_file")
         l.operator("cmedit.rigify_tweaks")
@@ -599,6 +600,32 @@ class OpCleanupJoints(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class OpBBoneHandles(bpy.types.Operator):
+    bl_idname = "cmedit.bbone_handles"
+    bl_label = "B-Bone handles"
+    bl_description = "Add custom handles same to automatic for selected bbones"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_ARMATURE"
+
+    def execute(self, context):  # pylint: disable=no-self-use
+        for bone in context.selected_editable_bones:
+            if bone.bbone_segments < 2:
+                continue
+            if bone.bbone_handle_type_start == "AUTO":
+                bone.bbone_handle_type_start = "ABSOLUTE"
+                if abs(bone.bbone_easein) > 0.01 and bone.parent and bone.use_connect:
+                    bone.bbone_custom_handle_start = bone.parent
+            if bone.bbone_handle_type_end == "AUTO":
+                bone.bbone_handle_type_end = "ABSOLUTE"
+                if abs(bone.bbone_easeout) > 0.01:
+                    children = bone.children
+                    if len(children) == 1:
+                        bone.bbone_custom_handle_end = bone.children[0]
+        return {"FINISHED"}
+
 def objects_by_type(typ):
     return [(o.name, o.name, "") for o in bpy.data.objects if o.type == typ]
 
@@ -693,7 +720,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
-    OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpRigifyTweaks, CMEDIT_PT_Utils]
+    OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 classes.extend(edit_io.classes)
 
