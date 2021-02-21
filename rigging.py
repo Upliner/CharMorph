@@ -338,7 +338,7 @@ class Rigger:
 
 bbone_attributes = [
     'bbone_segments', 'use_endroll_as_inroll',
-    'bbone_handle_type_start', 'bbone_handle_type_end'
+    'bbone_handle_type_start', 'bbone_handle_type_end',
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
     'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
