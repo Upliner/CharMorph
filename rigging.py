@@ -431,6 +431,45 @@ def constraint_by_target(bone, rig, typ, target):
             return c
     return None
 
+def parse_layers(val):
+    if isinstance(val, list) and len(val) == 32 and isinstance(val[0], bool):
+        return val
+    if not isinstance(val, list):
+        val = [val]
+    result = [False] * 32
+    for item in val:
+        result[item] = True
+    return result
+
+def calc_vector(vec, bone):
+    if not vec or len(vec) != 3:
+        return vec
+    for i, item in enumerate(vec):
+        if item == "len":
+            vec[i] = bone.length
+        elif item == "-len":
+            vec[i] = -bone.length
+    return vec
+
+def extrude_if_necessary(edit_bones, bone, params):
+    if not params:
+        return bone
+    vec = Vector(calc_vector(params.get("local", (0, 0, 0)), bone))
+    normalvec = calc_vector(params.get("normal"), bone)
+    if normalvec:
+        vec += bone.x_axis * normalvec[0]
+        vec += bone.y_axis * normalvec[1]
+        vec += bone.z_axis * normalvec[2]
+
+    new_bone = edit_bones.new(bone.name)
+    new_bone.parent = bone
+    for attr in ["roll", "bbone_x", "bbone_z"]:
+        setattr(new_bone, attr, getattr(bone, attr))
+    new_bone.tail = bone.tail + vec
+    new_bone.use_deform = False
+    new_bone.use_connect = True
+    return new_bone
+
 def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
     edit_bones = context.object.data.edit_bones
@@ -438,7 +477,9 @@ def apply_editmode_tweak(context, tweak):
         sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], tweak["side"])
     elif t == "assign_parents":
         for k, v in tweak["bones"].items():
-            edit_bones[k].parent = edit_bones[v]
+            if v:
+                v = edit_bones[v]
+            edit_bones[k].parent = v
     elif t == "align":
         for k, v in tweak["bones"].items():
             bone = edit_bones[k]
@@ -450,19 +491,27 @@ def apply_editmode_tweak(context, tweak):
         if not bone:
             logger.error("Tweak bone not found: %s", tweak.get("bone"))
             return
+        bone = extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
         for attr, val in tweak.get("set").items():
-            setattr(bone, attr, val)
+            if attr == "layers":
+                setattr(bone, attr, parse_layers(val))
+            else:
+                setattr(bone, attr, val)
 
 def apply_tweak(rig, tweak):
     if tweak.get("tweak") == "rigify_sliding_joint":
         sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], tweak["side"], tweak["influence"])
         return
-    bone_name = tweak.get("bone")
+
     select = tweak.get("select")
     if select == "bone":
-        obj = rig.data.bones.get(bone_name)
-    elif select == "pose_bone":
-        obj = rig.pose.bones.get(bone_name)
+        bones = rig.data.bones
+    else:
+        bones = rig.pose.bones
+
+    obj = bones.get(tweak.get("bone"))
+
+    if select == "pose_bone":
         add = tweak.get("add")
         if add is None:
             pass
@@ -473,7 +522,7 @@ def apply_tweak(rig, tweak):
         else:
             logger.error("Invalid add operator: %s", repr(tweak))
     elif select == "constraint":
-        bone = rig.pose.bones.get(bone_name)
+        bone = obj
         obj = bone.constraints.get(tweak.get("name", ""))
         if not obj:
             obj = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
@@ -484,6 +533,8 @@ def apply_tweak(rig, tweak):
         logger.error("Tweak object not found: %s", repr(tweak))
         return
     for attr, val in tweak.get("set").items():
+        if val and attr.startswith("bbone_custom_handle_"):
+            val = bones[val]
         setattr(obj, attr, val)
 
 # My implementation of sliding joints on top of rigify

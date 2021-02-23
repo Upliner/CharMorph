@@ -360,19 +360,19 @@ class OpRigifyTweaks(bpy.types.Operator):
         with open(file) as f:
             tweaks = yaml.safe_load(f)
         editmode_tweaks, tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
+        old_mode = context.mode
+        if old_mode.startswith("EDIT_"):
+            old_mode = "EDIT"
+        override = context.copy()
         if len(editmode_tweaks) > 0:
-            old_mode = context.mode
-            override = context.copy()
             bpy.ops.object.mode_set(override, mode="EDIT")
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(context, tweak)
-            if old_mode == "EDIT_ARMATURE":
-                context.object.update_from_editmode()
-            else:
-                bpy.ops.object.mode_set(override, mode=old_mode)
 
+        bpy.ops.object.mode_set(override, mode="OBJECT")
         for tweak in tweaks:
             rigging.apply_tweak(context.object, tweak)
+        bpy.ops.object.mode_set(override, mode=old_mode)
         return {"FINISHED"}
 
 
