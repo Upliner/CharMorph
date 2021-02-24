@@ -492,7 +492,7 @@ def apply_editmode_tweak(context, tweak):
             logger.error("Tweak bone not found: %s", tweak.get("bone"))
             return
         bone = extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
-        for attr, val in tweak.get("set").items():
+        for attr, val in tweak.get("set", {}).items():
             if attr == "layers":
                 setattr(bone, attr, parse_layers(val))
             else:
@@ -526,13 +526,16 @@ def apply_tweak(rig, tweak):
         obj = bone.constraints.get(tweak.get("name", ""))
         if not obj:
             obj = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
-    else:
+    elif select != "bone":
         logger.error("Invalid tweak select: %s", repr(tweak))
         return
     if not obj:
         logger.error("Tweak object not found: %s", repr(tweak))
         return
-    for attr, val in tweak.get("set").items():
+    if tweak.get("action") == "remove":
+        bone.constraints.remove(obj)
+        return
+    for attr, val in tweak.get("set", {}).items():
         if val and attr.startswith("bbone_custom_handle_"):
             val = bones[val]
         setattr(obj, attr, val)

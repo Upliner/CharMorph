@@ -23,14 +23,6 @@ import bpy
 
 from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
 
-rootLogger = logging.getLogger(None)
-if not rootLogger.hasHandlers():
-    # While CharMorph is in alpha stage, use debug logging level
-    rootLogger.setLevel(10)
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(name)s - %(funcName)s - %(lineno)s - %(message)s'))
-    rootLogger.addHandler(ch)
-
 logger = logging.getLogger(__name__)
 
 bl_info = {
