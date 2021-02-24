@@ -346,32 +346,26 @@ bbone_attributes = [
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
-    bbones = []
     for bone in rig.data.bones:
         is_org = bone.name.startswith("ORG-")
         if is_org or bone.name.startswith("MCH-"):
             if bone.name in vgs:
                 bone.use_deform = True
             if is_org:
-                def_start = None
-                def_end = None
-                b = bone.bbone_custom_handle_start
-                if b and b.name.startswith("ORG-"):
-                    def_start = rig.data.bones.get("DEF-"+b.name[4:])
-                b = bone.bbone_custom_handle_end
-                if b and b.name.startswith("ORG-"):
-                    def_end = rig.data.bones.get("DEF-"+b.name[4:])
+                handles = [bone.bbone_custom_handle_start, bone.bbone_custom_handle_end]
+                for i, b in enumerate(handles):
+                    if b and b.name.startswith("ORG-"):
+                        handles[i] = rig.data.bones.get("DEF-"+b.name[4:], b)
 
-                if def_start or def_end:
-                    def_bone = rig.data.bones.get("DEF-"+bone.name[4:])
-                    if def_bone.bbone_segments == 1:
-                        bbones.append((def_bone.name, bone.name))
+                if any(handles):
+                    def_bone = rig.data.bones.get("DEF-"+bone.name[4:], bone)
+                    if def_bone is not bone and def_bone.bbone_segments == 1:
                         for attr in bbone_attributes:
                             setattr(def_bone, attr, getattr(bone, attr))
-                    if def_start:
-                        def_bone.bbone_custom_handle_start = def_start
-                    if def_end:
-                        def_bone.bbone_custom_handle_end = def_end
+                    if handles[0]:
+                        def_bone.bbone_custom_handle_start = handles[0]
+                    if handles[1]:
+                        def_bone.bbone_custom_handle_end = handles[1]
 
     # Set ease in/out for pose bones or not?
 
