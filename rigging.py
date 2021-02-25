@@ -451,9 +451,7 @@ def extrude_if_necessary(edit_bones, bone, params):
     vec = Vector(calc_vector(params.get("local", (0, 0, 0)), bone))
     normalvec = calc_vector(params.get("normal"), bone)
     if normalvec:
-        vec += bone.x_axis * normalvec[0]
-        vec += bone.y_axis * normalvec[1]
-        vec += bone.z_axis * normalvec[2]
+        vec += bone.matrix.to_3x3() @ Vector(normalvec)
 
     new_bone = edit_bones.new(bone.name)
     new_bone.parent = bone
