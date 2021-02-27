@@ -161,11 +161,23 @@ class Morpher(metaclass=abc.ABCMeta):
     # Reset all meta properties to 0
     def reset_meta(self):
         d = self.obj.data
-        for k in self.char.morphs_meta.keys():
+        for k in self.char.morphs_meta:
             self.meta_prev[k] = 0
             pname = "cmorph_meta_" + k
             if pname in d:
                 del d[pname]
+
+    @staticmethod
+    def _calc_meta_val(coeffs, val):
+        if not coeffs:
+            return 0
+        return coeffs[1]*val if val > 0 else -coeffs[0]*val
+
+    def _calc_meta_abs_val(self, prop):
+        result = 0
+        for k, val in self.meta_prev.items():
+            result += self._calc_meta_val(self.char.morphs_meta[k].get("morphs", {}).get(prop), val)
+        return result
 
     def meta_prop(self, name, data):
         pname = "cmorph_meta_" + name
@@ -184,8 +196,6 @@ class Morpher(metaclass=abc.ABCMeta):
                 return
             self.meta_prev[name] = value
             ui = context.window_manager.charmorph_ui
-            def calc_val(val):
-                return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
             self.lock()
             try:
@@ -195,19 +205,19 @@ class Morpher(metaclass=abc.ABCMeta):
                         continue
 
                     if not ui.relative_meta:
-                        setattr(cm, propname, calc_val(value))
+                        setattr(cm, propname, self._calc_meta_abs_val(k))
                         continue
 
                     propval = getattr(cm, propname)
 
-                    val_prev = calc_val(prev_value)
-                    val_cur = calc_val(value)
+                    val_prev = self._calc_meta_val(coeffs, prev_value)
+                    val_cur = self._calc_meta_val(coeffs, value)
 
                     # assign absolute prop value if current property value is out of range
                     # or add a delta if it is within (-0.999 .. 0.999)
                     sign = -1 if val_cur-val_prev < 0 else 1
                     if propval*sign < -0.999 and val_prev*sign < -1:
-                        propval = val_cur
+                        propval = self._calc_meta_abs_val(k)
                     else:
                         propval += val_cur-val_prev
                     setattr(cm, propname, propval)
