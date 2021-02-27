@@ -422,6 +422,11 @@ class UIProps:
             ("N", "None", "Don't change materials"),
             ("A", "Absolute", "Change materials according to absolute value of meta property"),
             ("R", "Relative", "Change materials according to relative value of meta property")])
+    morph_filter: bpy.props.StringProperty(
+        name="Filter",
+        description="Show only morphs mathing this name",
+        options={"TEXTEDIT_UPDATE"},
+    )
 
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
@@ -462,10 +467,14 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.separator()
 
+        self.layout.label(text="MORE MORPHS HERE:")
         self.layout.prop(morphs, "category")
         if morphs.category != "<None>":
+            self.layout.prop(ui, "morph_filter")
             col = self.layout.column(align=True)
-            for prop in (p for p in propList if p.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category))):
-                col.prop(morphs, prop, slider=True)
+            for prop in propList:
+                if prop.startswith("prop_" + ("" if morphs.category == "<All>" else morphs.category)):
+                    if ui.morph_filter.lower() in prop[5:].lower():
+                        col.prop(morphs, prop, slider=True)
 
 classes = [CHARMORPH_PT_Morphing]
