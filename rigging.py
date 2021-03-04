@@ -284,7 +284,7 @@ class Rigger:
         return result
 
     def get_roll(self, bone, prefix):
-        for axis in ("z","x"):
+        for axis in ("z", "x"):
            value = self.get_opt(bone, prefix + "axis_" + axis)
            if value and len(value) == 3:
                return Vector(value), axis
@@ -325,7 +325,7 @@ class Rigger:
                 walk(children)
         walk(bbones)
 
-    def run(self, lst = None):
+    def run(self, lst=None):
         if lst is None:
             lst = all_joints(self.context.object.data.bones)
 

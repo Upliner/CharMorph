@@ -228,9 +228,9 @@ class Morpher(metaclass=abc.ABCMeta):
                 for k, coeffs in data.get("materials", {}).items():
                     if materials.props and k in materials.props:
                         if ui.meta_materials == "R":
-                            materials.props[k].default_value += calc_val(value)-calc_val(prev_value)
+                            materials.props[k].default_value += self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)
                         else:
-                            materials.props[k].default_value = calc_val(value)
+                            materials.props[k].default_value = self._calc_meta_val(coeffs, value)
 
         return bpy.props.FloatProperty(
             name=name,

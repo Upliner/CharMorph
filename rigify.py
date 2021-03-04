@@ -23,7 +23,9 @@
 # Those used in editing are in rigging.py
 #
 
-import bpy
+import bpy                                     # pylint: disable=import-error
+from rna_prop_ui import rna_idprop_ui_prop_get # pylint: disable=import-error, no-name-in-module
+
 
 from . import library, rigging, utils
 
@@ -34,7 +36,7 @@ def remove_rig(rig):
         pass
     bpy.data.armatures.remove(rig.data)
 
-def apply_parameters(metarig):
+def apply_metarig_parameters(metarig):
     if not hasattr(bpy.types.PoseBone, "rigify_type"):
         return
     ui = bpy.context.window_manager.charmorph_ui
@@ -54,6 +56,27 @@ def apply_parameters(metarig):
             params = bone.rigify_parameters
             params.make_widget = True
             params.super_copy_widget_type = "shoulder"
+
+def apply_rig_parameters(rig):
+    ui = bpy.context.window_manager.charmorph_ui
+    if not ui.rigify_disable_ik_stretch and not ui.rigify_limit_ik:
+        return
+    for bone in rig.pose.bones:
+        have_ik = False
+        for c in bone.constraints:
+            if c.type == "IK":
+                have_ik = True
+                if ui.rigify_disable_ik_stretch:
+                    c.use_stretch = False
+        if ui.rigify_limit_ik and have_ik and not bone.lock_ik_x and bone.lock_ik_y and bone.lock_ik_z:
+            bone.use_ik_limit_x = True
+            bone.ik_min_x = 0
+            bone.ik_max_x = 180
+        if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
+            idprop = rna_idprop_ui_prop_get(bone, "IK_Stretch")
+            for attr in ("min", "max", "soft_min", "soft_max", "default"):
+                idprop[attr] = 0
+            bone["IK_Stretch"] = 0
 
 def add_mixin(char, conf, rig):
     obj_name = conf.mixin
@@ -81,6 +104,7 @@ def do_rig(obj, conf, rigger):
         rig.name = obj.name + "_rig"
 
         rigging.rigify_finalize(rig, obj)
+        apply_rig_parameters(rig)
 
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
@@ -139,6 +163,16 @@ class UIProps:
     rigify_palm_fk: bpy.props.BoolProperty(
         name="Palm FK",
         description="Create extra FK controls for palms"
+    )
+    rigify_disable_ik_stretch: bpy.props.BoolProperty(
+        name="Disable IK stretch",
+        description="Totally disable IK stretch. If IK stretch is enabled it can squeeze bones even if you don't try to stretch them.",
+        default=True,
+    )
+    rigify_limit_ik: bpy.props.BoolProperty(
+        name="Limit IK rotations",
+        description="Forbid IK solver to bend limbs in wrong direction",
+        default=True,
     )
 
 class CHARMORPH_PT_RigifySettings(bpy.types.Panel):

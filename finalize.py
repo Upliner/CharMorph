@@ -94,7 +94,7 @@ def add_rig(obj, char, rig_name, verts):
 
         attach = True
         if rig_type == "rigify":
-            rigify.apply_parameters(rig)
+            rigify.apply_metarig_parameters(rig)
             if bpy.context.window_manager.charmorph_ui.rigify_metarig_only or not hasattr(rig.data, "rigify_generate_mode"):
                 utils.copy_transforms(rig, obj)
                 attach = False
