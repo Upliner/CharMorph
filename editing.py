@@ -359,19 +359,25 @@ class OpRigifyTweaks(bpy.types.Operator):
         file = context.window_manager.cmedit_ui.rig_tweaks_file
         with open(file) as f:
             tweaks = yaml.safe_load(f)
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
+        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
         old_mode = context.mode
         if old_mode.startswith("EDIT_"):
             old_mode = "EDIT"
         override = context.copy()
+        if len(pre_tweaks) > 0:
+            bpy.ops.object.mode_set(override, mode="OBJECT")
+            for tweak in pre_tweaks:
+                rigging.apply_tweak(context.object, tweak)
+
         if len(editmode_tweaks) > 0:
             bpy.ops.object.mode_set(override, mode="EDIT")
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(context, tweak)
 
-        bpy.ops.object.mode_set(override, mode="OBJECT")
-        for tweak in tweaks:
-            rigging.apply_tweak(context.object, tweak)
+        if len(post_tweaks) > 0:
+            bpy.ops.object.mode_set(override, mode="OBJECT")
+            for tweak in post_tweaks:
+                rigging.apply_tweak(context.object, tweak)
         bpy.ops.object.mode_set(override, mode=old_mode)
         return {"FINISHED"}
 

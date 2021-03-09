@@ -109,7 +109,9 @@ def do_rig(obj, conf, rigger):
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
-        editmode_tweaks, tweaks = rigging.unpack_tweaks(char.path("."), conf.tweaks)
+        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(char.path("."), conf.tweaks)
+        for tweak in pre_tweaks:
+            rigging.apply_tweak(rig, tweak)
         if len(editmode_tweaks) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
@@ -123,7 +125,7 @@ def do_rig(obj, conf, rigger):
 
             bpy.ops.object.mode_set(mode="OBJECT")
 
-        for tweak in tweaks:
+        for tweak in post_tweaks:
             rigging.apply_tweak(rig, tweak)
 
         # adjust bone constraints for mixin

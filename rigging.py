@@ -382,15 +382,13 @@ def reposition_armature_modifier(char):
         if bpy.ops.object.modifier_move_up.poll(override):
             bpy.ops.object.modifier_move_up(override, modifier=name)
 
-def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth=0):
+def unpack_tweaks(path, tweaks, stages=None, depth=0):
     if depth > 100:
         logger.error("Too deep tweaks loading: %s", repr(tweaks))
-        return ([], [])
+        return ([], [], [])
 
-    if editmode_tweaks is None:
-        editmode_tweaks = []
-    if regular_tweaks is None:
-        regular_tweaks = []
+    if stages is None:
+        stages = ([], [], [])
 
     if isinstance(tweaks, str):
         tweaks = [tweaks]
@@ -398,30 +396,26 @@ def unpack_tweaks(path, tweaks, editmode_tweaks=None, regular_tweaks=None, depth
     if not isinstance(tweaks, list):
         if tweaks is not None:
             logger.error("Unknown tweaks format: %s", repr(tweaks))
-        return ([], [])
+        return ([], [], [])
     for tweak in tweaks:
         if isinstance(tweak, str):
             newpath = os.path.join(path, tweak)
             with open(newpath) as f:
-                unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), editmode_tweaks, regular_tweaks, depth+1)
+                unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), stages, depth+1)
+        elif tweak.get("stage") == "pre":
+            stages[0].append(tweak)
         elif tweak.get("tweak") == "rigify_sliding_joint":
-            editmode_tweaks.append(tweak)
-            regular_tweaks.append(tweak)
+            stages[1].append(tweak)
+            stages[2].append(tweak)
         elif tweak.get("select") == "edit_bone" or tweak.get("tweak") in ["assign_parents", "align"]:
-            editmode_tweaks.append(tweak)
+            stages[1].append(tweak)
         else:
-            regular_tweaks.append(tweak)
-    return (editmode_tweaks, regular_tweaks)
+            stages[2].append(tweak)
+    return stages
 
-def constraint_by_type(bone, typ):
+def find_constraint(bone, rig, typ, target):
     for c in bone.constraints:
-        if c.type == typ:
-            return c
-    return None
-
-def constraint_by_target(bone, rig, typ, target):
-    for c in bone.constraints:
-        if c.type == typ and c.target == rig and c.subtarget == target:
+        if c.type == typ and c.target == rig and (target is None or c.subtarget == target):
             return c
     return None
 
@@ -462,6 +456,15 @@ def extrude_if_necessary(edit_bones, bone, params):
     new_bone.use_connect = True
     return new_bone
 
+def process_bone_actions(edit_bones, bone, tweak):
+    if tweak.get("action") == "copy":
+        new_bone = edit_bones.new(bone.name)
+        for attr in ["head", "tail", "roll", "bbone_x", "bbone_z", "use_deform"]:
+            setattr(new_bone, attr, getattr(bone, attr))
+        return new_bone
+
+    return extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
+
 def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
     edit_bones = context.object.data.edit_bones
@@ -483,7 +486,7 @@ def apply_editmode_tweak(context, tweak):
         if not bone:
             logger.error("Tweak bone not found: %s", tweak.get("bone"))
             return
-        bone = extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
+        bone = process_bone_actions(edit_bones, bone, tweak)
         for attr, val in tweak.get("set", {}).items():
             if attr == "layers":
                 setattr(bone, attr, parse_layers(val))
@@ -517,7 +520,7 @@ def apply_tweak(rig, tweak):
         bone = obj
         obj = bone.constraints.get(tweak.get("name", ""))
         if not obj:
-            obj = constraint_by_target(bone, rig, tweak.get("type"), tweak.get("target_bone"))
+            obj = find_constraint(bone, rig, tweak.get("type"), tweak.get("target_bone"))
     elif select != "bone":
         logger.error("Invalid tweak select: %s", repr(tweak))
         return
@@ -530,6 +533,13 @@ def apply_tweak(rig, tweak):
     for attr, val in tweak.get("set", {}).items():
         if val and attr.startswith("bbone_custom_handle_"):
             val = bones[val]
+        if isinstance(val, dict) and attr == "targets" and isinstance(obj, bpy.types.ArmatureConstraint):
+            for k, v in val.items():
+                t = obj.targets.new()
+                t.target = rig
+                t.subtarget = k
+                t.weight = v
+            continue
         setattr(obj, attr, val)
 
 # My implementation of sliding joints on top of rigify
