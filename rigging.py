@@ -159,11 +159,11 @@ def bb_align_roll(bone, vec, axis, inout):
     vec.normalize()
 
     if axis == "z":
-       axis1 = x_axis
-       axis2 = z_axis
+        axis1 = x_axis
+        axis2 = z_axis
     else:
-       axis1 = -z_axis
-       axis2 = x_axis
+        axis1 = -z_axis
+        axis2 = x_axis
 
     roll = math.asin(max(min(vec.dot(axis1), 1), -1))
     if vec.dot(axis2) < 0:
@@ -260,6 +260,9 @@ class Rigger:
         self._save_attr(bone, "bb_out_axis_z", lambda bone: bb_rollout_axis(bone, "z"))
 
     def joint_position(self, bone, attr):
+        if attr == "head" and utils.is_true(self.get_opt(bone, "connected")) and bone.parent:
+            bone = bone.parent
+            attr = "tail"
         item = self.jdata.get("joint_%s_%s" % (bone.name, attr))
         if not item or item[0] < 0.1:
             return None
@@ -285,9 +288,9 @@ class Rigger:
 
     def get_roll(self, bone, prefix):
         for axis in ("z", "x"):
-           value = self.get_opt(bone, prefix + "axis_" + axis)
-           if value and len(value) == 3:
-               return Vector(value), axis
+            value = self.get_opt(bone, prefix + "axis_" + axis)
+            if value and len(value) == 3:
+                return Vector(value), axis
         return None, None
 
     def _set_bone_roll(self):

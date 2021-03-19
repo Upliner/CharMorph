@@ -600,6 +600,10 @@ class OpCleanupJoints(bpy.types.Operator):
             self.report({'ERROR'}, "No joints found")
             return {"CANCELLED"}
 
+        for k, v in list(joints.items()):
+            if v[2] == "head" and utils.is_true(v[1].get("charmorph_connected")):
+                del joints[k]
+
         for vg in list(char.vertex_groups):
             if vg.name.startswith("joint_") and vg.name not in joints:
                 char.vertex_groups.remove(vg)

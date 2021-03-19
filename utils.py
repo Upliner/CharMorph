@@ -52,3 +52,12 @@ def kdtree_from_verts(verts):
         kd.insert(vert.co, idx)
     kd.balance()
     return kd
+
+def is_true(value):
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'y', 'yes')
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value > 0
+    return False

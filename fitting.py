@@ -336,7 +336,7 @@ def do_fit(char, assets):
         hair.fit_all_hair(char, diff_arr)
 
 def masking_enabled(asset):
-    return asset.data.get("charmorph_fit_mask", "true").lower() in ['true', 1, '1', 'y', 'yes']
+    return utils.is_true(asset.data.get("charmorph_fit_mask", True))
 
 def recalc_comb_mask(char, new_asset=None):
     t = utils.Timer()
