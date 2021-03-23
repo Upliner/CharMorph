@@ -28,8 +28,7 @@ Randomize:
 
 Hair:
   - Move hair.blend to char.blend?
-  - Hair refitting after edit (don't use .npy files too?)
-  - Use hidden basis hair instead of npy?
+  - Hair refitting after edit
 
 Fitting:
   - MakeHuman asset support ?
@@ -43,6 +42,7 @@ Fitting:
 Assets:
   - Asset list at creation
   - Use default underwear assets instead of censors
+  - Asset-defined heels and morphs
 
 Rigging:
   - Add chest and abdomen bones for breathing

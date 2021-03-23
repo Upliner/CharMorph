@@ -49,6 +49,16 @@ class UIProps(WhatToProps):
             ("SEG", "Segmented", "Split every property to segments and remain within them"),
         ],
         description="Randomization mode (doesn't affect material colors)")
+    randomize_func: bpy.props.EnumProperty(
+        name="Function",
+        default="REG",
+        items=[
+            ("REG", "Regular", "Regular random function"),
+            ("GAU", "Gaussian", "Relative to last hand-edited morphing"),
+        ],
+        description="Use regular random func or gaussian")
+    randomize_sigma: bpy.props.FloatProperty(
+        name="Sigma", min=0, soft_max=1, default=0.1, precision=3, description="Gaussian sigma", subtype="FACTOR")
     randomize_segs: bpy.props.IntProperty(
         name="Segments",
         default=7,
@@ -56,7 +66,7 @@ class UIProps(WhatToProps):
         description="Segment count for segmented randomization"
     )
     randomize_strength: bpy.props.FloatProperty(
-        name="Strength", min=0, max=1, default=0.2, precision=2, description="Randomization strength", subtype="FACTOR")
+        name="Strength", min=0, soft_max=1, default=0.2, precision=2, description="Randomization strength", subtype="FACTOR")
 
 class CHARMORPH_PT_Randomize(bpy.types.Panel):
     bl_label = "Randomize"
@@ -83,6 +93,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
         self.layout.prop(ui, "randomize_mode")
+        self.layout.prop(ui, "randomize_func")
 
         col = self.layout.column(align=True)
         col.label(text="What to randomize:")
@@ -90,6 +101,8 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
             col.prop(ui, prop)
 
         self.layout.separator()
+        if ui.randomize_func == "GAU":
+            self.layout.prop(ui, "randomize_sigma")
         if ui.randomize_mode == "SEG":
             self.layout.prop(ui, "randomize_segs")
         else:
@@ -116,14 +129,18 @@ class OpRandomize(bpy.types.Operator):
 
     def execute(self, context): # pylint: disable=no-self-use
         global saved_version
-        scn = context.window_manager
-        ui = scn.charmorph_ui
-        cm = scn.charmorphs
+        wm = context.window_manager
+        ui = wm.charmorph_ui
+        cm = wm.charmorphs
         m = morphing.morpher
         if ui.randomize_mode == "RL1":
             save_props(cm, m.version)
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
+        if ui.randomize_func == "GAU":
+            random_func = lambda: max(min(random.gauss(0.5, ui.randomize_sigma), 1), 0)
+        else:
+            random_func = random.random
         if ui.randomize_morphs:
             m.lock()
             try:
@@ -136,9 +153,9 @@ class OpRandomize(bpy.types.Operator):
                     if ui.randomize_mode == "OVR":
                         m.reset_meta()
                     if ui.randomize_mode == "SEG":
-                        val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random.random()) * 2 / ui.randomize_segs - 1
+                        val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
                     else:
-                        val = (ui.randomize_strength * (random.random() * 2 - 1))
+                        val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
                     if ui.randomize_mode == "RL1":
                         val += saved_props.get(propname, 0)
                     elif ui.randomize_mode == "RL2":
