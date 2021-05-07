@@ -184,6 +184,7 @@ class Rigger:
         self.opts = {}
         self.default_opts = {}
 
+        self.result = True
         self._bones = None
 
     def joints_from_char(self, char, verts=None):
@@ -273,7 +274,6 @@ class Rigger:
         return pos
 
     def _set_bone_pos(self, lst):
-        result = True
         edit_bones = self.context.object.data.edit_bones
         for _, bone, attr in lst.values():
             pos = self.joint_position(bone, attr)
@@ -283,8 +283,7 @@ class Rigger:
                 setattr(edit_bone, attr, pos)
             else:
                 logger.error("No data for joint %s_%s", bone.name, attr)
-                result = False
-        return result
+                self.result = False
 
     def get_roll(self, bone, prefix):
         for axis in ("z", "x"):
@@ -293,16 +292,27 @@ class Rigger:
                 return Vector(value), axis
         return None, None
 
-    def _set_bone_roll(self):
+    def _post_process_bones(self):
+        edit_bones = self.context.object.data.edit_bones
         bbones = {}
         for bone in self._bones:
+            if bone.bbone_segments > 1:
+                bbones[bone] = {}
+            align = self.get_opt(bone, "align")
+            if align:
+                align_bone = edit_bones.get(align)
+                if align_bone:
+                    bone.align_orientation(align_bone)
+                    continue
+                else:
+                    logger.error("Align bone %s is not found", align)
+                    self.result = False
+
             vector, axis = self.get_roll(bone, "")
             if vector:
                 if axis == "x":
                     vector.rotate(Quaternion(bone.y_axis, -math.pi/2))
                 bone.align_roll(vector)
-            if bone.bbone_segments > 1:
-                bbones[bone] = {}
 
         # Calculate bbone order. Parents need to be processed before childen
         to_remove = []
@@ -332,12 +342,13 @@ class Rigger:
         if lst is None:
             lst = all_joints(self.context.object.data.bones)
 
+        self.result = True
         self._bones = set()
-        result = self._set_bone_pos(lst)
-        self._set_bone_roll()
+        self._set_bone_pos(lst)
+        self._post_process_bones()
         self._bones = None
 
-        return result
+        return self.result
 
 bbone_attributes = [
     'bbone_segments', 'use_endroll_as_inroll',
