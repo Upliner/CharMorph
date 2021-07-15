@@ -390,7 +390,7 @@ def reposition_armature_modifier(char):
 
     i = 0
     for i, mod in enumerate(char.modifiers):
-        if mod.type != "MASK":
+        if mod.type != "MASK" and mod.type != "ARMATURE":
             break
     for i in range(pos-i):
         if bpy.ops.object.modifier_move_up.poll(override):

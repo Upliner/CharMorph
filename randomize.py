@@ -36,7 +36,7 @@ class WhatToProps:
     randomize_incl: bpy.props.StringProperty(
         name="Incl. regex")
     randomize_excl: bpy.props.StringProperty(
-        name="Excl. regex", default=r"^Fantasy\_")
+        name="Excl. regex")
 
 class UIProps(WhatToProps):
     randomize_mode: bpy.props.EnumProperty(

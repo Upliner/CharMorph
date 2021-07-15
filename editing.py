@@ -487,13 +487,11 @@ class OpSymmetrizeWeights(bpy.types.Operator):
             #cleanup groups without counterparts before normalizing
             for g in v.groups:
                 vg = obj.vertex_groups[g.group]
-                if vg.lock_weight:
-                    continue
                 g2e = gdict.get(swap_l_r(vg.name))
                 if g2e:
                     if is_deform(vg.name):
                         wgt2 += g2e.weight
-                else:
+                elif not vg.lock_weight:
                     if not is_deform(vg.name):
                         print("removing non-deform vg", v.index, v2.index, v.co, vg.name)
                     vg.remove([v.index])
@@ -712,7 +710,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
     vg_regex: bpy.props.StringProperty(
         name="VG regex",
         description="Regular expression for vertex group export",
-        default="^(DEF-|MCH-|ORG|corrective_smooth(_inv)?$)",
+        default="^(DEF-|MCH-|ORG|(corrective_smooth|preserve_volume)(_inv)?$)",
     )
     vg_overwrite: bpy.props.BoolProperty(
         name="VG overwrite",

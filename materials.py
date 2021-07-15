@@ -33,6 +33,8 @@ def init_materials(obj, char):
 
 def load_materials(obj, char):
     mtllist = char.materials
+    if not mtllist:
+        return
     if len(obj.data.materials) != len(mtllist):
         logger.error("Material count mismatch in %s: %d != %d", char, len(obj.data.materials), len(mtllist))
         return
@@ -55,9 +57,8 @@ def load_materials(obj, char):
             materials_to_load.append(mtl_name)
             load_ids.append(i)
 
-    lib = char.material_lib
-    if lib and materials_to_load:
-        with bpy.data.libraries.load(char.path(lib)) as (_, data_to):
+    if materials_to_load:
+        with bpy.data.libraries.load(char.path(char.material_lib)) as (_, data_to):
             data_to.materials = materials_to_load
         for i, mtl in enumerate(data_to.materials):
             mtl = data_to.materials[i]
@@ -120,7 +121,7 @@ def load_textures(obj, char_name):
     texmap = None
 
     for mtl in obj.data.materials:
-        if not mtl.node_tree:
+        if not mtl or not mtl.node_tree:
             continue
         for node in mtl.node_tree.nodes.values():
             if node.type != "TEX_IMAGE":
@@ -140,6 +141,8 @@ def load_textures(obj, char_name):
                 for name in [node.name, node.label]:
                     if name.startswith("tex_"):
                         name = name[4:]
+                    else:
+                        continue
                     img_tuple = texmap.get(name)
                     if img_tuple is not None:
                         break

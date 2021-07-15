@@ -125,10 +125,23 @@ def attach_rig(obj, rig):
     utils.lock_obj(obj, True)
 
     mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
-    mod.use_deform_preserve_volume = True
     mod.use_vertex_groups = True
     mod.object = rig
     rigging.reposition_armature_modifier(obj)
+    if "preserve_volume" in obj.vertex_groups or "preserve_volume_inv" in obj.vertex_groups:
+        mod2 = obj.modifiers.new("charmorph_rig_pv", "ARMATURE")
+        mod2.use_vertex_groups = True
+        mod2.use_deform_preserve_volume = True
+        mod2.use_multi_modifier = True
+        mod2.object = rig
+        if "preserve_volume_inv" in obj.vertex_groups:
+            mod2.vertex_group = "preserve_volume_inv"
+        else:
+            mod2.vertex_group = "preserve_volume"
+            mod2.invert_vertex_group = True
+        rigging.reposition_armature_modifier(obj)
+    else:
+        mod.use_deform_preserve_volume = True
 
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
@@ -201,7 +214,7 @@ class OpFinalize(bpy.types.Operator):
                 self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
                 vg_cleanup = False
             try:
-                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else char.data.vertices)
+                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else obj.data.vertices)
             except rigging.RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False

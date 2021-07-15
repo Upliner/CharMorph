@@ -62,7 +62,7 @@ def load_assets_dir(path):
     result = {}
     if not os.path.isdir(path):
         if path:
-            logger.error("path is not found: %s", path)
+            logger.debug("path is not found: %s", path)
         return result
     for file in os.listdir(path):
         name, ext = os.path.splitext(file)
@@ -74,7 +74,7 @@ def load_json_dir(path):
     result = {}
     if not os.path.isdir(path):
         if path:
-            logger.error("path is not found: %s", path)
+            logger.debug("path is not found: %s", path)
         return result
     for file in os.listdir(path):
         name, ext = os.path.splitext(file)
@@ -93,6 +93,8 @@ class Character:
             "title": name,
             "char_file": "char.blend",
             "char_obj": "char",
+            "randomize_incl_regex": None,
+            "randomize_excl_regex": None,
             "default_type": "",
             "default_armature": "",
             "default_hair_length": 0.1,
@@ -115,6 +117,9 @@ class Character:
         if item == "morphs_meta":
             self.morphs_meta = self.get_yaml("morphs_meta.yaml")
             return self.morphs_meta
+        if item == "material_lib":
+            self.material_lib = self.config.get("material_lib", self.char_file)
+            return self.material_lib
         return self.config[item]
 
     def path(self, file):
@@ -157,6 +162,7 @@ class Armature():
     def __init__(self, char: Character, name, conf):
         self.char = char
         self.config = {
+            "file": char.char_file,
             "title": name,
             "tweaks": [],
             "mixin": "",
@@ -334,6 +340,7 @@ def import_obj(file, obj, typ="MESH", link=True):
             if len(data_from.objects) == 1:
                 obj = data_from.objects[0]
             else:
+                logger.error("object %s is not found in %s", obj, file)
                 return None
         data_to.objects = [obj]
     obj = data_to.objects[0]
@@ -392,6 +399,11 @@ class OpImport(bpy.types.Operator):
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
         ui.fitting_char = obj.name
+
+        if char.randomize_incl_regex is not None:
+            ui.randomize_incl = char.randomize_incl_regex
+        if char.randomize_excl_regex is not None:
+            ui.randomize_excl = char.randomize_excl_regex
 
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature

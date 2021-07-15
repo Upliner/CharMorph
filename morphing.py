@@ -282,6 +282,8 @@ class Morpher(metaclass=abc.ABCMeta):
             if self.clamp:
                 value = max(min(value, 1), -1)
             self.version += 1
+            if soft_min == 0 and value < 0:
+                value = -value
             setter_base(cm, value)
             self.update()
         return bpy.props.FloatProperty(
