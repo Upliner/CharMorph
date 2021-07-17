@@ -102,6 +102,7 @@ class Character:
             "armature_defaults": {},
             "hairstyles": [],
             "materials": [],
+            "underwear": [],
             "types": {},
             "assets": {},
             "poses": {},
@@ -407,6 +408,10 @@ class OpImport(bpy.types.Operator):
 
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
+
+        if not is_adult_mode():
+            for name in char.underwear:
+                fitting.fit_import(context, *char.assets[name])
 
         return {"FINISHED"}
 

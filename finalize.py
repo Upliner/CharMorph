@@ -229,34 +229,42 @@ class OpFinalize(bpy.types.Operator):
         if not ok:
             return {"CANCELLED"}
 
-        def add_modifiers(obj):
-            def add_modifier(typ):
-                for mod in obj.modifiers:
-                    if mod.type == typ:
-                        return mod
-                return obj.modifiers.new("charmorph_" + typ.lower(), typ)
+        def add_modifier(obj, typ, reposition):
+            for mod in obj.modifiers:
+                if mod.type == typ:
+                    return mod
+            mod = obj.modifiers.new("charmorph_" + typ.lower(), typ)
+            reposition(obj)
+            return mod
 
-            if ui.fin_csmooth != "NO":
-                mod = add_modifier("CORRECTIVE_SMOOTH")
-                mod.smooth_type = ui.fin_csmooth[2:]
-                if ui.fin_csmooth[:1] == "L":
-                    if "corrective_smooth" in obj.vertex_groups:
-                        mod.vertex_group = "corrective_smooth"
-                    elif "corrective_smooth_inv" in obj.vertex_groups:
-                        mod.vertex_group = "corrective_smooth_inv"
-                        mod.invert_vertex_group = True
-                elif ui.fin_csmooth == "U":
-                    mod.vertex_group = ""
+        def add_corrective_smooth(obj):
+            if ui.fin_csmooth == "NO":
+                return
+            mod = add_modifier(obj, "CORRECTIVE_SMOOTH", rigging.reposition_cs_modifier)
+            mod.smooth_type = ui.fin_csmooth[2:]
+            if ui.fin_csmooth[:1] == "L":
+                if "corrective_smooth" in obj.vertex_groups:
+                    mod.vertex_group = "corrective_smooth"
+                elif "corrective_smooth_inv" in obj.vertex_groups:
+                    mod.vertex_group = "corrective_smooth_inv"
+                    mod.invert_vertex_group = True
+            elif ui.fin_csmooth == "U":
+                mod.vertex_group = ""
 
-            if ui.fin_subdivision != "NO":
-                mod = add_modifier("SUBSURF")
-                mod.show_viewport = ui.fin_subdivision == "RV"
+        def add_subsurf(obj):
+            if ui.fin_subdivision == "NO":
+                return
+            mod = add_modifier(obj, "SUBSURF", rigging.reposition_subsurf_modifier)
+            mod.show_viewport = ui.fin_subdivision == "RV"
 
-        add_modifiers(obj)
+        add_corrective_smooth(obj)
+        add_subsurf(obj)
 
-        if (ui.fin_subdivision != "NO" and ui.fin_subdiv_assets) or (ui.fin_csmooth != "NO" and ui.fin_cmooth_assets):
-            for asset in fitting.get_assets(obj):
-                add_modifiers(asset)
+        for asset in fitting.get_assets(obj):
+            if ui.fin_csmooth_assets:
+                add_corrective_smooth(asset)
+            if ui.fin_subdiv_assets:
+                add_subsurf(asset)
 
 
         if vg_cleanup:
@@ -349,7 +357,7 @@ class UIProps:
         description="Use subdivision surface for smoother look")
     fin_csmooth: bpy.props.EnumProperty(
         name="Corrective smooth",
-        default="L_LENGTH_WEIGHTED",
+        default="L_SIMPLE",
         items=[
             ("NO", "None", "No corrective smooth"),
             ("L_SIMPLE", "Limited Simple", ""),
@@ -366,7 +374,7 @@ class UIProps:
         name="Subdivide assets",
         default=False,
         description="Subdivide assets together with character")
-    fin_cmooth_assets: bpy.props.BoolProperty(
+    fin_csmooth_assets: bpy.props.BoolProperty(
         name="Corrective smooth for assets",
         default=True,
         description="Use corrective smooth for assets too")

@@ -235,7 +235,11 @@ def get_obj_weights(char, asset, mask=False):
     obj_cache[fit_id] = weights
     return weights
 
+special_groups = frozenset(["corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"])
+
 def transfer_weights(char, asset, bones):
+    if not bones:
+        return
     t = utils.Timer()
     weights = get_obj_weights(char, asset)
     char_verts = char.data.vertices
@@ -243,11 +247,11 @@ def transfer_weights(char, asset, bones):
     groups = {}
 
     for i, arrays in enumerate(weights):
-        for vi, subweight in zip(arrays[0], arrays[1]):
+        for vi, subweight in zip(arrays[0], arrays[1].reshape(-1)):
             for src in char_verts[vi].groups:
                 gid = src.group
                 group_name = char.vertex_groups[gid].name
-                if group_name not in bones:
+                if group_name not in bones and group_name not in special_groups:
                     continue
                 vg_dst = groups.get(gid)
                 if vg_dst is None:
@@ -266,20 +270,28 @@ def transfer_armature(char, asset):
             existing.add(mod.object.name)
 
     bones = set()
+
+    modifiers = []
+
     for mod in char.modifiers:
         if mod.type == "ARMATURE" and mod.object and mod.object.name not in existing:
-            newmod = asset.modifiers.new(mod.name, "ARMATURE")
-            newmod.object = mod.object
-            newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
-            newmod.invert_vertex_group = mod.invert_vertex_group
-            newmod.use_bone_envelopes = mod.use_bone_envelopes
-            newmod.use_vertex_groups = mod.use_vertex_groups
-            rigging.reposition_armature_modifier(asset)
+            modifiers.append(mod)
             for bone in mod.object.data.bones:
                 if bone.use_deform:
                     bones.add(bone.name)
 
     transfer_weights(char, asset, bones)
+
+    for mod in modifiers:
+        newmod = asset.modifiers.new(mod.name, "ARMATURE")
+        newmod.object = mod.object
+        newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
+        newmod.invert_vertex_group = mod.invert_vertex_group
+        newmod.use_bone_envelopes = mod.use_bone_envelopes
+        newmod.use_vertex_groups = mod.use_vertex_groups
+        newmod.use_multi_modifier = mod.use_multi_modifier
+        newmod.vertex_group = mod.vertex_group
+        rigging.reposition_armature_modifier(asset)
 
 
 def transfer_new_armature(char):
