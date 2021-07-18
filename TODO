@@ -47,6 +47,7 @@ Rigging:
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia
+  - Force bone bending angle
   - Head pivot shift
   - Live regular rig deform
   - Import MB-Lab expression shape keys alongside with Rigify
