@@ -51,8 +51,14 @@ def convertSigns(signs):
     except KeyError:
         return -1
 
-def prefixed_prop(prefix, prop):
-    return (prefix + prop[1]["name"], prop)
+if bpy.props.StringProperty() is tuple:
+    # Before Blender 2.93 properties were tuples
+    def prefixed_prop(prefix, prop):
+        return (prefix + prop[1]["name"], prop)
+else:
+    # Blender version >= 2.93
+    def prefixed_prop(prefix, prop):
+        return (prefix + prop.keywords["name"], prop)
 
 class Morpher(metaclass=abc.ABCMeta):
     def __init__(self, obj):
@@ -396,7 +402,11 @@ def create_charmorphs(obj):
 def del_charmorphs_L2():
     if not hasattr(bpy.types.WindowManager, "charmorphs"):
         return
-    propGroup = bpy.types.WindowManager.charmorphs[1]['type']
+    cm = bpy.types.WindowManager.charmorphs
+    if cm is tuple:
+        propGroup = cm[1]['type']
+    else:
+        propGroup = cm.keywords['type']
     del bpy.types.WindowManager.charmorphs
     bpy.utils.unregister_class(propGroup)
     fitting.invalidate_cache()
