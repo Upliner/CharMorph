@@ -373,7 +373,7 @@ def rigify_finalize(rig, char):
 
                 if any(handles):
                     def_bone = rig.data.bones.get("DEF-"+bone.name[4:], bone)
-                    if def_bone is not bone and def_bone.bbone_segments == 1:
+                    if def_bone is not bone and (def_bone.bbone_segments == 1 or def_bone.bbone_handle_type_start == "AUTO"):
                         for attr in bbone_attributes:
                             setattr(def_bone, attr, getattr(bone, attr))
                     if handles[0]:
