@@ -355,11 +355,25 @@ bbone_attributes = [
     'bbone_handle_type_start', 'bbone_handle_type_end',
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
-    'bbone_scaleinx', 'bbone_scaleiny', 'bbone_scaleoutx', 'bbone_scaleouty',
 ]
+
+ATTR_CHECKED=False
+
+def check_attributes(bone):
+    # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0 Alpha
+    global ATTR_CHECKED
+    if ATTR_CHECKED:
+        return
+    for i, attr in enumerate(bbone_attributes):
+        if not hasattr(bone, attr) and attr.endswith("y"):
+            bbone_attributes[i] = attr[:-1] + "z"
+
+    ATTR_CHECKED = True
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
+    if len(rig.data.bones) > 0:
+        check_attributes(rig.data.bones[0])
     for bone in rig.data.bones:
         is_org = bone.name.startswith("ORG-")
         if is_org or bone.name.startswith("MCH-"):
