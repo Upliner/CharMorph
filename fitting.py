@@ -100,19 +100,42 @@ def calc_weights(char, asset, mask):
         add_mask_from_asset(char, asset, bvh_asset, bvh_char)
         t.time("mask")
 
+    positions = numpy.empty((len(weights)), dtype=numpy.uint32)
+
+    pos = 0
+
     for i, d in enumerate(weights):
         thresh = max(d.values())/16
-        d = {k:v for k, v in d.items() if v > thresh}
-        #fnorm = sum((char_verts[vi].normal*v for vi, v in d), mathutils.Vector())
-        #fnorm.normalize()
-        total = sum(d.values())
-        #coeff = (sum(fnorm.dot(char_verts[vi].normal) * v  for vi, v in d)/total)
-        #total *= coeff
-        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(-1, 1)/total)
+        for k,v in list(d.items()):
+            if v < thresh:
+                del d[k]
+        positions[i] = pos
+        pos += len(d)
+
+    t.time("cut")
+
+    idx = numpy.empty((pos), dtype=numpy.uint32)
+    wresult = numpy.empty((pos))
+
+    pos=0
+    for d in weights:
+        pos1 = pos
+        for k,v in d.items():
+            idx[pos] = k
+            wresult[pos] = v
+            pos += 1
+        w = wresult[pos1:pos]
+        w /= w.sum()
+
+        #idx[pos:pos+len(d)] = list(d.keys())
+        #w = wresult[pos:pos+len(d)]
+        #w[:] = list(d.values())
+        #pos += len(d)
+
 
     t.time("normalize")
 
-    return weights
+    return (positions, idx, wresult.reshape(-1,1))
 
 def mask_name(asset):
     return "cm_mask_{}_{}".format(asset.name, asset.data.get("charmorph_fit_id", "xxx")[:3])
@@ -228,7 +251,7 @@ def get_obj_weights(char, asset, mask=False):
 
     fit_id = asset.data["charmorph_fit_id"]
     weights = obj_cache.get(fit_id)
-    if weights:
+    if weights is not None:
         return weights
 
     weights = calc_weights(char, asset, mask)
@@ -241,25 +264,27 @@ def transfer_weights(char, asset, bones):
     if not bones:
         return
     t = utils.Timer()
-    weights = get_obj_weights(char, asset)
+    positions, idx, weights = get_obj_weights(char, asset)
     char_verts = char.data.vertices
 
     groups = {}
 
-    for i, arrays in enumerate(weights):
-        for vi, subweight in zip(arrays[0], arrays[1].reshape(-1)):
-            for src in char_verts[vi].groups:
-                gid = src.group
-                group_name = char.vertex_groups[gid].name
-                if group_name not in bones and group_name not in special_groups:
-                    continue
-                vg_dst = groups.get(gid)
-                if vg_dst is None:
-                    if group_name in asset.vertex_groups:
-                        asset.vertex_groups.remove(asset.vertex_groups[group_name])
-                    vg_dst = asset.vertex_groups.new(name=group_name)
-                    groups[gid] = vg_dst
-                vg_dst.add([i], src.weight*subweight, 'ADD')
+    i = 0
+    for ptr in range(len(idx)):
+        while i < len(positions)-1 and ptr >= positions[i+1]:
+            i += 1
+        for src in char_verts[idx[ptr]].groups:
+            gid = src.group
+            group_name = char.vertex_groups[gid].name
+            if group_name not in bones and group_name not in special_groups:
+                continue
+            vg_dst = groups.get(gid)
+            if vg_dst is None:
+                if group_name in asset.vertex_groups:
+                    asset.vertex_groups.remove(asset.vertex_groups[group_name])
+                vg_dst = asset.vertex_groups.new(name=group_name)
+                groups[gid] = vg_dst
+            vg_dst.add([i], src.weight*weights[ptr][0], 'ADD')
 
     t.time("weights")
 
@@ -337,8 +362,7 @@ def do_fit(char, assets):
         verts = numpy.empty(len(asset_fitkey.data)*3)
         asset.data.vertices.foreach_get("co", verts)
         verts = verts.reshape(-1, 3)
-        for i, w in enumerate(weights):
-            verts[i] += (diff_arr[w[0]] * w[1]).sum(0)
+        verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
         asset_fitkey.data.foreach_set("co", verts.reshape(-1))
 
         asset_fitkey.value = max(asset_fitkey.value, 1)

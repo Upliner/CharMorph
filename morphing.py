@@ -51,7 +51,7 @@ def convertSigns(signs):
     except KeyError:
         return -1
 
-if bpy.props.StringProperty() is tuple:
+if isinstance(bpy.props.StringProperty(), tuple):
     # Before Blender 2.93 properties were tuples
     def prefixed_prop(prefix, prop):
         return (prefix + prop[1]["name"], prop)
@@ -403,7 +403,7 @@ def del_charmorphs_L2():
     if not hasattr(bpy.types.WindowManager, "charmorphs"):
         return
     cm = bpy.types.WindowManager.charmorphs
-    if cm is tuple:
+    if isinstance(cm, tuple):
         propGroup = cm[1]['type']
     else:
         propGroup = cm.keywords['type']
