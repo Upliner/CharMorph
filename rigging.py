@@ -275,11 +275,13 @@ class Rigger:
 
     def _set_bone_pos(self, lst):
         edit_bones = self.context.object.data.edit_bones
+        for _, bone, _ in lst.values():
+            edit_bone = edit_bones[bone.name]
+            self._save_bone_data(edit_bone)
         for _, bone, attr in lst.values():
             pos = self.joint_position(bone, attr)
             if pos:
                 edit_bone = edit_bones[bone.name]
-                self._save_bone_data(edit_bone)
                 setattr(edit_bone, attr, pos)
             else:
                 logger.error("No data for joint %s_%s", bone.name, attr)
