@@ -166,6 +166,7 @@ class Armature():
             "file": char.char_file,
             "title": name,
             "tweaks": [],
+            "ik_limits": {},
             "mixin": "",
             "mixin_bones": {},
         }

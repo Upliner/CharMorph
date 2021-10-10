@@ -23,6 +23,7 @@
 # Those used in editing are in rigging.py
 #
 
+import math
 import bpy                                     # pylint: disable=import-error
 from rna_prop_ui import rna_idprop_ui_prop_get # pylint: disable=import-error, no-name-in-module
 
@@ -57,10 +58,22 @@ def apply_metarig_parameters(metarig):
             params.make_widget = True
             params.super_copy_widget_type = "shoulder"
 
-def apply_rig_parameters(rig):
+def apply_rig_parameters(rig, conf):
     ui = bpy.context.window_manager.charmorph_ui
     if not ui.rigify_disable_ik_stretch and not ui.rigify_limit_ik:
         return
+
+    limit_ik = ui.rigify_limit_ik
+    if limit_ik and conf.ik_limits:
+        limit_ik = False
+        for key, value in conf.ik_limits.items():
+            bone = rig.pose.bones.get(key)
+            if bone is None:
+                continue
+            bone.use_ik_limit_x = True
+            bone.ik_min_x = math.radians(value.get("min", 0))
+            bone.ik_max_x = math.radians(value.get("max", 180))
+
     for bone in rig.pose.bones:
         have_ik = False
         for c in bone.constraints:
@@ -68,10 +81,10 @@ def apply_rig_parameters(rig):
                 have_ik = True
                 if ui.rigify_disable_ik_stretch:
                     c.use_stretch = False
-        if ui.rigify_limit_ik and have_ik and not bone.lock_ik_x and bone.lock_ik_y and bone.lock_ik_z:
+        if limit_ik and have_ik and not bone.lock_ik_x and bone.lock_ik_y and bone.lock_ik_z:
             bone.use_ik_limit_x = True
             bone.ik_min_x = 0
-            bone.ik_max_x = 180
+            bone.ik_max_x = math.pi
         if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
             idprop = rna_idprop_ui_prop_get(bone, "IK_Stretch")
             for attr in ("min", "max", "soft_min", "soft_max", "default"):
@@ -104,7 +117,7 @@ def do_rig(obj, conf, rigger):
         rig.name = obj.name + "_rig"
 
         rigging.rigify_finalize(rig, obj)
-        apply_rig_parameters(rig)
+        apply_rig_parameters(rig, conf)
 
         char = library.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)

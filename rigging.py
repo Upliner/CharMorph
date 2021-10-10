@@ -671,9 +671,10 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     # Make rubber tweak property, but lock it to zero
     rna_idprop_ui_create(bone, "rubber_tweak", default=0, min=0, max=0)
 
-    utils.lock_obj(bones[mch_name], True)
+    mch_bone = bones[mch_name]
+    utils.lock_obj(mch_bone, True)
 
-    c = bones[mch_name].constraints.new("COPY_ROTATION")
+    c = mch_bone.constraints.new("COPY_ROTATION")
     c.target = rig
     c.subtarget = "ORG-{}.{}".format(lower_bone, side)
     c.use_y = False
@@ -694,3 +695,8 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
 
     replace_tweak(bones["DEF-{}.{}".format(lower_bone, side)])
     replace_tweak(bones["MCH-{}.001".format(tweak_name)])
+
+    c = mch_bone.constraints.new("LIMIT_ROTATION")
+    c.owner_space = "LOCAL"
+    c.use_limit_x = True
+    c.max_x = 90
