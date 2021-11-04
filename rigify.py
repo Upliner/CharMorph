@@ -24,8 +24,8 @@
 #
 
 import math
-import bpy                                     # pylint: disable=import-error
-from rna_prop_ui import rna_idprop_ui_prop_get # pylint: disable=import-error, no-name-in-module
+import bpy          # pylint: disable=import-error
+import rna_prop_ui  # pylint: disable=import-error, no-name-in-module
 
 
 from . import library, rigging, utils
@@ -71,8 +71,9 @@ def apply_rig_parameters(rig, conf):
             if bone is None:
                 continue
             bone.use_ik_limit_x = True
-            bone.ik_min_x = math.radians(value.get("min", 0))
-            bone.ik_max_x = math.radians(value.get("max", 180))
+            bone.ik_min_x = math.radians(value.get("min", -10))
+            bone.ik_max_x = math.radians(value.get("max", 160))
+            bone.ik_stiffness_x = 0.98
 
     for bone in rig.pose.bones:
         have_ik = False
@@ -83,13 +84,20 @@ def apply_rig_parameters(rig, conf):
                     c.use_stretch = False
         if limit_ik and have_ik and not bone.lock_ik_x and bone.lock_ik_y and bone.lock_ik_z:
             bone.use_ik_limit_x = True
-            bone.ik_min_x = 0
-            bone.ik_max_x = math.pi
+            bone.ik_min_x = math.radians(-10)
+            bone.ik_max_x = math.radians(160)
+            bone.ik_stiffness_x = 0.98
         if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
-            idprop = rna_idprop_ui_prop_get(bone, "IK_Stretch")
-            for attr in ("min", "max", "soft_min", "soft_max", "default"):
-                idprop[attr] = 0
             bone["IK_Stretch"] = 0
+            if hasattr(rna_prop_ui,"rna_idprop_ui_prop_get"):
+                # Blender < 3.0
+                idprop = rna_prop_ui.rna_idprop_ui_prop_get(bone, "IK_Stretch")
+                for attr in ("min", "max", "soft_min", "soft_max", "default"):
+                    idprop[attr] = 0
+            elif hasattr(bone, "id_properties_ui"):
+                # Blender >= 3.0
+                idprop = bone.id_properties_ui("IK_Stretch")
+                idprop.update(min=0, max=0, soft_min=0, soft_max=0, default=0)
 
 def add_mixin(char, conf, rig):
     obj_name = conf.mixin
