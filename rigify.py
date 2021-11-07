@@ -58,22 +58,28 @@ def apply_metarig_parameters(metarig):
             params.make_widget = True
             params.super_copy_widget_type = "shoulder"
 
+lim_default_min = -10
+lim_default_max = 160
+
 def apply_rig_parameters(rig, conf):
     ui = bpy.context.window_manager.charmorph_ui
     if not ui.rigify_disable_ik_stretch and not ui.rigify_limit_ik:
         return
+
+    def set_ik_limits(bone, lim_min, lim_max):
+        bone.use_ik_limit_x = True
+        bone.ik_min_x = math.radians(lim_min)
+        bone.ik_max_x = math.radians(lim_max)
+        if ui.rigify_disable_ik_stretch:
+            bone.ik_stiffness_x = 0.98
 
     limit_ik = ui.rigify_limit_ik
     if limit_ik and conf.ik_limits:
         limit_ik = False
         for key, value in conf.ik_limits.items():
             bone = rig.pose.bones.get(key)
-            if bone is None:
-                continue
-            bone.use_ik_limit_x = True
-            bone.ik_min_x = math.radians(value.get("min", -10))
-            bone.ik_max_x = math.radians(value.get("max", 160))
-            bone.ik_stiffness_x = 0.98
+            if bone is not None:
+                set_ik_limits(bone, value.get("min", lim_default_min), value.get("max", lim_default_max))
 
     for bone in rig.pose.bones:
         have_ik = False
@@ -83,10 +89,7 @@ def apply_rig_parameters(rig, conf):
                 if ui.rigify_disable_ik_stretch:
                     c.use_stretch = False
         if limit_ik and have_ik and not bone.lock_ik_x and bone.lock_ik_y and bone.lock_ik_z:
-            bone.use_ik_limit_x = True
-            bone.ik_min_x = math.radians(-10)
-            bone.ik_max_x = math.radians(160)
-            bone.ik_stiffness_x = 0.98
+            set_ik_limits(bone, lim_default_min, lim_default_max)
         if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
             bone["IK_Stretch"] = 0
             if hasattr(rna_prop_ui,"rna_idprop_ui_prop_get"):
