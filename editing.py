@@ -50,10 +50,11 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l = self.layout
         l.prop(ui, "rig_char")
         l.operator("cmedit.joints_to_vg")
-        l.prop(ui, "rig_vg_calc")
-        l.prop(ui, "rig_vg_offs")
         l.prop(ui, "rig_xmirror")
-        if ui.rig_vg_calc == "NP":
+        l.prop(ui, "rig_widgets")
+        l.prop(ui, "rig_vg_offs")
+        l.prop(ui, "rig_vg_calc")
+        if ui.rig_vg_calc in ("NP","NJ"):
             l.prop(ui, "rig_vg_n")
         elif ui.rig_vg_calc == "NR":
             l.prop(ui, "rig_vg_radius")
@@ -261,8 +262,50 @@ def recalc_np(char, co, name, kd, n):
 def recalc_nr(char, co, name, kd, radius):
     return recalc_lst(char, co, name, kd.find_range(co, radius))
 
-def recalc_nc(char, joints):
-    vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((v.index, gw.weight)))
+def get_vg_full(char):
+    return rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((v.index, co, gw.weight)))
+
+def recalc_othergroups(char, name, groups):
+    if len(groups) == 0:
+        return
+    if len(groups) == 1:
+        gw = [1]
+        mx = 1
+    else:
+        gw = []
+        mx = 1e-5
+        for g, weight in groups:
+            coeff = weight/sum(item[2] for item in g)
+            gw.append(coeff)
+            mx = max(mx, max(item[2]*coeff for item in g))
+    if name in char.vertex_groups:
+        char.vertex_groups.remove(char.vertex_groups[name])
+    vg = char.vertex_groups.new(name=name)
+    for g, coeff in zip(groups, gw):
+        for idx, co, weight in g[0]:
+            vg.add([idx], weight*coeff/mx, 'REPLACE')
+
+def full_to_avg(group):
+    if group is None:
+        return None
+    total = 0
+    vec = mathutils.Vector()
+    for idx, co, weight in group:
+        total += weight
+        vec += co*weight
+    if total < 0.1:
+        return None
+    return vec / total
+
+
+def barycentric_weight_calc(veclist, co):
+    result = mathutils.interpolate.poly_3d_calc(veclist, co)
+    if sum(result)<0.5:
+        return [1] * len(result)
+    return result
+
+def recalc_nc(char, joints, weighted : bool):
+    vgroups = get_vg_full(char)
     def get_head(bone):
         if bone is None:
             return None
@@ -279,28 +322,42 @@ def recalc_nc(char, joints):
         else:
             groups = [get_head(bone)] + [vgroups.get("joint_%s_tail" % child.name) for child in bone.children]
 
-        groups = [g for g in groups if g is not None]
-        if len(groups) < 2:
-            continue
+        groups = (g for g in groups if g is not None)
+        if weighted:
+            z = list(zip(*((g, co2) for g, co2 in ((g, full_to_avg(g)) for g in groups) if co2 is not None)))
+            groups = list(zip(z[0], barycentric_weight_calc(z[1], co)))
+        else:
+            groups = [(g, 1) for g in groups]
+        if len(groups) > 1:
+            recalc_othergroups(char, name, groups)
 
-        mx = 1e-5
-        gw = []
-        for g in groups:
-            coeff = 1/sum(item[1] for item in g)
-            gw.append(coeff)
-            mx = max(mx, max(item[1]*coeff for item in g))
-
-        if name in char.vertex_groups:
-            char.vertex_groups.remove(char.vertex_groups[name])
-        vg = char.vertex_groups.new(name=name)
-        for g, coeff in zip(groups, gw):
-            for idx, weight in g:
-                vg.add([idx], weight*coeff/mx, 'REPLACE')
+def recalc_nj(char, joints, n):
+    all_groups = get_vg_full(char)
+    kd = mathutils.kdtree.KDTree(len(all_groups))
+    groups = []
+    for name, group in all_groups.items():
+        co = full_to_avg(group)
+        if co is not None:
+            kd.insert(co, len(groups))
+            groups.append((name,group))
+    kd.balance()
+    for name, (co, bone, attr) in joints.items():
+        cur_groups = []
+        coords = []
+        for co2, idx, dist in sorted(kd.find_n(co, n+1), key=lambda tup: tup[2]):
+            name2, group = groups[idx]
+            if name2 == name:
+                continue
+            cur_groups.append(group)
+            coords.append(co2)
+            if len(cur_groups) >= n:
+                break
+        recalc_othergroups(char, name, list(zip(cur_groups, barycentric_weight_calc(coords, co))))
 
 class OpCalcVg(bpy.types.Operator):
     bl_idname = "cmedit.calc_vg"
     bl_label = "Recalc vertex groups"
-    bl_description = "Recalculate joint vertex groups according to baricentric coordinates of 3 nearest points of bone positions"
+    bl_description = "Recalculate joint vertex groups according to selected method"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -313,6 +370,9 @@ class OpCalcVg(bpy.types.Operator):
         typ = ui.rig_vg_calc
 
         joints = joint_list_extended(context, ui.rig_xmirror)
+        if ui.rig_widgets:
+            joints = {name:tup for name,tup in joints.items() if tup[2] == "head"}
+            offsets = [(tup[1],tup[1].tail-tup[1].head) for tup in joints.values()]
 
         if typ == "CU":
             vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index)))
@@ -323,8 +383,10 @@ class OpCalcVg(bpy.types.Operator):
                     logger.error("%s doesn't have current vertex group", name)
                     continue
                 recalc_cu(vg, vgroups.get(name, []), co)
-        elif typ == "NC":
-            recalc_nc(char, joints)
+        elif typ in ("NC", "NW"):
+            recalc_nc(char, joints, typ == "NW")
+        elif typ == "NJ":
+            recalc_nj(char, joints, ui.rig_vg_n)
         else:
             if typ in ("NP", "NR", "NE"):
                 kd = utils.kdtree_from_verts(char.data.vertices)
@@ -366,6 +428,24 @@ class OpCalcVg(bpy.types.Operator):
                 k = "charmorph_offs_"+attr
                 if k in bone:
                     del bone[k]
+
+        if ui.rig_widgets:
+            vgroups = get_vg_full(char)
+            for bone, offs in offsets:
+                grp = vgroups.get( "joint_" + bone.name + "_head")
+                if grp is None:
+                    continue
+                offs2 = bone.get("charmorph_offs_head")
+                if isinstance(offs2, list) and len(offs2)==3:
+                    offs += mathutils.Vector(offs2)
+                name = "joint_" + bone.name + "_tail"
+                if name in char.vertex_groups:
+                    char.vertex_groups.remove(char.vertex_groups[name])
+                vg = char.vertex_groups.new(name=name)
+                for idx, co, weight in grp:
+                    vg.add([idx], weight, 'REPLACE')
+                bone["charmorph_offs_tail"] = offs
+
 
         return {"FINISHED"}
 
@@ -478,7 +558,6 @@ class OpCheckSymmetry(bpy.types.Operator):
                 if abs(g.weight-g2_weight) >= 0.01:
                     print(v.index, v.co, g1.name, "vg weight mismatch:", g.weight, g2_weight)
                     continue
-
 
             if abs(wgt-1) >= 0.0001:
                 print(v.index, v.co, "not normalized:", wgt)
@@ -689,16 +768,22 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description="Use X mirror for vertex group calculation",
         default=True,
     )
+    rig_widgets: bpy.props.BoolProperty(
+        name="Widget mode",
+        description="Recalc vertex groups only for head of the bone while keeping head to tail offset",
+    )
     rig_vg_calc: bpy.props.EnumProperty(
         name="Recalc mode",
         default="NF",
         items=[
             ("CU", "Current", "Use current vertex group members and recalc only weights"),
-            ("NP", "n nearest points", "Recalculate vertex group based on n nearest points"),
+            ("NP", "n nearest vertices", "Recalculate vertex group based on n nearest vertices"),
+            ("NJ", "n nearest joints", "Recalculate vertex group based on n nearest joints"),
             ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
             ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
             ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
             ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
+            ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
             ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
         ]
     )
@@ -714,8 +799,8 @@ class CMEditUIProps(bpy.types.PropertyGroup):
     )
     rig_vg_n: bpy.props.IntProperty(
         name="VG Point count",
-        description="Point count for vertex group recalc",
-        default=3,
+        description="Vertex/Joint count for vertex group recalc",
+        default=1,
         min=1, soft_max=20,
     )
     rig_vg_radius: bpy.props.FloatProperty(
@@ -723,12 +808,6 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description="Radius for vertex group recalc",
         default=0.1,
         min=0, soft_max=0.5,
-    )
-    rig_vg_n: bpy.props.IntProperty(
-        name="VG Point count",
-        description="Point count for vertex group recalc",
-        default=1,
-        min=1, soft_max=20,
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",
