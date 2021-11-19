@@ -261,6 +261,42 @@ def recalc_np(char, co, name, kd, n):
 def recalc_nr(char, co, name, kd, radius):
     return recalc_lst(char, co, name, kd.find_range(co, radius))
 
+def recalc_nc(char, joints):
+    vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((v.index, gw.weight)))
+    def get_head(bone):
+        if bone is None:
+            return None
+        result = vgroups.get("joint_" + bone.name + "_head")
+        if result is not None:
+            return result
+        if bone.parent is None:
+            return None
+        return vgroups.get("joint_" + bone.parent.name + "_tail")
+
+    for name, (co, bone, attr) in joints.items():
+        if attr == "head":
+            groups = [get_head(bone.parent), vgroups.get("joint_%s_tail" % bone.name)]
+        else:
+            groups = [get_head(bone)] + [vgroups.get("joint_%s_tail" % child.name) for child in bone.children]
+
+        groups = [g for g in groups if g is not None]
+        if len(groups) < 2:
+            continue
+
+        mx = 1e-5
+        gw = []
+        for g in groups:
+            coeff = 1/sum(item[1] for item in g)
+            gw.append(coeff)
+            mx = max(mx, max(item[1]*coeff for item in g))
+
+        if name in char.vertex_groups:
+            char.vertex_groups.remove(char.vertex_groups[name])
+        vg = char.vertex_groups.new(name=name)
+        for g, coeff in zip(groups, gw):
+            for idx, weight in g:
+                vg.add([idx], weight*coeff/mx, 'REPLACE')
+
 class OpCalcVg(bpy.types.Operator):
     bl_idname = "cmedit.calc_vg"
     bl_label = "Recalc vertex groups"
@@ -287,6 +323,8 @@ class OpCalcVg(bpy.types.Operator):
                     logger.error("%s doesn't have current vertex group", name)
                     continue
                 recalc_cu(vg, vgroups.get(name, []), co)
+        elif typ == "NC":
+            recalc_nc(char, joints)
         else:
             if typ in ("NP", "NR", "NE"):
                 kd = utils.kdtree_from_verts(char.data.vertices)
@@ -660,6 +698,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
             ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
             ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
             ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
+            ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
             ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
         ]
     )
@@ -688,7 +727,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
     rig_vg_n: bpy.props.IntProperty(
         name="VG Point count",
         description="Point count for vertex group recalc",
-        default=3,
+        default=1,
         min=1, soft_max=20,
     )
     rig_tweaks_file: bpy.props.StringProperty(
