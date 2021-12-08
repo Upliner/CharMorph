@@ -58,6 +58,9 @@ Editing:
   - Retopology
   - Simple MB-Lab import/export tools
   - Fix L2__Body_Size_min and export it back to MB-Lab
+  - Refine for XL recalc
+  - Perpendicular raycast
+  - Mix with current when recalculating
 
 Pose:
   - Fix glitchy capture poses
