@@ -184,7 +184,7 @@ def recalc_xl(char, co, name, kd, vn, n):
         char.vertex_groups.remove(char.vertex_groups[name])
     vg = char.vertex_groups.new(name=name)
     for idx, weight in m.items():
-        vg.add([idx], weight*coeff, 'REPLACE')
+        vg.add([verts[idx][1]], weight*coeff, 'REPLACE')
 
     return True
 
@@ -208,7 +208,7 @@ def recalc_othergroups(char, name, groups):
         char.vertex_groups.remove(char.vertex_groups[name])
     vg = char.vertex_groups.new(name=name)
     for g, coeff in zip(groups, gw):
-        for idx, co, weight in g[0]:
+        for idx, _, weight in g[0]:
             vg.add([idx], weight*coeff/mx, 'REPLACE')
 
 def full_to_avg(group):
@@ -216,7 +216,7 @@ def full_to_avg(group):
         return None
     total = 0
     vec = mathutils.Vector()
-    for idx, co, weight in group:
+    for _, co, weight in group:
         total += weight
         vec += co*weight
     if total < 0.1:
@@ -267,10 +267,10 @@ def recalc_nj(char, joints, n):
             kd.insert(co, len(groups))
             groups.append((name,group))
     kd.balance()
-    for name, (co, bone, attr) in joints.items():
+    for name, (co, _, _) in joints.items():
         cur_groups = []
         coords = []
-        for co2, idx, dist in sorted(kd.find_n(co, n+1), key=lambda tup: tup[2]):
+        for co2, idx, _ in sorted(kd.find_n(co, n+1), key=lambda tup: tup[2]):
             name2, group = groups[idx]
             if name2 == name:
                 continue
