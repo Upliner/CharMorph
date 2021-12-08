@@ -516,8 +516,8 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         min=3, soft_max=256,
     )
     rig_vg_xl_n: bpy.props.IntProperty(
-        name="Search point count",
-        description="Cross lines count",
+        name="Cross lines count",
+        description="How many cross lines to search",
         default=4,
         min=1, soft_max=16,
     )
