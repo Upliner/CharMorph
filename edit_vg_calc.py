@@ -119,6 +119,16 @@ def lazyprop(fn):
         return getattr(self, attr_name)
     return _lazyprop
 
+def calc_group_weights(groups, co):
+    groups2 = []
+    coords = []
+    for g in groups:
+        co2 = vg_full_to_avg(g)
+        if co2 is not None:
+            groups2.append(g)
+            coords.append(co2)
+    return [(vg_full_to_dict(g), weight) for g, weight in zip(groups2, barycentric_weight_calc(coords, co))]
+
 # pylint doesn't understand lazy properties so disable these errors for class
 # pylint: disable=no-member
 class VGCalculator:
@@ -402,14 +412,7 @@ class VGCalculator:
 
         groups = (g for g in groups if g is not None)
         if self.ui.vg_calc == "NW":
-            groups2 = []
-            coords = []
-            for g in groups:
-                co2 = vg_full_to_avg(g)
-                if co2 is not None:
-                    groups2.append(g)
-                    coords.append(co2)
-            groups = [(vg_full_to_dict(g), weight) for g, weight in zip(groups2, barycentric_weight_calc(coords, co))]
+            groups = calc_group_weights(groups, co)
         else:
             groups = [(vg_full_to_dict(g), 1) for g in groups]
         if len(groups) < 2:
