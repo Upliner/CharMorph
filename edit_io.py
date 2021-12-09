@@ -239,6 +239,36 @@ class OpMorphsExport(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+class UIProps:
+    vg_regex: bpy.props.StringProperty(
+        name="VG regex",
+        description="Regular expression for vertex group export",
+        default="^(DEF-|MCH-|ORG|(corrective_smooth|preserve_volume)(_inv)?$)",
+    )
+    vg_overwrite: bpy.props.BoolProperty(
+        name="VG overwrite",
+        description="Overwrite existing vertex groups with imported ones",
+    )
+    morph_float_precicion: bpy.props.EnumProperty(
+        name="Precision",
+        description="Floating point precision for morph npz files",
+        default="32",
+        items=[
+            ("32", "32 bits", "IEEE Single precision floating point"),
+            ("64", "64 bits", "IEEE Double precision floating point"),
+        ]
+    )
+    rig_bones_mode: bpy.props.EnumProperty(
+        name="Bones mode",
+        description="Bones export mode",
+        default="N",
+        items=[
+            ("N", "Props only", "Export data only where charmorph_* custom props are present"),
+            ("X", "X axis", "Export X axis for all bones"),
+            ("Z", "Z axis", "Export Z axis for all bones"),
+        ]
+    )
+
 class CHARMORPH_PT_FileIO(bpy.types.Panel):
     bl_label = "File I/O"
     bl_parent_id = "VIEW3D_PT_CMEdit"

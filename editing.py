@@ -50,28 +50,13 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         ui = context.window_manager.cmedit_ui
         l = self.layout
         l.prop(ui, "rig_char")
-        l.operator("cmedit.joints_to_vg")
-        l.prop(ui, "rig_xmirror")
-        l.prop(ui, "rig_widgets")
-        l.prop(ui, "rig_vg_offs")
-        l.prop(ui, "rig_vg_calc")
-        if ui.rig_vg_calc in ("NF","RA"):
-            l.prop(ui, "rig_vg_snap")
-        if ui.rig_vg_calc in ("NP","NJ"):
-            l.prop(ui, "rig_vg_n")
-        elif ui.rig_vg_calc == "NR":
-            l.prop(ui, "rig_vg_radius")
-        elif ui.rig_vg_calc == "XL":
-            l.prop(ui, "rig_vg_xl_vn")
-            l.prop(ui, "rig_vg_xl_n")
-        l.prop(ui, "rig_vg_mix", slider=True)
-
-        l.operator("cmedit.calc_vg")
         l.operator("cmedit.symmetrize_joints")
         l.operator("cmedit.bbone_handles")
         l.operator("cmedit.rigify_finalize")
         l.prop(ui, "rig_tweaks_file")
         l.operator("cmedit.rigify_tweaks")
+        l.separator()
+        l.operator("cmedit.joints_to_vg")
 
 class CMEDIT_PT_Utils(bpy.types.Panel):
     bl_label = "Utils"
@@ -87,16 +72,11 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
         l.operator("cmedit.check_symmetry")
         l.operator("cmedit.symmetrize_vg")
 
-def obj_by_type(name, typ):
-    if not name:
-        return None
-    obj = bpy.data.objects.get(name)
-    if obj and obj.type == typ:
-        return obj
-    return None
-
 def get_char(context):
-    return obj_by_type(context.window_manager.cmedit_ui.rig_char, "MESH")
+    result = context.window_manager.cmedit_ui.rig_char
+    if result.type != "MESH":
+        return None
+    return result
 
 def kdtree_from_bones(bones):
     kd = mathutils.kdtree.KDTree(len(bones)*2)
@@ -156,11 +136,13 @@ class OpCalcVg(bpy.types.Operator):
 
     def execute(self, context): # pylint: disable=no-self-use
         ui = context.window_manager.cmedit_ui
-        joints = joint_list_extended(context, ui.rig_xmirror)
+        joints = joint_list_extended(context, ui.vg_xmirror)
 
         err = edit_vg_calc.VGCalculator(get_char(context), ui).run(joints)
         if isinstance(err, str):
             self.report({"ERROR"}, err)
+        elif ui.vg_auto_snap:
+            bpy.ops.cmedit.joints_to_vg(context.copy())
 
         return {"FINISHED"}
 
@@ -471,90 +453,11 @@ def objects_by_type(typ):
 
 rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
-class CMEditUIProps(bpy.types.PropertyGroup):
-    # Rigging
-    rig_char: bpy.props.EnumProperty(
+class CMEditUIProps(bpy.types.PropertyGroup, edit_io.UIProps, edit_vg_calc.UIProps):
+    rig_char: bpy.props.PointerProperty(
         name="Char",
-        items=lambda ui, context: objects_by_type("MESH"),
+        type=bpy.types.Object,
         description="Character mesh for rigging"
-    )
-    rig_xmirror: bpy.props.BoolProperty(
-        name="X Mirror",
-        description="Use X mirror for vertex group calculation",
-        default=True,
-    )
-    rig_widgets: bpy.props.BoolProperty(
-        name="Widget mode",
-        description="Recalc vertex groups only for head of the bone while keeping head to tail offset",
-    )
-    rig_vg_calc: bpy.props.EnumProperty(
-        name="Recalc mode",
-        default="NF",
-        items=[
-            ("", "Surface", ""),
-            ("NP", "n nearest vertices", "Recalculate vertex group based on n nearest vertices"),
-            ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
-            ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
-            ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
-            ("", "Interior", ""),
-            ("XL", "Cross lines", "Calculate based on lines crossing the desired point (good for interior joints)"),
-            ("RA", "Raycast along bone", "Cast two rays along the bone and calculate VGs based on hit faces"),
-            ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
-            ("", "Other", ""),
-            ("CU", "Current", "Use current vertex group members and recalc only weights"),
-            ("NJ", "n nearest joints", "Recalculate vertex group based on n nearest joints"),
-            ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
-            ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
-        ]
-    )
-    rig_vg_offs: bpy.props.EnumProperty(
-        name="Offsets",
-        description="Use offset if vertex group can't properly point at joint position",
-        default="C",
-        items=[
-            ("C", "Clear", "Clear any offsets, use only vertex group positions"),
-            ("R", "Recalculate", "Recalculate offsets exactly point specified joint position"),
-            ("K", "Keep", "Keep current offsets"),
-            ("S", "Keep and subtract", "Keep current offset and subtract it when recalculating vertex group"),
-        ]
-    )
-    rig_vg_xl_vn: bpy.props.IntProperty(
-        name="Search point count",
-        description="Search vertex count for cross lines",
-        default=32,
-        min=3, soft_max=256,
-    )
-    rig_vg_xl_n: bpy.props.IntProperty(
-        name="Cross lines count",
-        description="How many cross lines to search",
-        default=4,
-        min=1, soft_max=16,
-    )
-    rig_vg_n: bpy.props.IntProperty(
-        name="VG Point count",
-        description="Vertex/Joint count for vertex group recalc",
-        default=1,
-        min=1, soft_max=20,
-    )
-    rig_vg_radius: bpy.props.FloatProperty(
-        name="VG recalc radius",
-        description="Radius for vertex group recalc",
-        default=0.1,
-        min=0, soft_max=0.5,
-    )
-    rig_vg_snap: bpy.props.FloatProperty(
-        name="Snap distance",
-        description="Snap to vertex or edge instead of face within given distance",
-        default=0.0001,
-        precision=5,
-        min=0, soft_max=0.1,
-    )
-    rig_vg_mix: bpy.props.FloatProperty(
-        name="VG mix factor",
-        description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group.",
-        default=1,
-        min=0, max=1,
-        subtype='FACTOR',
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",
@@ -562,40 +465,13 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         default=rigify_tweaks_file,
         subtype='FILE_PATH',
     )
-    rig_bones_mode: bpy.props.EnumProperty(
-        name="Bones mode",
-        description="Bones export mode",
-        default="N",
-        items=[
-            ("N", "Props only", "Export data only where charmorph_* custom props are present"),
-            ("X", "X axis", "Export X axis for all bones"),
-            ("Z", "Z axis", "Export Z axis for all bones"),
-        ]
-    )
-    vg_regex: bpy.props.StringProperty(
-        name="VG regex",
-        description="Regular expression for vertex group export",
-        default="^(DEF-|MCH-|ORG|(corrective_smooth|preserve_volume)(_inv)?$)",
-    )
-    vg_overwrite: bpy.props.BoolProperty(
-        name="VG overwrite",
-        description="Overwrite existing vertex groups with imported ones",
-    )
-    morph_float_precicion: bpy.props.EnumProperty(
-        name="Precision",
-        description="Floating point precision for morph npz files",
-        default="32",
-        items=[
-            ("32", "32 bits", "IEEE Single precision floating point"),
-            ("64", "64 bits", "IEEE Double precision floating point"),
-        ]
-    )
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
     OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 classes.extend(edit_io.classes)
+classes.extend(edit_vg_calc.classes)
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
 

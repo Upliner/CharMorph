@@ -18,7 +18,8 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import mathutils # pylint: disable=import-error
+import math
+import bpy, mathutils # pylint: disable=import-error
 
 from . import rigging, utils
 
@@ -258,29 +259,30 @@ class VGCalculator:
         if idx is None:
             return "Face not found"
         verts = [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices]
-        if self.ui.rig_vg_snap > 1e-30:
+        if self.ui.vg_snap > 1e-30:
             for co2, idx1 in verts:
-                if (co2-co).length < self.ui.rig_vg_snap:
+                if (co2-co).length < self.ui.vg_snap:
                     return {idx1: 1}
 
             for i, (co2, idx2) in enumerate(verts):
                 co1, idx1 = verts[i-1]
                 co3, p = mathutils.geometry.intersect_point_line(co, co1, co2)
-                if (co3-co).length < self.ui.rig_vg_snap and 0 <= p <= 1:
+                if (co3-co).length < self.ui.vg_snap and 0 <= p <= 1:
                     return {idx1: 1-p, idx2: p}
 
         return calc_lst(co, verts)
 
     def calc_nf(self, co):
-        return self.calc_face(co, self.bvh.find_nearest(co)[2])
+        co2, _, idx, _ = self.bvh.find_nearest(co)
+        return self.calc_face(co2, idx)
 
     def calc_np(self, co):
-        return calc_lst(co, self.kd_verts.find_n(co, self.ui.rig_vg_n))
+        return calc_lst(co, self.kd_verts.find_n(co, self.ui.vg_n))
     def calc_nr(self, co):
-        return calc_lst(co, self.kd_verts.find_range(co, self.ui.rig_vg_radius))
+        return calc_lst(co, self.kd_verts.find_range(co, self.ui.vg_radius))
 
     def calc_xl(self, co):
-        verts = self.kd_verts.find_n(co, self.ui.rig_vg_xl_vn)
+        verts = self.kd_verts.find_n(co, self.ui.vg_xl_vn)
         lns = []
         for i in range(len(verts)-1):
             for j in range(i+1, len(verts)):
@@ -294,22 +296,91 @@ class VGCalculator:
                     lns.append((verts[i][1], verts[j][1], d, p))
 
         lns.sort(key=lambda tup:tup[2])
-        lns = lns[:self.ui.rig_vg_xl_n]
+        lns = lns[:self.ui.vg_xl_n]
         if len(lns) == 0:
             return "No cross lines found"
 
         return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1-p), (j, p))))
 
-    def calc_ra(self, co):
-        d = self.cur_bone.y_axis
+    def cast_rays(self, co, d):
         b = self.bvh
         co1, _, idx1, _ = b.ray_cast(co, d)
         co2, _, idx2, _ = b.ray_cast(co, -d)
         if idx1 is None or idx2 is None:
-            return "Ray cast failed"
+            return None
         _, p = mathutils.geometry.intersect_point_line(co, co1, co2)
         p = min(max(p, 0), 1)
         return vg_mix2(self.calc_face(co1, idx1), self.calc_face(co2, idx2), p)
+
+    def calc_rays(self, co, callback):
+        if not self.ui.vg_x and not self.ui.vg_y and not self.ui.vg_z:
+            return "No axes selected"
+        result = {}
+        def cast(d):
+            vg = self.cast_rays(co, d)
+            if vg is not None:
+                vg_add(result, vg)
+
+        callback(cast)
+
+        if not result:
+            return "Ray cast failed"
+
+        return result
+
+    def rays_bone(self, cast):
+        def cast_perp(axis, y):
+            for i in range(self.ui.vg_rays):
+                cast(mathutils.Quaternion(y, math.pi*i/self.ui.vg_rays + self.ui.vg_roll) @ axis)
+        def cast_axes(x, y, z):
+            if self.ui.vg_y:
+                cast(y)
+            if self.ui.vg_x:
+                cast_perp(x, y)
+            if self.ui.vg_z:
+                cast_perp(z, y)
+        def cast_bone(bone):
+            cast_axes(bone.x_axis, bone.y_axis, bone.z_axis)
+
+        children = self.cur_bone.children
+        child = children[0] if len(children) == 1 else None
+
+        if ((self.cur_attr=="head" and (self.cur_bone.parent is None or self.ui.vg_bone == "C")) or
+            (self.cur_attr=="tail" and (child is None or self.ui.vg_bone == "P"))):
+            cast_bone(self.cur_bone)
+        elif self.ui.vg_bone == "P":
+            cast_bone(self.cur_bone.parent)
+        elif self.ui.vg_bone == "C":
+            cast_bone(child)
+        else:
+            if self.cur_attr=="head":
+                bone2 = self.cur_bone.parent
+            else:
+                bone2 = child
+            if self.ui.vg_bone == "M":
+                cast_bone(self.cur_bone)
+                cast_bone(bone2)
+            else:
+                cast_axes(self.cur_bone.x_axis+bone2.x_axis, self.cur_bone.y_axis+bone2.y_axis, self.cur_bone.z_axis+bone2.z_axis)
+
+    def rays_global(self, cast):
+        if self.ui.vg_obj:
+            mat = self.ui.vg_obj.matrix_world.to_3x3()
+        else:
+            mat = mathutils.Matrix.Identity(3)
+
+        if self.ui.vg_x:
+            cast(mathutils.Vector(mat[0]))
+        if self.ui.vg_y:
+            cast(mathutils.Vector(mat[1]))
+        if self.ui.vg_z:
+            cast(mathutils.Vector(mat[2]))
+
+    def calc_rb(self, co):
+        return self.calc_rays(co, self.rays_bone)
+
+    def calc_rg(self, co):
+        return self.calc_rays(co, self.rays_global)
 
     def calc_nc(self, co):
         vgroups = self.vg_full
@@ -330,7 +401,7 @@ class VGCalculator:
             groups = [get_head(bone)] + [vgroups.get("joint_%s_tail" % child.name) for child in bone.children]
 
         groups = (g for g in groups if g is not None)
-        if self.ui.rig_vg_calc == "NW":
+        if self.ui.vg_calc == "NW":
             groups2 = []
             coords = []
             for g in groups:
@@ -351,25 +422,25 @@ class VGCalculator:
     def calc_nj(self, co):
         cur_groups = []
         coords = []
-        for co2, idx, _ in sorted(self.kd_joints.find_n(co, self.ui.rig_vg_n+1), key=lambda tup: tup[2]):
+        for co2, idx, _ in sorted(self.kd_joints.find_n(co, self.ui.vg_n+1), key=lambda tup: tup[2]):
             name, group = self.kdj_groups[idx]
             if name == self.cur_name:
                 continue
             cur_groups.append(vg_full_to_dict(group))
             coords.append(co2)
-            if len(cur_groups) >= self.ui.rig_vg_n:
+            if len(cur_groups) >= self.ui.vg_n:
                 break
         return vg_mixmult(zip(cur_groups, barycentric_weight_calc(coords, co)))
 
     def run(self, joints):
-        if self.ui.rig_widgets:
+        if self.ui.vg_widgets:
             joints = {name:tup for name, tup in joints.items() if tup[2] == "head"}
             offsets = {k:v[1].tail-v[1].head for k,v in joints.items()}
 
         char = self.char
         verts = char.data.vertices
 
-        calc_func = "calc_" + self.ui.rig_vg_calc.lower()
+        calc_func = "calc_" + self.ui.vg_calc.lower()
         if not hasattr(self, calc_func):
             return "Invalid calc func"
         calc_func = getattr(self, calc_func)
@@ -380,17 +451,17 @@ class VGCalculator:
             self.cur_attr = attr
 
             co1 = co
-            if self.ui.rig_vg_offs == "S":
+            if self.ui.vg_offs == "S":
                 co1 -= get_offs(bone, attr)
 
             vg_data = calc_func(co)
             if isinstance(vg_data, str):
                 return name + ": " + vg_data
 
-            if self.ui.rig_vg_mix < 1:
+            if self.ui.vg_mix < 1:
                 group = self.vg_full.get(name)
                 if group is not None:
-                    vg_mix2(vg_data, vg_full_to_dict(group), 1-self.ui.rig_vg_mix)
+                    vg_mix2(vg_data, vg_full_to_dict(group), 1-self.ui.vg_mix)
 
             coeff = max(vg_data.values())
             if coeff < 1e-30:
@@ -401,13 +472,13 @@ class VGCalculator:
             wsum = 0.0
 
             vg = overwrite_vg(char.vertex_groups, name)
-            if self.ui.rig_widgets:
+            if self.ui.vg_widgets:
                 vgt = overwrite_vg(char.vertex_groups, "joint_" + bone.name + "_tail")
 
             for idx, weight in vg_data.items():
                 weight *= coeff
                 vg.add([idx], weight, 'REPLACE')
-                if self.ui.rig_widgets:
+                if self.ui.vg_widgets:
                     vgt.add([idx], weight, 'REPLACE')
                 co2 += verts[idx].co * weight
                 wsum += weight
@@ -415,17 +486,193 @@ class VGCalculator:
             co2 /= wsum
 
             k = "charmorph_offs_"+attr
-            if self.ui.rig_vg_offs == "R":
+            if self.ui.vg_offs == "R":
                 offs = co-co2
-                if offs.length >= self.ui.rig_vg_snap:
+                if offs.length >= self.ui.vg_snap:
                     bone[k] = list(offs)
                 elif k in bone:
                     del bone[k]
-            elif self.ui.rig_vg_offs == "C":
+            elif self.ui.vg_offs == "C":
                 if k in bone:
                     del bone[k]
 
-            if self.ui.rig_widgets:
+            if self.ui.vg_widgets:
                 bone["charmorph_offs_tail"] = get_offs(bone, "head") + offsets.get(name, mathutils.Vector())
 
         return True
+
+class UIProps:
+    vg_xmirror: bpy.props.BoolProperty(
+        name="X Mirror",
+        description="Use X mirror for vertex group calculation",
+        default=True,
+    )
+    vg_auto_snap: bpy.props.BoolProperty(
+        name="Auto snap",
+        description="Automatically snap the joint to newly created vertex group",
+        default=True,
+    )
+    vg_widgets: bpy.props.BoolProperty(
+        name="Widget mode",
+        description="Recalc vertex groups only for head of the bone while keeping head to tail offset",
+    )
+    vg_calc: bpy.props.EnumProperty(
+        name="Recalc mode",
+        default="NF",
+        items=[
+            ("", "Surface", ""),
+            ("NP", "n nearest vertices", "Snap joint to n nearest vertices"),
+            ("NF", "Nearest face", "Snap joint to nearest face"),
+            ("NE", "Nearest edge", "Snap joint to nearest edge"),
+            ("NR", "By distance", "Snap joint to vertices within specified distance"),
+            ("", "Inner", ""),
+            ("RB", "Raycast bone axes", "Cast rays along bone axes and calculate VGs based on hit faces"),
+            ("RG", "Raycast global", "Cast rays along global axes or selected object"),
+            ("XL", "Cross lines", "Calculate based on lines crossing the desired point"),
+            ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
+            ("", "Other", ""),
+            ("CU", "Current", "Use current vertex group members and recalc only weights"),
+            ("NJ", "n nearest joints", "Snap joint to other nearest joints"),
+            ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
+            ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
+        ]
+    )
+    vg_offs: bpy.props.EnumProperty(
+        name="Offsets",
+        description="Use offset if vertex group can't properly point at joint position",
+        default="C",
+        items=[
+            ("C", "Clear", "Clear any offsets, use only vertex group positions"),
+            ("R", "Recalculate", "Recalculate offsets exactly point specified joint position"),
+            ("K", "Keep", "Keep current offsets"),
+            ("S", "Keep and subtract", "Keep current offset and subtract it when recalculating vertex group"),
+        ]
+    )
+    vg_xl_vn: bpy.props.IntProperty(
+        name="Search point count",
+        description="Search vertex count for cross lines",
+        default=32,
+        min=3, soft_max=256,
+    )
+    vg_xl_n: bpy.props.IntProperty(
+        name="Cross lines count",
+        description="How many cross lines to search",
+        default=4,
+        min=1, soft_max=16,
+    )
+    vg_n: bpy.props.IntProperty(
+        name="VG Point count",
+        description="Vertex/Joint count for vertex group recalc",
+        default=1,
+        min=1, soft_max=20,
+    )
+    vg_radius: bpy.props.FloatProperty(
+        name="Search radius",
+        description="Search vertices within given radius",
+        default=0.1,
+        min=0, soft_max=0.5,
+    )
+    vg_snap: bpy.props.FloatProperty(
+        name="Snap distance",
+        description="Snap to vertex or edge instead of face within given distance",
+        default=0.0001,
+        precision=5,
+        min=0, soft_max=0.1,
+    )
+    vg_bone: bpy.props.EnumProperty(
+        name="Bone",
+        description="Which bone axes to use for middle joints. Has no effect at ends of bone chain.",
+        default="A",
+        items=[
+            ("P", "Parent", "Use parent (upper) bone axes"),
+            ("C", "Child", "Use child (lower) bone axes"),
+            ("A", "Average", "Average axes of two bones"),
+            ("M", "Mix", "Cast rays along both bones axes"),
+        ]
+    )
+    vg_rays: bpy.props.IntProperty(
+        name="Ray count",
+        description="When more than 1, cast additional rays perpendicular to the bone. It's recommended to select only one of X,Z axes in this case",
+        default=1,
+        min=1, soft_max=16,
+    )
+    vg_roll: bpy.props.FloatProperty(
+        name="Roll adjust",
+        description="Roll bone axes to this amount when casting rays",
+        default=0,
+        subtype="ANGLE",
+    )
+    vg_mix: bpy.props.FloatProperty(
+        name="Mix factor",
+        description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group.",
+        default=1,
+        min=0, max=1,
+        subtype='FACTOR',
+    )
+    vg_obj: bpy.props.PointerProperty(
+        name="Object",
+        type=bpy.types.Object,
+        description="Get raycast axes from an object (usually empty object, optional)",
+    )
+
+    vg_x: bpy.props.BoolProperty(
+        name="X",
+        description="Cast rays along X axis.",
+        default=True,
+    )
+    vg_y: bpy.props.BoolProperty(
+        name="Y",
+        description="Cast rays along Y axis.",
+        default=True,
+    )
+    vg_z: bpy.props.BoolProperty(
+        name="Z",
+        description="Cast rays along Y axis.",
+        default=True,
+    )
+
+class CMEDIT_PT_VGCalc(bpy.types.Panel):
+    bl_label = "Joint VG Calculation"
+    bl_parent_id = "CMEDIT_PT_Rigging"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "CharMorph"
+    bl_order = 1
+
+    def draw(self, context):
+        ui = context.window_manager.cmedit_ui
+        l = self.layout
+
+        l.operator("cmedit.calc_vg")
+
+        l.prop(ui, "vg_xmirror")
+        l.prop(ui, "vg_auto_snap")
+        l.prop(ui, "vg_widgets")
+        l.prop(ui, "vg_offs")
+        l.prop(ui, "vg_calc")
+        if ui.vg_calc in ("NF", "RB"):
+            l.prop(ui, "vg_snap")
+
+        if ui.vg_calc in ("RB", "RG"):
+            r1 = l.row(heading="Axes", align=True)
+            r1.prop(ui, "vg_x", toggle=True)
+            r1.prop(ui, "vg_y", toggle=True)
+            r1.prop(ui, "vg_z", toggle=True)
+
+        if ui.vg_calc == "RB":
+            l.prop(ui, "vg_bone")
+            l.prop(ui, "vg_rays")
+            l.prop(ui, "vg_roll")
+        if ui.vg_calc == "RG":
+            l.prop(ui, "vg_obj")
+
+        if ui.vg_calc in ("NP","NJ"):
+            l.prop(ui, "vg_n")
+        elif ui.vg_calc == "NR":
+            l.prop(ui, "vg_radius")
+        elif ui.vg_calc == "XL":
+            l.prop(ui, "vg_xl_vn")
+            l.prop(ui, "vg_xl_n")
+        l.prop(ui, "vg_mix", slider=True)
+
+classes = [CMEDIT_PT_VGCalc]
