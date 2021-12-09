@@ -125,9 +125,9 @@ def calc_group_weights(groups, co):
     for g in groups:
         co2 = vg_full_to_avg(g)
         if co2 is not None:
-            groups2.append(g)
+            groups2.append(vg_full_to_dict(g))
             coords.append(co2)
-    return [(vg_full_to_dict(g), weight) for g, weight in zip(groups2, barycentric_weight_calc(coords, co))]
+    return list(zip(groups2, barycentric_weight_calc(coords, co)))
 
 # pylint doesn't understand lazy properties so disable these errors for class
 # pylint: disable=no-member
