@@ -491,19 +491,20 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         name="Recalc mode",
         default="NF",
         items=[
-            ("CU", "Current", "Use current vertex group members and recalc only weights"),
+            ("", "Surface", ""),
             ("NP", "n nearest vertices", "Recalculate vertex group based on n nearest vertices"),
-            ("NJ", "n nearest joints", "Recalculate vertex group based on n nearest joints"),
-            ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
             ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
             ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
-            ("", "---------", ""),
-            ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
-            ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
-            ("", "---------", ""),
+            ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
+            ("", "Interior", ""),
             ("XL", "Cross lines", "Calculate based on lines crossing the desired point (good for interior joints)"),
             #("RA", "Raycast along bone", "Cast two rays along the bone and calculate VGs based on hit faces"),
             ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
+            ("", "Other", ""),
+            ("CU", "Current", "Use current vertex group members and recalc only weights"),
+            ("NJ", "n nearest joints", "Recalculate vertex group based on n nearest joints"),
+            ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
+            ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
         ]
     )
     rig_vg_offs: bpy.props.EnumProperty(

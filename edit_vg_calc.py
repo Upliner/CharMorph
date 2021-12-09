@@ -94,6 +94,11 @@ def overwrite_vg(vertex_groups, name):
         vertex_groups.remove(vertex_groups[name])
     return vertex_groups.new(name=name)
 
+def calc_lst(co, lst):
+    if lst is None or len(lst) == 0:
+        return "No vertices were found by the calc method"
+    return dict(zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co)))
+
 def lazyprop(fn):
     attr_name = '_lazy_' + fn.__name__
     @property
@@ -103,6 +108,8 @@ def lazyprop(fn):
         return getattr(self, attr_name)
     return _lazyprop
 
+# pylint doesn't understand lazy properties so disable these errors for class
+# pylint: disable=no-member
 class VGCalculator:
     def __init__(self, char, ui):
         self.char = char
@@ -196,12 +203,6 @@ class VGCalculator:
 
         return {item[1]:weight for item, weight in zip(lst, weights)}
 
-
-    def calc_lst(self, co, lst):
-        if lst is None or len(lst) == 0:
-            return "No vertices were found by the calc method"
-        return {k: v for k, v in zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co))}
-
     def calc_cu(self, co):
         lst = self.vg_full.get(self.cur_name)
         if lst is None or len(lst) == 0:
@@ -225,7 +226,7 @@ class VGCalculator:
             co1 = lst[idx][0]
             del lst[idx]
 
-        return self.calc_lst(co, slst)
+        return calc_lst(co, slst)
 
     def calc_ne(self, co):
         verts = self.char.data.vertices
@@ -240,20 +241,20 @@ class VGCalculator:
                     mindist = dist
                     lst = [v1, v2]
 
-        return self.calc_lst(co, lst)
+        return calc_lst(co, lst)
 
     def calc_face(self, co, idx):
         if idx is None:
             return "Face not found"
-        return self.calc_lst(co, [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices])
+        return calc_lst(co, [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices])
 
     def calc_nf(self, co):
         return self.calc_face(co, self.bvh.find_nearest(co)[2])
 
     def calc_np(self, co):
-        return self.calc_lst(co, self.kd_verts.find_n(co, self.ui.rig_vg_n))
+        return calc_lst(co, self.kd_verts.find_n(co, self.ui.rig_vg_n))
     def calc_nr(self, co):
-        return self.calc_lst(co, self.kd_verts.find_range(co, self.ui.rig_vg_radius))
+        return calc_lst(co, self.kd_verts.find_range(co, self.ui.rig_vg_radius))
 
     def calc_xl(self, co):
         verts = self.kd_verts.find_n(co, self.ui.rig_vg_xl_vn)
@@ -296,8 +297,14 @@ class VGCalculator:
 
         groups = (g for g in groups if g is not None)
         if self.ui.rig_vg_calc == "NW":
-            z = list(zip(*((g, co2) for g, co2 in ((g, vg_full_to_avg(g)) for g in groups) if co2 is not None)))
-            groups = list(zip([vg_full_to_dict(group) for group in z[0]], barycentric_weight_calc(z[1], co)))
+            groups2 = []
+            coords = []
+            for g in groups:
+                co2 = vg_full_to_avg(g)
+                if co2 is not None:
+                    groups2.append(g)
+                    coords.append(co2)
+            groups = [(vg_full_to_dict(g), weight) for g, weight in zip(groups2, barycentric_weight_calc(coords, co))]
         else:
             groups = [(vg_full_to_dict(g), 1) for g in groups]
         if len(groups) < 2:
@@ -327,7 +334,11 @@ class VGCalculator:
 
         char = self.char
         verts = char.data.vertices
-        calc_func = getattr(self, "calc_" + self.ui.rig_vg_calc.lower())
+
+        calc_func = "calc_" + self.ui.rig_vg_calc.lower()
+        if not hasattr(self, calc_func):
+            return "Invalid calc func"
+        calc_func = getattr(self, calc_func)
 
         for name, (co, bone, attr) in joints.items():
             self.cur_name = name
