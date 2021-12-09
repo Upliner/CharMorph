@@ -72,7 +72,17 @@ def vg_add(a, b, coeff=1):
         a[idx] = a.get(idx, 0)+weight*coeff
     return a
 
-def vg_mix(groups):
+def vg_mix2(a, b, coeff=1):
+    if coeff < 1e-30:
+        return
+    if coeff >= 1:
+        a.clear()
+        a.update(b)
+        return
+    vg_mult(a, 1 - coeff)
+    return vg_add(a, b, coeff)
+
+def vg_mixmult(groups):
     groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum>=1e-30]
     if len(groups) == 0:
         return "No groups were found by the calculation method"
@@ -211,6 +221,7 @@ class VGCalculator:
         if len(lst) > 256:
             return "Too many vertices in current group"
 
+        # Solving travelling salesman problem by nearest neighbour algorithm
         slst = [lst[0]]
         co1 = lst[0][0]
         lst = lst[1:]
@@ -246,7 +257,19 @@ class VGCalculator:
     def calc_face(self, co, idx):
         if idx is None:
             return "Face not found"
-        return calc_lst(co, [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices])
+        verts = [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices]
+        if self.ui.rig_vg_snap > 1e-30:
+            for co2, idx1 in verts:
+                if (co2-co).length < self.ui.rig_vg_snap:
+                    return {idx1: 1}
+
+            for i, (co2, idx2) in enumerate(verts):
+                co1, idx1 = verts[i-1]
+                co3, p = mathutils.geometry.intersect_point_line(co, co1, co2)
+                if (co3-co).length < self.ui.rig_vg_snap and 0 <= p <= 1:
+                    return {idx1: 1-p, idx2: p}
+
+        return calc_lst(co, verts)
 
     def calc_nf(self, co):
         return self.calc_face(co, self.bvh.find_nearest(co)[2])
@@ -276,6 +299,17 @@ class VGCalculator:
             return "No cross lines found"
 
         return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1-p), (j, p))))
+
+    def calc_ra(self, co):
+        d = self.cur_bone.y_axis
+        b = self.bvh
+        co1, _, idx1, _ = b.ray_cast(co, d)
+        co2, _, idx2, _ = b.ray_cast(co, -d)
+        if idx1 is None or idx2 is None:
+            return "Ray cast failed"
+        _, p = mathutils.geometry.intersect_point_line(co, co1, co2)
+        p = min(max(p, 0), 1)
+        return vg_mix2(self.calc_face(co1, idx1), self.calc_face(co2, idx2), p)
 
     def calc_nc(self, co):
         vgroups = self.vg_full
@@ -309,7 +343,7 @@ class VGCalculator:
             groups = [(vg_full_to_dict(g), 1) for g in groups]
         if len(groups) < 2:
             return "Can't find enough already calculated neighbors"
-        return vg_mix(groups)
+        return vg_mixmult(groups)
 
     def calc_nw(self, co):
         return self.calc_nc(co)
@@ -325,7 +359,7 @@ class VGCalculator:
             coords.append(co2)
             if len(cur_groups) >= self.ui.rig_vg_n:
                 break
-        return vg_mix(zip(cur_groups, barycentric_weight_calc(coords, co)))
+        return vg_mixmult(zip(cur_groups, barycentric_weight_calc(coords, co)))
 
     def run(self, joints):
         if self.ui.rig_widgets:
@@ -352,6 +386,11 @@ class VGCalculator:
             vg_data = calc_func(co)
             if isinstance(vg_data, str):
                 return name + ": " + vg_data
+
+            if self.ui.rig_vg_mix < 1:
+                group = self.vg_full.get(name)
+                if group is not None:
+                    vg_add(vg_data, vg_full_to_dict(group), 1-self.ui.rig_vg_mix)
 
             coeff = max(vg_data.values())
             if coeff < 1e-30:

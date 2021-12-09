@@ -64,7 +64,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         elif ui.rig_vg_calc == "XL":
             l.prop(ui, "rig_vg_xl_vn")
             l.prop(ui, "rig_vg_xl_n")
-        #l.prop(ui, "rig_vg_mix")
+        l.prop(ui, "rig_vg_mix", slider=True)
 
         l.operator("cmedit.calc_vg")
         l.operator("cmedit.symmetrize_joints")
@@ -498,7 +498,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
             ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
             ("", "Interior", ""),
             ("XL", "Cross lines", "Calculate based on lines crossing the desired point (good for interior joints)"),
-            #("RA", "Raycast along bone", "Cast two rays along the bone and calculate VGs based on hit faces"),
+            ("RA", "Raycast along bone", "Cast two rays along the bone and calculate VGs based on hit faces"),
             ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
             ("", "Other", ""),
             ("CU", "Current", "Use current vertex group members and recalc only weights"),
@@ -546,6 +546,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         name="Snap distance",
         description="Snap to vertex or edge instead of face within given distance",
         default=0.0001,
+        precision=5,
         min=0, soft_max=0.1,
     )
     rig_vg_mix: bpy.props.FloatProperty(
@@ -553,6 +554,7 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group.",
         default=1,
         min=0, max=1,
+        subtype='FACTOR',
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",
