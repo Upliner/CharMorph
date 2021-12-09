@@ -390,7 +390,7 @@ class VGCalculator:
             if self.ui.rig_vg_mix < 1:
                 group = self.vg_full.get(name)
                 if group is not None:
-                    vg_add(vg_data, vg_full_to_dict(group), 1-self.ui.rig_vg_mix)
+                    vg_mix2(vg_data, vg_full_to_dict(group), 1-self.ui.rig_vg_mix)
 
             coeff = max(vg_data.values())
             if coeff < 1e-30:
