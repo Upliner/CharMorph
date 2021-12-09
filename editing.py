@@ -55,6 +55,8 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l.prop(ui, "rig_widgets")
         l.prop(ui, "rig_vg_offs")
         l.prop(ui, "rig_vg_calc")
+        if ui.rig_vg_calc in ("NF","RA"):
+            l.prop(ui, "rig_vg_snap")
         if ui.rig_vg_calc in ("NP","NJ"):
             l.prop(ui, "rig_vg_n")
         elif ui.rig_vg_calc == "NR":
@@ -62,6 +64,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         elif ui.rig_vg_calc == "XL":
             l.prop(ui, "rig_vg_xl_vn")
             l.prop(ui, "rig_vg_xl_n")
+        #l.prop(ui, "rig_vg_mix")
 
         l.operator("cmedit.calc_vg")
         l.operator("cmedit.symmetrize_joints")
@@ -155,8 +158,9 @@ class OpCalcVg(bpy.types.Operator):
         ui = context.window_manager.cmedit_ui
         joints = joint_list_extended(context, ui.rig_xmirror)
 
-        if not edit_vg_calc.do_calc(get_char(context), joints, ui):
-            self.report({"ERROR"}, "Calculation failed")
+        err = edit_vg_calc.VGCalculator(get_char(context), ui).run(joints)
+        if isinstance(err, str):
+            self.report({"ERROR"}, err)
 
         return {"FINISHED"}
 
@@ -490,12 +494,15 @@ class CMEditUIProps(bpy.types.PropertyGroup):
             ("CU", "Current", "Use current vertex group members and recalc only weights"),
             ("NP", "n nearest vertices", "Recalculate vertex group based on n nearest vertices"),
             ("NJ", "n nearest joints", "Recalculate vertex group based on n nearest joints"),
-            ("XL", "Cross lines", "Calculate based on lines crossing the desired point (good for interior joints)"),
             ("NR", "By distance", "Recalculate vertex group based on vertices within specified distance"),
             ("NF", "Nearest face", "Recalculate vertex group based on nearest face"),
             ("NE", "Nearest edge", "Recalculate vertex group based on nearest edge"),
+            ("", "---------", ""),
             ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
             ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
+            ("", "---------", ""),
+            ("XL", "Cross lines", "Calculate based on lines crossing the desired point (good for interior joints)"),
+            #("RA", "Raycast along bone", "Cast two rays along the bone and calculate VGs based on hit faces"),
             ("BB", "Bounding box (exp)", "Recalculate vertex group based on smallest bounding box vertices (experimental)"),
         ]
     )
@@ -504,9 +511,10 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description="Use offset if vertex group can't properly point at joint position",
         default="C",
         items=[
-            ("K", "Keep", "Keep current offsets"),
-            ("R", "Recalculate", "Recalculate offsets exactly point specified joint position"),
             ("C", "Clear", "Clear any offsets, use only vertex group positions"),
+            ("R", "Recalculate", "Recalculate offsets exactly point specified joint position"),
+            ("K", "Keep", "Keep current offsets"),
+            ("S", "Keep and subtract", "Keep current offset and subtract it when recalculating vertex group"),
         ]
     )
     rig_vg_xl_vn: bpy.props.IntProperty(
@@ -532,6 +540,18 @@ class CMEditUIProps(bpy.types.PropertyGroup):
         description="Radius for vertex group recalc",
         default=0.1,
         min=0, soft_max=0.5,
+    )
+    rig_vg_snap: bpy.props.FloatProperty(
+        name="Snap distance",
+        description="Snap to vertex or edge instead of face within given distance",
+        default=0.0001,
+        min=0, soft_max=0.1,
+    )
+    rig_vg_mix: bpy.props.FloatProperty(
+        name="VG mix factor",
+        description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group.",
+        default=1,
+        min=0, max=1,
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",

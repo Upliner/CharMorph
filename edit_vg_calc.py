@@ -18,12 +18,9 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import logging
-import bpy, mathutils # pylint: disable=import-error
+import mathutils # pylint: disable=import-error
 
 from . import rigging, utils
-
-logger = logging.getLogger(__name__)
 
 def closest_point_on_face(face, co):
     if len(face) == 3:
@@ -35,83 +32,6 @@ def closest_point_on_face(face, co):
     results.sort(key=lambda elem: (elem-co).length)
     return (results[0]+results[1])/2
 
-def recalc_bb(char, co, name):
-    lst = [(None, None, None) for _ in range(8)]
-    for idx, vert in enumerate(char.data.vertices):
-        vco = vert.co
-        for bv in range(8):
-            for coord in range(3):
-                if bv>>coord&1 != (1 if vco[coord] > co[coord] else 0):
-                    break
-            else:
-                dist = sum(abs(vco[coord]-co[coord]) for coord in range(3))
-                if lst[bv][2] is None or lst[bv][2] > dist:
-                    lst[bv] = (vco, idx, dist)
-                break
-    for item in lst:
-        if item[0] is None:
-            logger.error("Not all bbox points was found")
-            return
-
-    front_face = [item[0] for item in lst[:4]]
-    back_face = [item[0] for item in lst[4:]]
-
-    front_face[2], front_face[3] = front_face[3], front_face[2]
-    back_face[2], back_face[3] = back_face[3], back_face[2]
-
-    weights_front = mathutils.interpolate.poly_3d_calc(front_face, closest_point_on_face(front_face, co))
-    weights_back = mathutils.interpolate.poly_3d_calc(back_face, closest_point_on_face(back_face, co))
-
-    avg_front = sum((co*weight for co, weight in zip(front_face, weights_front)), mathutils.Vector())
-    avg_back = sum((co*weight for co, weight in zip(back_face, weights_back)), mathutils.Vector())
-    axis = avg_back-avg_front
-    offs = min(max((co-avg_front).dot(axis)/axis.dot(axis), 0), 1)
-
-    weights_front[2], weights_front[3] = weights_front[3], weights_front[2]
-    weights_back[2], weights_back[3] = weights_back[3], weights_back[2]
-
-    weights = [w*(1-offs) for w in weights_front]+[w*offs for w in weights_back]
-
-    if name in char.vertex_groups:
-        char.vertex_groups.remove(char.vertex_groups[name])
-    vg = char.vertex_groups.new(name=name)
-    for item, weight in zip(lst, weights):
-        vg.add([item[1]], weight, 'REPLACE')
-
-def recalc_cu(vg, lst, co):
-    if len(lst) == 0:
-        logger.error("No points")
-        return False
-    weights = mathutils.interpolate.poly_3d_calc([item[0] for item in lst], co)
-    coeff = max(weights)
-    if coeff < 1e-30:
-        logger.error("Bad coeff")
-        return False
-    coeff = 1/coeff
-    for weight, item in zip(weights, lst):
-        vg.add([item[1]], weight*coeff, 'REPLACE')
-    return True
-
-def recalc_lst(char, co, name, lst):
-    if name in char.vertex_groups:
-        char.vertex_groups.remove(char.vertex_groups[name])
-    vg = char.vertex_groups.new(name=name)
-    vg.add([item[1] for item in lst], 1, 'REPLACE')
-    if len(lst) == 1:
-        return True
-    return recalc_cu(vg, lst, co)
-
-def calc_emap(char):
-    result = {}
-    for edge in char.data.edges:
-        for vert in edge.vertices:
-            item = result.get(vert)
-            if item is None:
-                item = []
-                result[vert] = item
-            item.append(edge.index)
-    return result
-
 def dist_edge(co, v1, v2):
     co2, dist = mathutils.geometry.intersect_point_line(co, v1, v2)
     if dist <= 0:
@@ -120,255 +40,342 @@ def dist_edge(co, v1, v2):
         return (v2-co).length
     return (co2-co).length
 
-def dist_edge2(co, v1, v2):
-    co2, dist = mathutils.geometry.intersect_point_line(co, v1, v2)
-    if dist <= 0 or dist >= 1:
-        return None
-    return (co2-co).length
-
-def recalc_ne(char, co, name, kd, emap):
-    verts = char.data.vertices
-    edges = char.data.edges
-    lst = None
-    mindist = 1e30
-    for _, vert, _ in kd.find_n(co, 4):
-        for edge in emap[vert]:
-            v1, v2 = tuple((verts[i].co, i) for i in edges[edge].vertices)
-            dist = dist_edge(co, v1[0], v2[0])
-            if dist < mindist:
-                mindist = dist
-                lst = [v1, v2]
-    if lst is None:
-        logger.error("Edge not found")
-        return False
-    return recalc_lst(char, co, name, lst)
-
-def recalc_nf(char, co, name, bvh):
-    _, _, idx, _ = bvh.find_nearest(co)
-    if idx is None:
-        logger.error("Face not found")
-        return False
-    verts = char.data.vertices
-    return recalc_lst(char, co, name, [(verts[i].co, i) for i in char.data.polygons[idx].vertices])
-
-def recalc_np(char, co, name, kd, n):
-    return recalc_lst(char, co, name, kd.find_n(co, n))
-def recalc_nr(char, co, name, kd, radius):
-    return recalc_lst(char, co, name, kd.find_range(co, radius))
-
-def recalc_xl(char, co, name, kd, vn, n):
-    verts = kd.find_n(co, vn)
-    lns = []
-    for i in range(len(verts)-1):
-        for j in range(i+1, len(verts)):
-            co1 = verts[i][0]
-            co2 = verts[j][0]
-            d = dist_edge2(co, co1, co2)
-            if d is not None and d < (co2-co1).length/2:
-                lns.append((i,j,d))
-
-    lns.sort(key=lambda tup:tup[2])
-    lns = lns[:n]
-    if len(lns) == 0:
-        logger.error("No cross lines found")
-        return False
-    m = {}
-    for i, j, _ in lns:
-        weights = mathutils.interpolate.poly_3d_calc([verts[i][0], verts[j][0]], co)
-        m[i] = m.get(i, 0) + weights[0]
-        m[j] = m.get(j, 0) + weights[1]
-
-    coeff = 1/max(m.values())
-
-    if name in char.vertex_groups:
-        char.vertex_groups.remove(char.vertex_groups[name])
-    vg = char.vertex_groups.new(name=name)
-    for idx, weight in m.items():
-        vg.add([verts[idx][1]], weight*coeff, 'REPLACE')
-
-    return True
-
-def get_vg_full(char):
-    return rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((v.index, co, gw.weight)))
-
-def recalc_othergroups(char, name, groups):
-    if len(groups) == 0:
-        return
-    if len(groups) == 1:
-        gw = [1]
-        mx = 1
-    else:
-        gw = []
-        mx = 1e-5
-        for g, weight in groups:
-            coeff = weight/sum(item[2] for item in g)
-            gw.append(coeff)
-            mx = max(mx, max(item[2]*coeff for item in g))
-    if name in char.vertex_groups:
-        char.vertex_groups.remove(char.vertex_groups[name])
-    vg = char.vertex_groups.new(name=name)
-    for g, coeff in zip(groups, gw):
-        for idx, _, weight in g[0]:
-            vg.add([idx], weight*coeff/mx, 'REPLACE')
-
-def full_to_avg(group):
-    if group is None:
-        return None
-    total = 0
-    vec = mathutils.Vector()
-    for _, co, weight in group:
-        total += weight
-        vec += co*weight
-    if total < 0.1:
-        return None
-    return vec / total
-
-
 def barycentric_weight_calc(veclist, co):
     result = mathutils.interpolate.poly_3d_calc(veclist, co)
     if sum(result)<0.5:
         return [1] * len(result)
     return result
 
-def recalc_nc(char, joints, weighted : bool):
-    vgroups = get_vg_full(char)
-    def get_head(bone):
-        if bone is None:
-            return None
-        result = vgroups.get("joint_" + bone.name + "_head")
-        if result is not None:
-            return result
-        if bone.parent is None:
-            return None
-        return vgroups.get("joint_" + bone.parent.name + "_tail")
+def vg_full_to_avg(group):
+    if group is None:
+        return None
+    total = 0
+    vec = mathutils.Vector()
+    for co, _, weight in group:
+        total += weight
+        vec += co*weight
+    if total < 0.1:
+        return None
+    return vec / total
 
-    for name, (co, bone, attr) in joints.items():
-        if attr == "head":
+def vg_full_to_dict(group):
+    return {tup[1]:tup[2] for tup in group}
+
+def vg_mult(vg, coeff):
+    for idx, weight in vg.items():
+        vg[idx] = weight*coeff
+
+def vg_add(a, b, coeff=1):
+    if isinstance(b, dict):
+        b = b.items()
+    for idx, weight in b:
+        a[idx] = a.get(idx, 0)+weight*coeff
+    return a
+
+def vg_mix(groups):
+    groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum>=1e-30]
+    if len(groups) == 0:
+        return "No groups were found by the calculation method"
+    result = groups[0][0]
+    if len(groups) > 1:
+        vg_mult(result, groups[0][1])
+    for group, coeff in groups[1:]:
+        vg_add(result, group, coeff)
+    return result
+
+def get_offs(bone, attr):
+    offs = bone.get("charmorph_offs_" + attr)
+    if hasattr(offs, "__len__") and len(offs)==3:
+        return mathutils.Vector(offs)
+    return mathutils.Vector()
+
+def overwrite_vg(vertex_groups, name):
+    if name in vertex_groups:
+        vertex_groups.remove(vertex_groups[name])
+    return vertex_groups.new(name=name)
+
+def lazyprop(fn):
+    attr_name = '_lazy_' + fn.__name__
+    @property
+    def _lazyprop(self):
+        if not hasattr(self, attr_name):
+            setattr(self, attr_name, fn(self))
+        return getattr(self, attr_name)
+    return _lazyprop
+
+class VGCalculator:
+    def __init__(self, char, ui):
+        self.char = char
+        self.ui = ui
+        self.errors = []
+
+        self.cur_bone = None
+        self.cur_attr = ""
+        self.cur_name = ""
+
+        self.kdj_groups = None
+
+    @lazyprop
+    def vg_full(self):
+        return rigging.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
+
+    @lazyprop
+    def vg_avg(self):
+        return rigging.get_vg_avg(self.char)
+
+    @lazyprop
+    def kd_verts(self):
+        return utils.kdtree_from_verts(self.char.data.vertices)
+
+    @lazyprop
+    def bvh(self):
+        return mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in self.char.data.vertices], [f.vertices for f in self.char.data.polygons])
+
+    @lazyprop
+    def emap(self):
+        result = {}
+        for edge in self.char.data.edges:
+            for vert in edge.vertices:
+                item = result.get(vert)
+                if item is None:
+                    item = []
+                    result[vert] = item
+                item.append(edge.index)
+        return result
+
+    @lazyprop
+    def kd_joints(self):
+        all_groups = self.vg_full
+        kd = mathutils.kdtree.KDTree(len(all_groups))
+        self.kdj_groups = []
+        for name, group in all_groups.items():
+            co = vg_full_to_avg(group)
+            if co is not None:
+                kd.insert(co, len(self.kdj_groups))
+                self.kdj_groups.append((name, group))
+        kd.balance()
+        return kd
+
+    # Calc functions
+
+    def calc_bb(self, co):
+        lst = [(None, None, None) for _ in range(8)]
+        for idx, vert in enumerate(self.char.data.vertices):
+            vco = vert.co
+            for bv in range(8):
+                for coord in range(3):
+                    if bv>>coord&1 != (1 if vco[coord] > co[coord] else 0):
+                        break
+                else:
+                    dist = sum(abs(vco[coord]-co[coord]) for coord in range(3))
+                    if lst[bv][2] is None or lst[bv][2] > dist:
+                        lst[bv] = (vco, idx, dist)
+                    break
+        for item in lst:
+            if item[0] is None:
+                return "Not all bbox points was found"
+
+        front_face = [item[0] for item in lst[:4]]
+        back_face = [item[0] for item in lst[4:]]
+
+        front_face[2], front_face[3] = front_face[3], front_face[2]
+        back_face[2], back_face[3] = back_face[3], back_face[2]
+
+        weights_front = barycentric_weight_calc(front_face, closest_point_on_face(front_face, co))
+        weights_back = barycentric_weight_calc(back_face, closest_point_on_face(back_face, co))
+
+        avg_front = sum((co*weight for co, weight in zip(front_face, weights_front)), mathutils.Vector())
+        avg_back = sum((co*weight for co, weight in zip(back_face, weights_back)), mathutils.Vector())
+        axis = avg_back-avg_front
+        offs = min(max((co-avg_front).dot(axis)/axis.dot(axis), 0), 1)
+
+        weights_front[2], weights_front[3] = weights_front[3], weights_front[2]
+        weights_back[2], weights_back[3] = weights_back[3], weights_back[2]
+
+        weights = [w*(1-offs) for w in weights_front]+[w*offs for w in weights_back]
+
+        return {item[1]:weight for item, weight in zip(lst, weights)}
+
+
+    def calc_lst(self, co, lst):
+        if lst is None or len(lst) == 0:
+            return "No vertices were found by the calc method"
+        return {k: v for k, v in zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co))}
+
+    def calc_cu(self, co):
+        lst = self.vg_full.get(self.cur_name)
+        if lst is None or len(lst) == 0:
+            return "No vertices in current group"
+
+        if len(lst) > 256:
+            return "Too many vertices in current group"
+
+        slst = [lst[0]]
+        co1 = lst[0][0]
+        lst = lst[1:]
+        while len(lst) > 0:
+            idx = 0
+            dist = (lst[0][0]-co1).length
+            for i, item in enumerate(lst[1:]):
+                dist2 = (item[0]-co1).length
+                if dist2 < dist:
+                    idx = i + 1
+                    dist = dist2
+            slst.append(lst[idx])
+            co1 = lst[idx][0]
+            del lst[idx]
+
+        return self.calc_lst(co, slst)
+
+    def calc_ne(self, co):
+        verts = self.char.data.vertices
+        edges = self.char.data.edges
+        lst = None
+        mindist = 1e30
+        for _, vert, _ in self.kd_verts.find_n(co, 4):
+            for edge in self.emap[vert]:
+                v1, v2 = tuple((verts[i].co, i) for i in edges[edge].vertices)
+                dist = dist_edge(co, v1[0], v2[0])
+                if dist < mindist:
+                    mindist = dist
+                    lst = [v1, v2]
+
+        return self.calc_lst(co, lst)
+
+    def calc_face(self, co, idx):
+        if idx is None:
+            return "Face not found"
+        return self.calc_lst(co, [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices])
+
+    def calc_nf(self, co):
+        return self.calc_face(co, self.bvh.find_nearest(co)[2])
+
+    def calc_np(self, co):
+        return self.calc_lst(co, self.kd_verts.find_n(co, self.ui.rig_vg_n))
+    def calc_nr(self, co):
+        return self.calc_lst(co, self.kd_verts.find_range(co, self.ui.rig_vg_radius))
+
+    def calc_xl(self, co):
+        verts = self.kd_verts.find_n(co, self.ui.rig_vg_xl_vn)
+        lns = []
+        for i in range(len(verts)-1):
+            for j in range(i+1, len(verts)):
+                co1 = verts[i][0]
+                co2 = verts[j][0]
+                co3, p = mathutils.geometry.intersect_point_line(co, co1, co2)
+                if p < 0 or p > 1:
+                    continue
+                d = (co3-co).length
+                if d < (co2-co1).length/2:
+                    lns.append((verts[i][1], verts[j][1], d, p))
+
+        lns.sort(key=lambda tup:tup[2])
+        lns = lns[:self.ui.rig_vg_xl_n]
+        if len(lns) == 0:
+            return "No cross lines found"
+
+        return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1-p), (j, p))))
+
+    def calc_nc(self, co):
+        vgroups = self.vg_full
+        def get_head(bone):
+            if bone is None:
+                return None
+            result = vgroups.get("joint_" + bone.name + "_head")
+            if result is not None:
+                return result
+            if bone.parent is None:
+                return None
+            return vgroups.get("joint_" + bone.parent.name + "_tail")
+
+        bone = self.cur_bone
+        if self.cur_attr == "head":
             groups = [get_head(bone.parent), vgroups.get("joint_%s_tail" % bone.name)]
         else:
             groups = [get_head(bone)] + [vgroups.get("joint_%s_tail" % child.name) for child in bone.children]
 
         groups = (g for g in groups if g is not None)
-        if weighted:
-            z = list(zip(*((g, co2) for g, co2 in ((g, full_to_avg(g)) for g in groups) if co2 is not None)))
-            groups = list(zip(z[0], barycentric_weight_calc(z[1], co)))
+        if self.ui.rig_vg_calc == "NW":
+            z = list(zip(*((g, co2) for g, co2 in ((g, vg_full_to_avg(g)) for g in groups) if co2 is not None)))
+            groups = list(zip([vg_full_to_dict(group) for group in z[0]], barycentric_weight_calc(z[1], co)))
         else:
-            groups = [(g, 1) for g in groups]
-        if len(groups) > 1:
-            recalc_othergroups(char, name, groups)
+            groups = [(vg_full_to_dict(g), 1) for g in groups]
+        if len(groups) < 2:
+            return "Can't find enough already calculated neighbors"
+        return vg_mix(groups)
 
-def recalc_nj(char, joints, n):
-    all_groups = get_vg_full(char)
-    kd = mathutils.kdtree.KDTree(len(all_groups))
-    groups = []
-    for name, group in all_groups.items():
-        co = full_to_avg(group)
-        if co is not None:
-            kd.insert(co, len(groups))
-            groups.append((name,group))
-    kd.balance()
-    for name, (co, _, _) in joints.items():
+    def calc_nw(self, co):
+        return self.calc_nc(co)
+
+    def calc_nj(self, co):
         cur_groups = []
         coords = []
-        for co2, idx, _ in sorted(kd.find_n(co, n+1), key=lambda tup: tup[2]):
-            name2, group = groups[idx]
-            if name2 == name:
+        for co2, idx, _ in sorted(self.kd_joints.find_n(co, self.ui.rig_vg_n+1), key=lambda tup: tup[2]):
+            name, group = self.kdj_groups[idx]
+            if name == self.cur_name:
                 continue
-            cur_groups.append(group)
+            cur_groups.append(vg_full_to_dict(group))
             coords.append(co2)
-            if len(cur_groups) >= n:
+            if len(cur_groups) >= self.ui.rig_vg_n:
                 break
-        recalc_othergroups(char, name, list(zip(cur_groups, barycentric_weight_calc(coords, co))))
+        return vg_mix(zip(cur_groups, barycentric_weight_calc(coords, co)))
 
-def calc_vg(char, joints, ui):
-    typ = ui.rig_vg_calc
+    def run(self, joints):
+        if self.ui.rig_widgets:
+            joints = {name:tup for name, tup in joints.items() if tup[2] == "head"}
+            offsets = {k:v[1].tail-v[1].head for k,v in joints.items()}
 
-    if typ in ("NC", "NW"):
-        recalc_nc(char, joints, typ == "NW")
-        return True
-    if typ == "NJ":
-        recalc_nj(char, joints, ui.rig_vg_n)
-        return True
+        char = self.char
+        verts = char.data.vertices
+        calc_func = getattr(self, "calc_" + self.ui.rig_vg_calc.lower())
 
-    result = True
-    if typ == "CU":
-        vgroups = rigging.get_vg_data(char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index)))
-        for name, tup in joints.items():
-            co = tup[0]
-            vg = char.vertex_groups.get(name)
-            if not vg:
-                logger.error("%s doesn't have current vertex group", name)
-                continue
-            result &= recalc_cu(vg, vgroups.get(name, []), co)
-    else:
-        if typ in ("NP", "NR", "NE", "XL"):
-            kd = utils.kdtree_from_verts(char.data.vertices)
-            if typ == "NE":
-                emap = calc_emap(char)
-        elif typ == "NF":
-            bvh = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char.data.vertices], [f.vertices for f in char.data.polygons])
-
-        for name, tup in joints.items():
-            co = tup[0]
-            if typ == "NP":
-                result &= recalc_np(char, co, name, kd, ui.rig_vg_n)
-            elif typ == "NR":
-                result &= recalc_nr(char, co, name, kd, ui.rig_vg_radius)
-            elif typ == "XL":
-                result &= recalc_xl(char, co, name, kd, ui.rig_vg_xl_vn, ui.rig_vg_xl_n)
-            elif typ == "NE":
-                result &= recalc_ne(char, co, name, kd, emap)
-            elif typ == "NF":
-                result &= recalc_nf(char, co, name, bvh)
-            elif typ == "BB":
-                result &= recalc_bb(char, co, name)
-            else:
-                logger.error("Inavlid typ!")
-                result = False
-    return result
-
-def do_calc(char, joints, ui):
-    if ui.rig_widgets:
-        joints = {name:tup for name,tup in joints.items() if tup[2] == "head"}
-        offsets = [(tup[1],tup[1].tail-tup[1].head) for tup in joints.values()]
-
-    if not calc_vg(char, joints, ui):
-        return False
-
-    if ui.rig_vg_offs == "R":
-        avg = rigging.get_vg_avg(char)
         for name, (co, bone, attr) in joints.items():
-            item = avg.get(name)
-            if item:
-                offs = co-(item[1]/item[0])
-                k = "charmorph_offs_"+attr
-                if offs.length > 0.0001:
+            self.cur_name = name
+            self.cur_bone = bone
+            self.cur_attr = attr
+
+            co1 = co
+            if self.ui.rig_vg_offs == "S":
+                co1 -= get_offs(bone, attr)
+
+            vg_data = calc_func(co)
+            if isinstance(vg_data, str):
+                return name + ": " + vg_data
+
+            coeff = max(vg_data.values())
+            if coeff < 1e-30:
+                return name + ": empty vg returned"
+
+            coeff = 1/coeff
+            co2 = mathutils.Vector()
+            wsum = 0.0
+
+            vg = overwrite_vg(char.vertex_groups, name)
+            if self.ui.rig_widgets:
+                vgt = overwrite_vg(char.vertex_groups, "joint_" + bone.name + "_tail")
+
+            for idx, weight in vg_data.items():
+                weight *= coeff
+                vg.add([idx], weight, 'REPLACE')
+                if self.ui.rig_widgets:
+                    vgt.add([idx], weight, 'REPLACE')
+                co2 += verts[idx].co * weight
+                wsum += weight
+
+            co2 /= wsum
+
+            k = "charmorph_offs_"+attr
+            if self.ui.rig_vg_offs == "R":
+                offs = co-co2
+                if offs.length >= self.ui.rig_vg_snap:
                     bone[k] = list(offs)
                 elif k in bone:
                     del bone[k]
-            else:
-                logger.error("Can't calculate offset for %s", name)
-    elif ui.rig_vg_offs == "C":
-        for _, bone, attr in joints.values():
-            k = "charmorph_offs_"+attr
-            if k in bone:
-                del bone[k]
+            elif self.ui.rig_vg_offs == "C":
+                if k in bone:
+                    del bone[k]
 
-    if ui.rig_widgets:
-        vgroups = get_vg_full(char)
-        for bone, offs in offsets:
-            grp = vgroups.get( "joint_" + bone.name + "_head")
-            if grp is None:
-                continue
-            offs2 = bone.get("charmorph_offs_head")
-            if isinstance(offs2, list) and len(offs2)==3:
-                offs += mathutils.Vector(offs2)
-            name = "joint_" + bone.name + "_tail"
-            if name in char.vertex_groups:
-                char.vertex_groups.remove(char.vertex_groups[name])
-            vg = char.vertex_groups.new(name=name)
-            for idx, co, weight in grp:
-                vg.add([idx], weight, 'REPLACE')
-            bone["charmorph_offs_tail"] = offs
+            if self.ui.rig_widgets:
+                bone["charmorph_offs_tail"] = get_offs(bone, "head") + offsets.get(name, mathutils.Vector())
 
-    return True
+        return True
