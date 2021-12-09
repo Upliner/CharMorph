@@ -51,6 +51,8 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l = self.layout
         l.prop(ui, "rig_char")
         l.operator("cmedit.symmetrize_joints")
+        l.operator("cmedit.store_roll_x")
+        l.operator("cmedit.store_roll_z")
         l.operator("cmedit.bbone_handles")
         l.operator("cmedit.rigify_finalize")
         l.prop(ui, "rig_tweaks_file")
@@ -74,7 +76,7 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
 
 def get_char(context):
     result = context.window_manager.cmedit_ui.rig_char
-    if result.type != "MESH":
+    if result is None or result.type != "MESH":
         return None
     return result
 
@@ -107,6 +109,31 @@ def joint_list_extended(context, xmirror):
 
 def editable_bones_poll(context):
     return context.mode == "EDIT_ARMATURE" and get_char(context)
+
+class OpStoreRoll(bpy.types.Operator):
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return editable_bones_poll(context)
+
+    def execute(self, context):
+        for bone in context.selected_editable_bones:
+            for axis in ('x','z'):
+                if axis != self.axis and "charmorph_axis_" + axis in bone:
+                    del bone["charmorph_axis_" + axis]
+            bone["charmorph_axis_" + self.axis] = list(getattr(bone, self.axis + "_axis"))
+        return {"FINISHED"}
+
+class OpStoreRollX(OpStoreRoll):
+    bl_idname = "cmedit.store_roll_x"
+    bl_label = "Save bone roll X axis"
+    axis = "x"
+
+class OpStoreRollZ(OpStoreRoll):
+    bl_idname = "cmedit.store_roll_z"
+    bl_label = "Save bone roll Z axis"
+    axis = "z"
 
 class OpJointsToVG(bpy.types.Operator):
     bl_idname = "cmedit.joints_to_vg"
@@ -467,7 +494,7 @@ class CMEditUIProps(bpy.types.PropertyGroup, edit_io.UIProps, edit_vg_calc.UIPro
     )
 
 classes = [
-    CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints,
+    CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpStoreRollX, OpStoreRollZ,
     OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 classes.extend(edit_io.classes)
