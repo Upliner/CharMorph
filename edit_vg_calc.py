@@ -73,17 +73,17 @@ def vg_add(a, b, coeff=1):
         a[idx] = a.get(idx, 0)+weight*coeff
     return a
 
-def vg_mix2(a, b, factor=1):
+def vg_mix2(a, b, factor):
     if factor < 1e-30:
-        return
+        return a
     if factor >= 1:
         a.clear()
         a.update(b)
-        return
+        return a
     vg_mult(a, (1 - factor) / sum(a.values()))
     return vg_add(a, b, factor / sum(b.values()))
 
-def vg_mixmult(groups):
+def vg_mixmany(groups):
     groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum>=1e-30]
     if len(groups) == 0:
         return "No groups were found by the calculation method"
@@ -133,7 +133,8 @@ def calc_group_weights(groups, co):
 # pylint doesn't understand lazy properties so disable these errors for class
 # pylint: disable=no-member
 class VGCalculator:
-    def __init__(self, char, ui):
+    def __init__(self, rig, char, ui):
+        self.rig = rig
         self.char = char
         self.ui = ui
         self.errors = []
@@ -256,7 +257,7 @@ class VGCalculator:
         edges = self.char.data.edges
         lst = None
         mindist = 1e30
-        for _, vert, _ in self.kd_verts.find_n(co, 4):
+        for _, vert, _ in self.kd_verts.find_n(co, 32):
             for edge in self.emap[vert]:
                 v1, v2 = tuple((verts[i].co, i) for i in edges[edge].vertices)
                 dist = dist_edge(co, v1[0], v2[0])
@@ -418,7 +419,7 @@ class VGCalculator:
             groups = [(vg_full_to_dict(g), 1) for g in groups]
         if len(groups) < 2:
             return "Can't find enough already calculated neighbors"
-        return vg_mixmult(groups)
+        return vg_mixmany(groups)
 
     def calc_nw(self, co):
         return self.calc_nc(co)
@@ -434,7 +435,34 @@ class VGCalculator:
             coords.append(co2)
             if len(cur_groups) >= self.ui.vg_n:
                 break
-        return vg_mixmult(zip(cur_groups, barycentric_weight_calc(coords, co)))
+        return vg_mixmany(zip(cur_groups, barycentric_weight_calc(coords, co)))
+
+    def calc_nb(self, co):
+        vgroups = self.vg_full
+        a = None
+        b = None
+        final_p = 0
+        mindist = 1e30
+        for bone in self.rig.data.edit_bones:
+            co2, p = mathutils.geometry.intersect_point_line(co, bone.head, bone.tail)
+            if p < 0 or p > 1:
+                continue
+            dist = (co-co2).length
+            if dist < mindist and bone != self.cur_bone and dist < (bone.tail-bone.head).length/2:
+                new_a = vgroups.get("joint_%s_head" % bone.name)
+                if new_a is None and bone.parent is not None:
+                    new_a = vgroups.get("joint_%s_tail" % bone.parent.name)
+                new_b = vgroups.get("joint_%s_tail" % bone.name)
+                if new_a is not None and new_b is not None:
+                    mindist = dist
+                    a = new_a
+                    b = new_b
+                    final_p = p
+
+        if a is None:
+            return "Nearest bone is not found"
+
+        return vg_mix2(vg_full_to_dict(a), vg_full_to_dict(b), final_p)
 
     def run(self, joints):
         if self.ui.vg_widgets:
@@ -544,6 +572,7 @@ class UIProps:
             ("", "Other", ""),
             ("CU", "Current", "Use current vertex group members and recalc only weights"),
             ("NJ", "n nearest joints", "Snap joint to other nearest joints"),
+            ("NB", "Nearest bone", "Snap joint to the middle of already calculated bone"),
             ("NC", "Neighbors equal", "Mix neighbors vertex groups at equal proportion"),
             ("NW", "Neighbors weighted", "Mix neighbors vertex groups based on distance to them"),
         ]

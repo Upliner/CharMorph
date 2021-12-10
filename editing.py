@@ -166,7 +166,7 @@ class OpCalcVg(bpy.types.Operator):
         ui = context.window_manager.cmedit_ui
         joints = joint_list_extended(context, ui.vg_xmirror)
 
-        err = edit_vg_calc.VGCalculator(get_char(context), ui).run(joints)
+        err = edit_vg_calc.VGCalculator(context.object, get_char(context), ui).run(joints)
         if isinstance(err, str):
             self.report({"ERROR"}, err)
         elif ui.vg_auto_snap:
@@ -237,7 +237,7 @@ def swap_l_r(name):
 def counterpart_vertex(verts, kd, v):
     counterparts = kd.find_range(mathutils.Vector((-v.co[0], v.co[1], v.co[2])), 0.00001)
     if len(counterparts) == 0:
-        print(v.index, v.co, "no counterpart")
+        #print(v.index, v.co, "no counterpart")
         return None
     if len(counterparts) > 1:
         print(v.index, v.co, "multiple counterparts:", counterparts)
