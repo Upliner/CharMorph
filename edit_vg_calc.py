@@ -73,15 +73,15 @@ def vg_add(a, b, coeff=1):
         a[idx] = a.get(idx, 0)+weight*coeff
     return a
 
-def vg_mix2(a, b, coeff=1):
-    if coeff < 1e-30:
+def vg_mix2(a, b, factor=1):
+    if factor < 1e-30:
         return
-    if coeff >= 1:
+    if factor >= 1:
         a.clear()
         a.update(b)
         return
-    vg_mult(a, 1 - coeff)
-    return vg_add(a, b, coeff)
+    vg_mult(a, (1 - factor) / sum(a.values()))
+    return vg_add(a, b, factor / sum(b.values()))
 
 def vg_mixmult(groups):
     groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum>=1e-30]
@@ -119,6 +119,7 @@ def lazyprop(fn):
         return getattr(self, attr_name)
     return _lazyprop
 
+#(lambda group, coords: list(zip(group, barycentric_weight_calc(coords, co))))(*tuple(zip(*((vg_full_to_dict(g), co) for g, co in ((g, vg_full_to_avg(g)) for g in groups) if co is not None))))
 def calc_group_weights(groups, co):
     groups2 = []
     coords = []
@@ -453,11 +454,18 @@ class VGCalculator:
             self.cur_bone = bone
             self.cur_attr = attr
 
-            co1 = co
+            co1 = co.copy()
             if self.ui.vg_offs == "S":
                 co1 -= get_offs(bone, attr)
 
-            vg_data = calc_func(co)
+            if self.ui.vg_shift > 1e-6:
+                group = self.vg_full.get(name)
+                if group is not None:
+                    co2 = vg_full_to_avg(group)
+                    if co2 is not None:
+                        co1 += (co1-co2) * self.ui.vg_shift
+
+            vg_data = calc_func(co1)
             if isinstance(vg_data, str):
                 return name + ": " + vg_data
 
@@ -577,14 +585,14 @@ class UIProps:
     )
     vg_snap: bpy.props.FloatProperty(
         name="Snap distance",
-        description="Snap to vertex or edge instead of face within given distance",
+        description="Snap to vertex or edge instead of face within given distance. Also affects mininum possible offset",
         default=0.0001,
         precision=5,
         min=0, soft_max=0.1,
     )
     vg_bone: bpy.props.EnumProperty(
         name="Bone",
-        description="Which bone axes to use for middle joints. Has no effect at ends of bone chain.",
+        description="Which bone axes to use for middle joints. Has no effect at ends of bone chain",
         default="A",
         items=[
             ("P", "Parent", "Use parent (upper) bone axes"),
@@ -607,9 +615,16 @@ class UIProps:
     )
     vg_mix: bpy.props.FloatProperty(
         name="Mix factor",
-        description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group.",
+        description="Mix newly calculated vertex group with existing one. Use 1 to fully replace existing group and 0 to never replace existing group",
         default=1,
         min=0, max=1,
+        subtype='FACTOR',
+    )
+    vg_shift: bpy.props.FloatProperty(
+        name="Shift factor",
+        description="Shift joint location away from current vg location. Recommended value is 1/(Mix factor)-1.",
+        default=0,
+        min=0, soft_max=1,
         subtype='FACTOR',
     )
     vg_obj: bpy.props.PointerProperty(
@@ -620,17 +635,17 @@ class UIProps:
 
     vg_x: bpy.props.BoolProperty(
         name="X",
-        description="Cast rays along X axis.",
+        description="Cast rays along X axis",
         default=True,
     )
     vg_y: bpy.props.BoolProperty(
         name="Y",
-        description="Cast rays along Y axis.",
+        description="Cast rays along Y axis",
         default=True,
     )
     vg_z: bpy.props.BoolProperty(
         name="Z",
-        description="Cast rays along Y axis.",
+        description="Cast rays along Y axis",
         default=True,
     )
 
@@ -653,7 +668,7 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
         l.prop(ui, "vg_widgets")
         l.prop(ui, "vg_offs")
         l.prop(ui, "vg_calc")
-        if ui.vg_calc in ("NF", "RB"):
+        if ui.vg_calc in ("NF", "RB") or ui.vg_offs == "R":
             l.prop(ui, "vg_snap")
 
         if ui.vg_calc in ("RB", "RG"):
@@ -677,5 +692,6 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
             l.prop(ui, "vg_xl_vn")
             l.prop(ui, "vg_xl_n")
         l.prop(ui, "vg_mix", slider=True)
+        l.prop(ui, "vg_shift", slider=True)
 
 classes = [CMEDIT_PT_VGCalc]

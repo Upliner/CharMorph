@@ -72,6 +72,7 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
         l = self.layout
         l.operator("cmedit.cleanup_joints")
         l.operator("cmedit.check_symmetry")
+        l.operator("cmedit.symmetrize_weights")
         l.operator("cmedit.symmetrize_vg")
 
 def get_char(context):
@@ -288,8 +289,43 @@ class OpCheckSymmetry(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OpSymmetrizeWeights(bpy.types.Operator):
+def get_group_weight(v, idx):
+    for g in v.groups:
+        if g.group == idx:
+            return g.weight
+    return 0
+
+class OpSymmetrizeVG(bpy.types.Operator):
     bl_idname = "cmedit.symmetrize_vg"
+    bl_label = "Symmetrize current VG"
+    bl_description = "Symmetrize current vertex group using X axis"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH" and context.object.vertex_groups.active
+
+    def execute(self, context):
+        obj = context.object
+        vg = obj.vertex_groups.active
+        idx = vg.index
+        mesh = obj.data
+        kd = utils.kdtree_from_verts(mesh.vertices)
+        for v in mesh.vertices:
+            if v.co[0] < 1e-30:
+                continue
+            v2 = counterpart_vertex(mesh.vertices, kd, v)
+            if v2 is None:
+                continue
+            w = (get_group_weight(v, idx)+get_group_weight(v2, idx))/2
+            if w>=1e-5:
+                vg.add([v.index, v2.index], w, "REPLACE")
+            else:
+                vg.remove([v.index, v2.index])
+        return {"FINISHED"}
+
+class OpSymmetrizeWeights(bpy.types.Operator):
+    bl_idname = "cmedit.symmetrize_weights"
     bl_label = "Normalize+symmetrize weights"
     bl_description = "Normalize and symmetrize selected vertices using X axis"
     bl_options = {"UNDO"}
@@ -425,7 +461,7 @@ class OpSymmetrizeJoints(bpy.types.Operator):
 class OpCleanupJoints(bpy.types.Operator):
     bl_idname = "cmedit.cleanup_joints"
     bl_label = "Cleanup joint VGs"
-    bl_description = "Remove all unused joint_* vertex groups. Metarig must be selected."
+    bl_description = "Remove all unused joint_* vertex groups. Metarig must be selected"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -495,7 +531,7 @@ class CMEditUIProps(bpy.types.PropertyGroup, edit_io.UIProps, edit_vg_calc.UIPro
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpStoreRollX, OpStoreRollZ,
-    OpCheckSymmetry, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
+    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 classes.extend(edit_io.classes)
 classes.extend(edit_vg_calc.classes)
