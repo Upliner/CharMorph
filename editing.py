@@ -51,6 +51,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l = self.layout
         l.prop(ui, "rig_char")
         l.operator("cmedit.symmetrize_joints")
+        l.operator("cmedit.symmetrize_offsets")
         l.operator("cmedit.store_roll_x")
         l.operator("cmedit.store_roll_z")
         l.operator("cmedit.bbone_handles")
@@ -229,10 +230,10 @@ def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
 
 def swap_l_r(name):
-    new_name = name.replace(".L", ".R").replace("_L_", "_R_")
+    new_name = name.replace(".L", ".R").replace("_L_", "_R_").replace(".l", ".r").replace("_l_", "_r_")
     if new_name != name:
         return new_name
-    return name.replace(".R", ".L").replace("_R_", "_L_")
+    return name.replace(".R", ".L").replace("_R_", "_L_").replace(".r", ".l").replace("_r_", "_l_")
 
 def counterpart_vertex(verts, kd, v):
     counterparts = kd.find_range(mathutils.Vector((-v.co[0], v.co[1], v.co[2])), 0.00001)
@@ -458,6 +459,50 @@ class OpSymmetrizeJoints(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class OpSymmetrizeOffsets(bpy.types.Operator):
+    bl_idname = "cmedit.symmetrize_offsets"
+    bl_label = "Symmetrize offsets"
+    bl_description = "Symmetrize joints: add missing bone offsets from other side, report non-symmetrical offsets"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "ARMATURE"
+
+    def execute(self, context): # pylint: disable=no-self-use
+        if context.mode == "EDIT_ARMATURE":
+            bones = context.object.data.edit_bones
+        else:
+            bones = context.object.data.bones
+        for bone in bones:
+            cname = swap_l_r(bone.name)
+            if cname == bone.name:
+                continue
+            if cname not in bones:
+                print("No counterpart for", bone.name)
+                continue
+            bone2 = bones[cname]
+            for attr in "head", "tail":
+                if "charmorph_offs_" + attr in bone and "charmorph_offs_" + attr in bone2:
+                    v1 = mathutils.Vector(bone ["charmorph_offs_" + attr])
+                    v2 = mathutils.Vector(bone2["charmorph_offs_" + attr])
+                    v2[0] = -v2[0]
+                    if (v1-v2).length > 1e-6:
+                        v2[0] = -v2[0]
+                        print("assymetry:", bone.name, attr, v1, v2)
+                if "charmorph_offs_" + attr in bone:
+                    src = bone
+                    dst = bone2
+                elif "charmorph_offs_" + attr in bone2:
+                    src = bone2
+                    dst = bone
+                else:
+                    continue
+                dst["charmorph_offs_" + attr] = src["charmorph_offs_" + attr]
+
+        return {"FINISHED"}
+
+
 class OpCleanupJoints(bpy.types.Operator):
     bl_idname = "cmedit.cleanup_joints"
     bl_label = "Cleanup joint VGs"
@@ -470,7 +515,7 @@ class OpCleanupJoints(bpy.types.Operator):
 
     def execute(self, context):
         char = get_char(context)
-        joints = rigging.all_joints(context.object)
+        joints = rigging.get_joints(context.object.data.bones, True)
         if len(joints) == 0:
             self.report({'ERROR'}, "No joints found")
             return {"CANCELLED"}
@@ -531,7 +576,7 @@ class CMEditUIProps(bpy.types.PropertyGroup, edit_io.UIProps, edit_vg_calc.UIPro
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpStoreRollX, OpStoreRollZ,
-    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
+    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
 
 classes.extend(edit_io.classes)
 classes.extend(edit_vg_calc.classes)

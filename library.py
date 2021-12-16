@@ -160,15 +160,17 @@ class Character:
             self.armature[k] = Armature(self, k, v)
 
 class Armature():
-    def __init__(self, char: Character, name, conf):
+    def __init__(self, char: Character, name : str, conf : dict):
         self.char = char
         self.config = {
             "file": char.char_file,
             "title": name,
+            "type": "",
             "tweaks": [],
             "ik_limits": {},
             "mixin": "",
             "mixin_bones": {},
+            "arp_reference_layer": 17,
         }
         self.config.update(char.armature_defaults)
         self.config.update(conf)
@@ -395,7 +397,7 @@ class OpImport(bpy.types.Operator):
 
         if ui.import_shapekeys:
             import_shapekeys(obj, ui.base_model)
-        elif (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks) and os.path.isdir(char.path("morphs")):
+        elif os.path.isdir(char.path("morphs")):
             obj.data["cm_morpher"] = "ext"
 
         morphing.create_charmorphs(obj)

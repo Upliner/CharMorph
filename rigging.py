@@ -48,8 +48,10 @@ def get_joints(bones, is_all):
             joints["joint_"+bone.name+"_tail"] = (bone.tail, bone, "tail")
     return joints
 
-def all_joints(obj):
-    return get_joints(obj.data.bones, True)
+def all_joints(context):
+    return get_joints(context.object.data.edit_bones, True)
+def layer_joints(context, layer):
+    return get_joints([bone for bone in context.object.data.edit_bones if bone.layers[layer]], True)
 def selected_joints(context):
     return get_joints(context.object.data.edit_bones, False)
 
@@ -342,7 +344,7 @@ class Rigger:
 
     def run(self, lst=None):
         if lst is None:
-            lst = all_joints(self.context.object.data.bones)
+            lst = all_joints(self.context)
 
         self.result = True
         self._bones = set()

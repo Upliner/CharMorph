@@ -21,7 +21,7 @@
 import os, logging, collections
 import bpy
 
-from . import yaml, library
+from . import library
 
 props = None
 
@@ -72,11 +72,9 @@ def load_materials(obj, char):
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
 def load_texdir(path):
-    try:
-        with open(os.path.join(path, "settings.yaml"), "r") as f:
-            settings = yaml.safe_load(f)
-    except KeyError:
-        settings = {}
+    if not os.path.exists(path):
+        return {}
+    settings = library.parse_file(os.path.join(path, "settings.yaml"), library.load_yaml, {})
     default_setting = settings.get("*")
 
     result = {}

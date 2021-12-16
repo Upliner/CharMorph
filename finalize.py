@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging
+import logging, traceback
 import bpy # pylint: disable=import-error
 
 from . import library, morphing, fitting, rigging, rigify, utils
@@ -66,7 +66,7 @@ def add_rig(obj, char, rig_name, verts):
         raise rigging.RigException("Rig is not found")
 
     rig_type = conf.type
-    if rig_type not in ["rigify", "regular"]:
+    if rig_type not in ("arp", "rigify", "regular"):
         raise rigging.RigException("Rig type {} is not supported".format(rig_type))
 
     rig = library.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
@@ -74,13 +74,18 @@ def add_rig(obj, char, rig_name, verts):
         raise rigging.RigException("Rig import failed")
 
     new_vgs = None
+    err = None
     try:
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
 
+        rig.data.use_mirror_x = False
         rigger = rigging.Rigger(bpy.context)
         rigger.configure(conf, obj, verts)
-        if not rigger.run():
+        joints = None
+        if rig_type == "arp":
+            joints = rigging.layer_joints(bpy.context, conf.arp_reference_layer)
+        if not rigger.run(joints):
             raise rigging.RigException("Rig fitting failed")
 
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -95,11 +100,24 @@ def add_rig(obj, char, rig_name, verts):
         attach = True
         if rig_type == "rigify":
             rigify.apply_metarig_parameters(rig)
-            if bpy.context.window_manager.charmorph_ui.rigify_metarig_only or not hasattr(rig.data, "rigify_generate_mode"):
+            metarig_only = bpy.context.window_manager.charmorph_ui.rigify_metarig_only
+            if metarig_only or not hasattr(rig.data, "rigify_generate_mode"):
+                if not metarig_only:
+                    err = "Rigify is not found! Generating metarig only"
                 utils.copy_transforms(rig, obj)
                 attach = False
             else:
                 rig = rigify.do_rig(obj, conf, rigger)
+
+        if rig_type == "arp":
+            if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
+                try:
+                    bpy.ops.arp.match_to_rig()
+                except Exception as e:
+                    err = str(e)
+                    logger.error(traceback.format_exc())
+            else:
+                err = "Auto-Rig Pro is not found! Can't match the rig"
 
         rig.data["charmorph_template"] = obj.data.get("charmorph_template", "")
         rig.data["charmorph_rig_type"] = rig_name
@@ -116,6 +134,7 @@ def add_rig(obj, char, rig_name, verts):
         except:
             pass
         raise
+    return err
 
 def attach_rig(obj, rig):
     utils.copy_transforms(rig, obj)
@@ -210,11 +229,11 @@ class OpFinalize(bpy.types.Operator):
             nonlocal vg_cleanup
             if ui.fin_rig == "-":
                 return True
-            if not hasattr(bpy.types.Armature, "rigify_generate_mode"):
-                self.report({"ERROR"}, "Rigify is not found! Generating metarig only")
-                vg_cleanup = False
             try:
-                add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else obj.data.vertices)
+                err = add_rig(obj, char, ui.fin_rig, fin_sk.data if fin_sk else obj.data.vertices)
+                if err is not None:
+                    self.report({"ERROR"}, err)
+                    vg_cleanup = False
             except rigging.RigException as e:
                 self.report({"ERROR"}, str(e))
                 return False
