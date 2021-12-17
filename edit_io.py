@@ -200,6 +200,8 @@ class OpMorphsExport(bpy.types.Operator):
         return context.object and context.object.type == "MESH"
 
     def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        r = re.compile(ui.morph_regex)
         m = context.object.data
         if not m.shape_keys or not m.shape_keys.key_blocks or not m.shape_keys.reference_key:
             self.report({"ERROR"}, "No shape keys!")
@@ -207,8 +209,8 @@ class OpMorphsExport(bpy.types.Operator):
         keys = {}
 
         for sk in m.shape_keys.key_blocks:
-            if sk.name.startswith("L2__"):
-                name = sk.name[4:] + ".npz"
+            if r.match(sk.name):
+                name = r.sub(ui.morph_replace, sk.name) + ".npz"
                 keys[name] = sk
                 if os.path.exists(os.path.join(self.directory, name)):
                     self.report({"ERROR"}, name + ".npz already exists!")
@@ -216,6 +218,7 @@ class OpMorphsExport(bpy.types.Operator):
 
         rk = m.shape_keys.reference_key
         basis = numpy.empty(len(rk.data)*3)
+        basis2 = numpy.empty(len(rk.data)*3)
         morphed = numpy.empty(len(rk.data)*3)
         rk.data.foreach_get("co", basis)
 
@@ -226,7 +229,13 @@ class OpMorphsExport(bpy.types.Operator):
 
         for name, sk in keys.items():
             sk.data.foreach_get("co", morphed)
-            morphed -= basis
+            if sk.relative_key == rk:
+                basis3 = basis
+            else:
+                sk.relative_key.data.foreach_get("co", basis2)
+                basis3 = basis2
+
+            morphed -= basis3
             m2 = morphed.reshape(-1, 3)
             idx = m2.any(1).nonzero()[0]
             numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
@@ -248,6 +257,16 @@ class UIProps:
     vg_overwrite: bpy.props.BoolProperty(
         name="VG overwrite",
         description="Overwrite existing vertex groups with imported ones",
+    )
+    morph_regex: bpy.props.StringProperty(
+        name="Morph regex",
+        description="Regular expression for morph export",
+        default=r"L2\_\_",
+    )
+    morph_replace: bpy.props.StringProperty(
+        name="Morph name replace",
+        description="Replace matched morph regex with this content",
+        default="",
     )
     morph_float_precicion: bpy.props.EnumProperty(
         name="Precision",
@@ -290,6 +309,8 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.vg_export")
         l.operator("cmedit.vg_import")
         l.separator()
+        l.prop(ui, "morph_regex")
+        l.prop(ui, "morph_replace")
         l.prop(ui, "morph_float_precicion")
         l.operator("cmedit.morphs_export")
 
