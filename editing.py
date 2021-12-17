@@ -95,18 +95,19 @@ def joint_list_extended(context, xmirror):
     result = rigging.selected_joints(context)
     bones = context.object.data.edit_bones
     kd = kdtree_from_bones(bones)
-    for name, tup in list(result.items()):
-        co = tup[0]
+    for name, (co, bone, attr) in list(result.items()):
         checklist = [co]
         if xmirror:
             checklist.append(mathutils.Vector((-co[0], co[1], co[2])))
         for co2 in checklist:
             for co3, jid, _ in kd.find_range(co2, 0.00001):
-                bone = bones[jid//2]
+                bone2 = bones[jid//2]
+                if bone2.layers != bone.layers:
+                    continue
                 attr = "head" if jid&1 == 0 else "tail"
                 name = "joint_{}_{}".format(bone.name, attr)
                 if name not in result:
-                    result[name] = (co3, bone, attr)
+                    result[name] = (co3, bone2, attr)
     return result
 
 def editable_bones_poll(context):
