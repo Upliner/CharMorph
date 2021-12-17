@@ -98,6 +98,7 @@ class Character:
             "default_type": "",
             "default_armature": "",
             "default_hair_length": 0.1,
+            "recurse_materials": False,
             "armature": {},
             "armature_defaults": {},
             "hairstyles": [],
@@ -285,28 +286,30 @@ def import_morph(basis, sk, file):
     sk.data.foreach_set("co", data)
     return data
 
-def import_shapekeys(obj, char_name):
+def get_basis(obj):
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
         obj.shape_key_add(name="Basis", from_mix=False)
+
+    basis = numpy.empty(len(obj.data.vertices) * 3)
+    obj.data.vertices.foreach_get("co", basis)
+    return basis
+
+def import_morphs(obj, char_name):
+    basis = get_basis(obj)
     path = char_file(char_name, "morphs/L1")
     L1_basis_dict = {}
     if os.path.isdir(path):
         for file in sorted(os.listdir(path)):
             if os.path.isfile(os.path.join(path, file)):
-                name, _ = os.path.splitext(file)
-                morph = import_morph(None, obj.shape_key_add(name="L1_" + name, from_mix=False), os.path.join(path, file))
+                morph = import_morph(None, obj.shape_key_add(name="L1_" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
                 if morph is not None:
                     L1_basis_dict[name] = morph
-
-    basis = numpy.empty(len(obj.data.vertices) * 3)
-    obj.data.vertices.foreach_get("co", basis)
 
     path = char_file(char_name, "morphs/L2")
     if os.path.isdir(path):
         for file in sorted(os.listdir(path)):
             if os.path.isfile(os.path.join(path, file)):
-                name, _ = os.path.splitext(file)
-                import_morph(basis, obj.shape_key_add(name="L2__" + name, from_mix=False), os.path.join(path, file))
+                import_morph(basis, obj.shape_key_add(name="L2__" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
         for file in sorted(os.listdir(path)):
             if os.path.isdir(os.path.join(path, file)):
                 L1_basis = L1_basis_dict.get(file)
@@ -318,6 +321,15 @@ def import_shapekeys(obj, char_name):
                     sk = obj.shape_key_add(name="L2_%s_%s" % (file, name), from_mix=False)
                     sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(path, file, file2))
+
+def import_expressions(obj, char_name):
+    path = char_file(char_name, "morphs/L3")
+    if not os.path.isdir(path):
+        return
+    basis = get_basis(obj)
+    for file in sorted(os.listdir(path)):
+        if os.path.isfile(os.path.join(path, file)):
+            import_morph(basis, obj.shape_key_add(name="L3_" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
 
 from  . import morphing, materials, fitting
 
@@ -395,10 +407,12 @@ class OpImport(bpy.types.Operator):
         obj.data["charmorph_template"] = ui.base_model
         materials.init_materials(obj, char)
 
-        if ui.import_shapekeys:
-            import_shapekeys(obj, ui.base_model)
+        if ui.import_morphs:
+            import_morphs(obj, ui.base_model)
         elif os.path.isdir(char.path("morphs")):
             obj.data["cm_morpher"] = "ext"
+        if ui.import_expressions:
+            import_expressions(obj, ui.base_model)
 
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
@@ -438,8 +452,11 @@ class UIProps:
     material_local: bpy.props.BoolProperty(
         name="Use local materials", default=True,
         description="Use local copies of materials for faster loading")
-    import_shapekeys: bpy.props.BoolProperty(
-        name="Import shape keys", default=False,
+    import_morphs: bpy.props.BoolProperty(
+        name="Import morphing shape keys", default=False,
+        description="Import and morph character using shape keys")
+    import_expressions: bpy.props.BoolProperty(
+        name="Import expression shape keys", default=False,
         description="Import and morph character using shape keys")
 
 class CHARMORPH_PT_Library(bpy.types.Panel):

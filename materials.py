@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def init_materials(obj, char):
     load_materials(obj, char)
-    load_textures(obj, char.name)
+    load_textures(obj, char)
 
 def load_materials(obj, char):
     mtllist = char.materials
@@ -111,29 +111,33 @@ def apply_tex_settings(img, settings):
         return
     img.colorspace_settings.name = settings # Currently only colorspace settings are supported
 
-def load_textures(obj, char_name):
+def load_textures(obj, char):
     if not obj.data.materials:
         return
 
     ui = bpy.context.window_manager.charmorph_ui
     texmap = None
 
-    for mtl in obj.data.materials:
-        if not mtl or not mtl.node_tree:
-            continue
-        for node in mtl.node_tree.nodes.values():
+    groups = set()
+
+    def scan_nodes(nodes):
+        nonlocal texmap
+        for node in nodes:
+            if char.recurse_materials and node.type == "GROUP" and node.node_tree.name not in groups:
+                groups.add(node.node_tree.name)
+                scan_nodes(node.node_tree.nodes.values())
             if node.type != "TEX_IMAGE":
                 continue
             img = None
             if ui.material_local or ui.material_mode in ["MS", "TS"]:
-                for name in tex_try_names(char_name, [node.name, node.label]):
+                for name in tex_try_names(char.name, [node.name, node.label]):
                     img = bpy.data.images.get(name)
                     if img is not None:
                         break
 
             if img is None:
                 if texmap is None:
-                    texmap = load_texmap(char_name)
+                    texmap = load_texmap(char.name)
 
                 img_tuple = None
                 for name in [node.name, node.label]:
@@ -154,19 +158,32 @@ def load_textures(obj, char_name):
             if img is not None:
                 node.image = img
 
+    for mtl in obj.data.materials:
+        if not mtl or not mtl.node_tree:
+            continue
+        scan_nodes(mtl.node_tree.nodes.values())
+
 def get_props(obj):
     if not obj.data.materials:
         return None
     colors = []
     values = []
-    for mtl in obj.data.materials:
-        if not mtl or not mtl.node_tree:
-            continue
+    groups = set()
+    def scan_nodes(nodes):
         for node in mtl.node_tree.nodes.values():
+            if node.type == "GROUP" and node.name == "charmorph_settings" and node.node_tree.name not in groups:
+                groups.add(node.node_tree.name)
+                scan_nodes(node.node_tree.nodes.values())
+            if node.label == "":
+                continue
             if node.type == "RGB" and not node.name.startswith("RGB."):
                 colors.append((node.name, node.outputs[0]))
             elif node.type == "VALUE":
                 values.append((node.name, node.outputs[0]))
+    for mtl in obj.data.materials:
+        if not mtl or not mtl.node_tree:
+            continue
+        scan_nodes(mtl.node_tree.nodes.values())
     return collections.OrderedDict(colors + values)
 
 def update_props(obj):

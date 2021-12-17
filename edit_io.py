@@ -185,8 +185,8 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
 class OpMorphsExport(bpy.types.Operator):
     bl_idname = "cmedit.morphs_export"
-    bl_label = "Export L2 Morphs"
-    bl_description = "Export L2 all morphs from shape keys to a specified directory"
+    bl_label = "Export morphs"
+    bl_description = "Export specified morphs from shape keys to a specified directory"
 
     directory: bpy.props.StringProperty(
         name="Directory",
@@ -222,12 +222,14 @@ class OpMorphsExport(bpy.types.Operator):
         morphed = numpy.empty(len(rk.data)*3)
         rk.data.foreach_get("co", basis)
 
-        if context.window_manager.cmedit_ui.morph_float_precicion == "64":
+        if ui.morph_float_precicion == "64":
             dtype = numpy.float64
         else:
             dtype = numpy.float32
 
         for name, sk in keys.items():
+            if sk == rk:
+                continue
             sk.data.foreach_get("co", morphed)
             if sk.relative_key == rk:
                 basis3 = basis
@@ -237,7 +239,7 @@ class OpMorphsExport(bpy.types.Operator):
 
             morphed -= basis3
             m2 = morphed.reshape(-1, 3)
-            idx = m2.any(1).nonzero()[0]
+            idx = (m2.sum(1) > ui.morph_epsilon).nonzero()[0]
             numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
 
         return {"CANCELLED"}
@@ -277,6 +279,12 @@ class UIProps:
             ("64", "64 bits", "IEEE Double precision floating point"),
         ]
     )
+    morph_epsilon: bpy.props.FloatProperty(
+        name="Morph cutoff",
+        description="Ignore vertices morphed less than this value",
+        default=1e-6,
+        precision = 6,
+    )
     rig_bones_mode: bpy.props.EnumProperty(
         name="Bones mode",
         description="Bones export mode",
@@ -311,6 +319,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.separator()
         l.prop(ui, "morph_regex")
         l.prop(ui, "morph_replace")
+        l.prop(ui, "morph_epsilon")
         l.prop(ui, "morph_float_precicion")
         l.operator("cmedit.morphs_export")
 
