@@ -51,7 +51,7 @@ def calc_weights(char, asset, mask):
 
     # calculate weights based on 32 nearest vertices
     kd_char = utils.kdtree_from_verts(char_verts)
-    weights = [{idx: max((avert.co-loc).dot(char_verts[idx].normal),0)/(max(dist, epsilon)**3) for loc, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
+    weights = [{idx: 1/(max(dist, epsilon)**2) for loc, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
 
     t.time("kdtree")
 
@@ -68,12 +68,21 @@ def calc_weights(char, asset, mask):
 
         fdist = max(fdist, epsilon)
 
-        arr = bvh_char.find_nearest_range(co, fdist * 1.0625)
-        if len(arr) > 1:
+        arr = bvh_char.find_nearest_range(co, fdist * 1.125)
+        if len(arr) > 5:
             continue
+        if len(arr) > 1:
+            verts = set(char_faces[arr[0][2]].vertices)
+            fdist = arr[0][3]
+            for _, _, idx2, fdist2 in arr[1:]:
+                verts.difference_update(char_faces[idx2].vertices)
+                fdist = min(fdist, fdist2)
+            fdist = max(fdist, epsilon)
+        else:
+            verts = char_faces[idx].vertices
 
         d = weights[i]
-        for vi in char_faces[idx].vertices:
+        for vi in verts:
             d[vi] = max(d.get(vi, 0), 1/max(((co-char_verts[vi].co).length * fdist), epsilon))
 
     t.time("bvh direct")
