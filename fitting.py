@@ -49,23 +49,27 @@ def calc_weights(char, asset, mask):
     asset_verts = asset.data.vertices
     asset_faces = asset.data.polygons
 
-    # calculate weights based on 16 nearest vertices
+    # calculate weights based on 32 nearest vertices
     kd_char = utils.kdtree_from_verts(char_verts)
-    weights = [{idx: dist**2 for loc, idx, dist in kd_char.find_n(avert.co, 16)} for avert in asset_verts]
+    weights = [{idx: max((avert.co-loc).dot(char_verts[idx].normal),0)/(max(dist, epsilon)**3) for loc, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
 
     t.time("kdtree")
 
     # using FromPolygons because objects can have modifiers and there is no way force FromObject to use undeformed mesh
-    # calculate weights based on distance from asset vertices to character faces
     # will using bmesh be faster?
     bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
+    # calculate weights based on distance from asset vertices to character faces
     for i, avert in enumerate(asset_verts):
         co = avert.co
         loc, norm, idx, fdist = bvh_char.find_nearest(co)
 
+        if loc is None or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
+            continue
+
         fdist = max(fdist, epsilon)
 
-        if not loc or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
+        arr = bvh_char.find_nearest_range(co, fdist * 1.0625)
+        if len(arr) > 1:
             continue
 
         d = weights[i]
