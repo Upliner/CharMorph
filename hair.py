@@ -143,6 +143,7 @@ def create_default_hair(context, obj, char, scalp):
         hair.vertex_group_length = vg
     return s
 
+epsilon = fitting.epsilon
 
 def calc_weights(char, arr):
     t = utils.Timer()
@@ -152,7 +153,7 @@ def calc_weights(char, arr):
 
     # calculate weights based on n nearest vertices
     kd_char = utils.kdtree_from_verts(char_verts)
-    weights = [{idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32)} for co in arr]
+    weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(co, 32)} for co in arr]
 
     t.time("hair_kdtree")
 
@@ -165,8 +166,21 @@ def calc_weights(char, arr):
         if not loc or ((co-loc).dot(norm) <= 0 and fdist > fitting.dist_thresh):
             continue
 
+        arr = bvh_char.find_nearest_range(co, fdist * 1.125)
+        if len(arr) > 5:
+            continue
+        if len(arr) > 1:
+            verts = set(char_faces[arr[0][2]].vertices)
+            fdist = arr[0][3]
+            for _, _, idx2, fdist2 in arr[1:]:
+                verts.difference_update(char_faces[idx2].vertices)
+                fdist = min(fdist, fdist2)
+            fdist = max(fdist, epsilon)
+        else:
+            verts = char_faces[idx].vertices
+
         d = weights[i]
-        for vi in char_faces[idx].vertices:
+        for vi in verts:
             d[vi] = max(d.get(vi, 0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
 
     t.time("hair_bvh")

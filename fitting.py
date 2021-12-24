@@ -23,7 +23,7 @@ import os, random, logging, numpy
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from . import library, hair, rigging, utils
+from . import library, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +359,8 @@ def diff_array(obj):
         basis_cache[obj.name] = basis
     morphed -= basis
     return morphed.reshape(-1, 3)
+
+from . import hair
 
 def do_fit(char, assets):
     t = utils.Timer()
