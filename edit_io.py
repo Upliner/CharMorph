@@ -227,6 +227,7 @@ class OpMorphsExport(bpy.types.Operator):
         else:
             dtype = numpy.float32
 
+        epsilonsq = ui.morph_epsilon ** 2
         for name, sk in keys.items():
             if sk == rk:
                 continue
@@ -239,7 +240,7 @@ class OpMorphsExport(bpy.types.Operator):
 
             morphed -= basis3
             m2 = morphed.reshape(-1, 3)
-            idx = (m2.sum(1) > ui.morph_epsilon).nonzero()[0]
+            idx = ((m2 * m2).sum(1) > epsilonsq).nonzero()[0]
             numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
 
         return {"CANCELLED"}
