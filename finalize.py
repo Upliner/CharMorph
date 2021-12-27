@@ -294,8 +294,10 @@ class OpFinalize(bpy.types.Operator):
         add_subsurf(obj)
 
         for asset in fitting.get_assets(obj):
-            if ui.fin_csmooth_assets != "RO":
+            if ui.fin_csmooth_assets == "RO":
                 sk_to_verts(asset, "charmorph_fitting")
+            elif ui.fin_csmooth_assets == "FR":
+                sk_to_verts(asset, "Basis")
             if ui.fin_csmooth_assets != "NO":
                 add_corrective_smooth(asset)
             if ui.fin_subdiv_assets:
@@ -409,6 +411,7 @@ class UIProps:
             ("NO", "None", "No corrective smooth"),
             ("FR", "Fitting+Rig", "Allow to smooth artifacts caused by fitting and armature deform"),
             ("RO", "Rig only", "Allow to smooth only artifacts caused by armature deform"),
+            ("NC", "No change", "Apply corrective smooth to assets but don't change its parameters"),
         ],
         )
     fin_subdiv_assets: bpy.props.BoolProperty(
