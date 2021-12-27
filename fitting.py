@@ -23,7 +23,7 @@ import os, random, logging, numpy
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from . import library, rigging, utils
+from . import library, rigging, utils, morphing
 
 logger = logging.getLogger(__name__)
 
@@ -346,7 +346,15 @@ def get_morphed_shape_key(obj):
     # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
     return obj.shape_key_add(from_mix=True), True
 
+def get_basis(obj):
+    k = obj.data.shape_keys
+    if k:
+        return k.reference_key.data
+    return obj.data.vertices
+
 def diff_array(obj):
+    if hasattr(morphing.morpher, "get_diff") and morphing.morpher.obj == obj:
+        return morphing.morpher.get_diff()
     morphed_shapekey, temporary = get_morphed_shape_key(obj)
     morphed = numpy.empty(len(morphed_shapekey.data)*3)
     morphed_shapekey.data.foreach_get("co", morphed)
@@ -355,7 +363,7 @@ def diff_array(obj):
     basis = basis_cache.get(obj.name)
     if basis is None:
         basis = numpy.empty(len(morphed))
-        obj.data.vertices.foreach_get("co", basis)
+        get_basis(obj).foreach_get("co", basis)
         basis_cache[obj.name] = basis
     morphed -= basis
     return morphed.reshape(-1, 3)
@@ -453,11 +461,6 @@ def get_children(char):
 
 def get_assets(char):
     return [asset for asset in (bpy.data.objects[name] for name in get_children(char)) if asset.type == "MESH" and 'charmorph_fit_id' in asset.data]
-
-def refit_char_assets(char):
-    assets = get_assets(char)
-    if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(char)):
-        do_fit(char, assets)
 
 def traverse_collection(c):
     # Some versions of Blender have bugs with LayerCollection.is_visible, so using this visibility check instead
@@ -565,6 +568,11 @@ def get_char():
     return obj
 def get_asset():
     return mesh_obj(bpy.context.window_manager.charmorph_ui.fitting_asset)
+
+def refit_char_assets(char):
+    assets = get_assets(char)
+    if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(char)):
+        do_fit(char, assets)
 
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"

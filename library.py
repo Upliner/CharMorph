@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2021 Michael Vigovsky
 
 import os, json, logging, traceback, numpy
 import bpy # pylint: disable=import-error
@@ -93,6 +93,7 @@ class Character:
             "title": name,
             "char_file": "char.blend",
             "char_obj": "char",
+            "basis": "",
             "randomize_incl_regex": None,
             "randomize_excl_regex": None,
             "default_type": "",
@@ -103,6 +104,7 @@ class Character:
             "armature_defaults": {},
             "hairstyles": [],
             "materials": [],
+            "default_assets": [],
             "underwear": [],
             "types": {},
             "assets": {},
@@ -166,7 +168,8 @@ class Armature():
         self.config = {
             "file": char.char_file,
             "title": name,
-            "type": "",
+            "type": "regular",
+            "obj_name": name,
             "tweaks": [],
             "ik_limits": {},
             "mixin": "",
@@ -180,6 +183,8 @@ class Armature():
             value = self.config.get(item)
             if value:
                 value = char.path(value)
+            else:
+                value = char.path(os.path.join(item, name))
             setattr(self, item, value)
 
         if "bones" not in self.config: # Legacy
@@ -303,7 +308,7 @@ def import_morphs(obj, char_name):
             if os.path.isfile(os.path.join(path, file)):
                 morph = import_morph(None, obj.shape_key_add(name="L1_" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
                 if morph is not None:
-                    L1_basis_dict[name] = morph
+                    L1_basis_dict[file] = morph
 
     path = char_file(char_name, "morphs/L2")
     if os.path.isdir(path):
@@ -426,6 +431,8 @@ class OpImport(bpy.types.Operator):
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
 
+        for name in char.default_assets:
+            fitting.fit_import(context, *char.assets[name])
         if not is_adult_mode():
             for name in char.underwear:
                 fitting.fit_import(context, *char.assets[name])

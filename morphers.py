@@ -152,20 +152,38 @@ class NumpyMorpher(morphing.Morpher):
     def __init__(self, obj):
         super().__init__(obj)
         self.basis = None
+        self.full_basis = self._get_L1_data(self.char.basis)
+        if self.full_basis is None:
+            self.full_basis = self._get_fallback_basis()
+        self.morphed = self.full_basis
 
     def has_morphs(self):
         return bool(self.char.name)
 
-    def update_L1(self):
-        file = self.morphs_l1.get(self.L1, "")
-        if os.path.isfile(file):
-            self.basis = numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
-            self.obj.data["cmorph_L1"] = self.L1
+    def _get_L1_data(self, name):
+        if not name:
+            return None
+        file = self.morphs_l1.get(name, "")
+        if not os.path.isfile(file):
+            return None
+        return numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
+
+    def _get_fallback_basis(self):
+        sk = self.obj.data.shape_keys
+        if sk:
+            data = sk.reference_key.data
         else:
-            verts = self.obj.data.vertices
-            arr = numpy.empty(len(verts) * 3)
-            verts.foreach_get("co", arr)
-            self.basis = arr.reshape(-1, 3)
+            data = self.obj.data.vertices
+        arr = numpy.empty(len(data) * 3)
+        data.foreach_get("co", arr)
+        return arr.reshape(-1, 3)
+
+    def update_L1(self):
+        self.basis = self._get_L1_data(self.L1)
+        if self.L1:
+            self.obj.data["cmorph_L1"] = self.L1
+        if self.basis is None:
+            self.basis = self.full_basis
 
     def get_L1(self):
         self.morphs_l1 = {}
@@ -199,26 +217,35 @@ class NumpyMorpher(morphing.Morpher):
             for name in enum_combo_names(k):
                 self.morphs_l2[name] = self.morphs_l2.get(name)
 
+    def _get_dest_shapekey(self):
+        if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
+            self.obj.shape_key_add(name="Basis", from_mix=False)
+        kb = self.obj.data.shape_keys.key_blocks
+        sk = kb.get("charmorph_final")
+        if sk is not None:
+            return sk
+        return self.obj.shape_key_add(name="charmorph_final", from_mix=False)
+
+    def _do_morph(self, data, idx, value):
+        if value < 0.001:
+            return
+        if self.clamp:
+            value = min(value, 1)
+        item = data[idx]
+        if item is None:
+            return
+        if isinstance(item, str):
+            npz = numpy.load(item)
+            item = (npz["idx"], npz["delta"].astype(dtype=numpy.float64, casting="same_kind"))
+            data[idx] = item
+        if self.morphed is None:
+            self.morphed = self.basis.copy()
+        self.morphed[item[0]] += item[1] * value
+
     def do_update(self):
         if self.basis is None:
             self.update_L1()
-        morph_data = None
-        def do_morph(data, idx, value):
-            nonlocal morph_data
-            if value < 0.001:
-                return
-            if self.clamp:
-                value = min(value, 1)
-            item = data[idx]
-            if item is None:
-                return
-            if isinstance(item, str):
-                npz = numpy.load(item)
-                item = (npz["idx"], npz["delta"].astype(dtype=numpy.float64, casting="same_kind"))
-                data[idx] = item
-            if morph_data is None:
-                morph_data = self.basis.copy()
-            morph_data[item[0]] += item[1] * value
+        self.morphed = None
 
         for name, data in self.morphs_l2.items():
             if data is None:
@@ -226,26 +253,22 @@ class NumpyMorpher(morphing.Morpher):
             val = self.obj.data.get("cmorph_L2_"+name)
             if val:
                 if len(data) == 1:
-                    do_morph(data, 0, val)
+                    self._do_morph(data, 0, val)
                 elif len(data) == 2:
-                    do_morph(data, 0, -val)
-                    do_morph(data, 1, val)
+                    self._do_morph(data, 0, -val)
+                    self._do_morph(data, 1, val)
 
         for name, data in self.morphs_combo.items():
             values = [self.obj.data.get("cmorph_L2_"+n, 0.0) for n in enum_combo_names(name)]
             coeff = 2 / len(data)
             for i in range(len(data)):
-                do_morph(data, i, get_combo_item_value(i, values) * coeff)
+                self._do_morph(data, i, get_combo_item_value(i, values) * coeff)
 
-        if morph_data is None:
-            morph_data = self.basis
+        if self.morphed is None:
+            self.morphed = self.basis
 
-        if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
-            self.obj.shape_key_add(name="Basis", from_mix=False)
-        sk = self.obj.data.shape_keys.key_blocks.get("charmorph_final")
-        if not sk:
-            sk = self.obj.shape_key_add(name="charmorph_final", from_mix=False)
-        sk.data.foreach_set("co", morph_data.reshape(-1))
+        sk = self._get_dest_shapekey()
+        sk.data.foreach_set("co", self.morphed.reshape(-1))
         sk.value = 1
 
         super().do_update()
@@ -262,3 +285,6 @@ class NumpyMorpher(morphing.Morpher):
             lambda _: self.obj.data.get(pname, 0.0),
             setter, soft_min,
         )
+
+    def get_diff(self):
+        return self.morphed - self.full_basis

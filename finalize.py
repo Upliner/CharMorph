@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, traceback
+import numpy, logging, traceback
 import bpy # pylint: disable=import-error
 
 from . import library, morphing, fitting, rigging, rigify, utils
@@ -165,6 +165,18 @@ def attach_rig(obj, rig):
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
 
+#FIXME: Use data from morpher instead?
+def sk_to_verts(obj, sk):
+    if isinstance(sk, str):
+        k = obj.data.shape_keys
+        if k and k.key_blocks:
+            sk = k.key_blocks.get(sk)
+    if sk is None:
+        return
+    arr = numpy.empty(len(sk.data) * 3)
+    sk.data.foreach_get("co", arr)
+    obj.data.vertices.foreach_set("co", arr)
+
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
     bl_label = "Finalize"
@@ -194,7 +206,7 @@ class OpFinalize(bpy.types.Operator):
         fin_sk_tmp = False
         if keys and keys.key_blocks:
             if ui.fin_morph != "NO" or ui.fin_rig != "-":
-                fin_sk = obj.data.shape_keys.key_blocks.get("charmorph_final")
+                fin_sk = keys.key_blocks.get("charmorph_final")
                 if not fin_sk:
                     fin_sk_tmp = ui.fin_morph == "NO"
                     fin_sk = obj.shape_key_add(name="charmorph_final", from_mix=True)
@@ -206,7 +218,7 @@ class OpFinalize(bpy.types.Operator):
                 if key.name.startswith("L1_") and key.value < 0.01:
                     unused_l1.add(key.name[3:])
                 if ui.fin_morph != "NO" and key != keys.reference_key and key != fin_sk:
-                    if key.name.startswith("L1_")  or key.name.startswith("L2_"):
+                    if key.name.startswith("L1_") or key.name.startswith("L2_"):
                         obj.shape_key_remove(key)
                     else:
                         unknown_keys = True
@@ -223,6 +235,8 @@ class OpFinalize(bpy.types.Operator):
             del obj.data["cm_morpher"]
             for k in [k for k in obj.data.keys() if k.startswith("cmorph_")]:
                 del obj.data[k]
+
+        sk_to_verts(obj, fin_sk)
 
         vg_cleanup = ui.fin_vg_cleanup
         def do_rig():
@@ -280,7 +294,9 @@ class OpFinalize(bpy.types.Operator):
         add_subsurf(obj)
 
         for asset in fitting.get_assets(obj):
-            if ui.fin_csmooth_assets:
+            if ui.fin_csmooth_assets != "RO":
+                sk_to_verts(asset, "charmorph_fitting")
+            if ui.fin_csmooth_assets != "NO":
                 add_corrective_smooth(asset)
             if ui.fin_subdiv_assets:
                 add_subsurf(asset)
@@ -385,18 +401,24 @@ class UIProps:
             ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
         ],
         description="Use corrective smooth to fix armature deform artifacts")
-    fin_vg_cleanup: bpy.props.BoolProperty(
-        name="Cleanup vertex groups",
-        default=False,
-        description="Remove unused vertex groups after finalization")
+    fin_csmooth_assets: bpy.props.EnumProperty(
+        name="Corrective smooth for assets",
+        default="NO",
+        description="Use corrective smooth for assets too",
+        items=[
+            ("NO", "None", "No corrective smooth"),
+            ("FR", "Fitting+Rig", "Allow to smooth artifacts caused by fitting and armature deform"),
+            ("RO", "Rig only", "Allow to smooth only artifacts caused by armature deform"),
+        ],
+        )
     fin_subdiv_assets: bpy.props.BoolProperty(
         name="Subdivide assets",
         default=False,
         description="Subdivide assets together with character")
-    fin_csmooth_assets: bpy.props.BoolProperty(
-        name="Corrective smooth for assets",
-        default=True,
-        description="Use corrective smooth for assets too")
+    fin_vg_cleanup: bpy.props.BoolProperty(
+        name="Cleanup vertex groups",
+        default=False,
+        description="Remove unused vertex groups after finalization")
 
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
     bl_label = "Finalization"
