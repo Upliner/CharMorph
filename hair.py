@@ -148,7 +148,7 @@ epsilon = fitting.epsilon
 def calc_weights(char, arr):
     t = utils.Timer()
 
-    char_verts = char.data.vertices
+    char_verts = fitting.get_basis(char)
     char_faces = char.data.polygons
 
     # calculate weights based on n nearest vertices
@@ -342,7 +342,7 @@ def diff_array(context, char):
     echar = char.evaluated_get(context.evaluated_depsgraph_get())
     try:
         deformed = echar.to_mesh()
-        verts = char.data.vertices
+        verts = fitting.get_basis(char)
         l = len(verts)*3
         result = numpy.empty(l)
         basis = numpy.empty(l)

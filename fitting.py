@@ -44,7 +44,7 @@ def calc_weights(char, asset, mask):
 
     # dg = bpy.context.view_layer.depsgraph
 
-    char_verts = char.data.vertices
+    char_verts = get_basis(char)
     char_faces = char.data.polygons
     asset_verts = asset.data.vertices
     asset_faces = asset.data.polygons
@@ -203,13 +203,13 @@ def add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char):
 
     covered_verts = set()
 
-    for i, cvert in enumerate(char.data.vertices):
+    for i, cvert in enumerate(get_basis(char)):
         co = cvert.co
         if not bbox_match(co):
             continue
 
         has_cloth = False
-        norm = cvert.normal
+        norm = char.data.vertices[i].normal
 
         #if vertex is too close to cloth, mark it as covered
         _, _, idx, _ = bvh_asset.find_nearest(co, 0.0005)
@@ -226,7 +226,7 @@ def add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char):
             direction = co-cast_point
             max_dist = direction.length
             direction.normalize()
-            if cvert.normal.dot(direction) > -0.5:
+            if norm.dot(direction) > -0.5:
                 continue # skip back faces and very sharp view angles
             if not cast_rays(cast_point, direction, max_dist):
                 has_cloth = False
@@ -417,13 +417,11 @@ def recalc_comb_mask(char, new_asset=None):
     assets = [asset for asset in assets if masking_enabled(asset)]
     if not assets:
         return
+    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in get_basis(char)], [f.vertices for f in char.data.polygons])
+    bbox_min = mathutils.Vector(assets[0].bound_box[0])
+    bbox_max = mathutils.Vector(assets[0].bound_box[0])
     try:
         bm = bmesh.new()
-        bm.from_mesh(char.data)
-        bvh_char = mathutils.bvhtree.BVHTree.FromBMesh(bm)
-        bm.clear()
-        bbox_min = mathutils.Vector(assets[0].bound_box[0])
-        bbox_max = mathutils.Vector(assets[0].bound_box[0])
         for asset in assets:
             bm.from_mesh(asset.data)
             update_bbox(bbox_min, bbox_max, asset)
