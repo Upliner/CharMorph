@@ -20,7 +20,7 @@
 
 import os, numpy
 
-from . import morphing
+from . import morphing, utils
 
 def get_combo_item_value(arr_idx, values):
     return sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values))
@@ -169,11 +169,7 @@ class NumpyMorpher(morphing.Morpher):
         return numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
 
     def _get_fallback_basis(self):
-        sk = self.obj.data.shape_keys
-        if sk:
-            data = sk.reference_key.data
-        else:
-            data = self.obj.data.vertices
+        data = utils.get_basis(self.obj)
         arr = numpy.empty(len(data) * 3)
         data.foreach_get("co", arr)
         return arr.reshape(-1, 3)

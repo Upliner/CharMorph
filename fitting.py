@@ -44,7 +44,7 @@ def calc_weights(char, asset, mask):
 
     # dg = bpy.context.view_layer.depsgraph
 
-    char_verts = get_basis(char)
+    char_verts = utils.get_basis(char)
     char_faces = char.data.polygons
     asset_verts = asset.data.vertices
     asset_faces = asset.data.polygons
@@ -203,7 +203,7 @@ def add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char):
 
     covered_verts = set()
 
-    for i, cvert in enumerate(get_basis(char)):
+    for i, cvert in enumerate(utils.get_basis(char)):
         co = cvert.co
         if not bbox_match(co):
             continue
@@ -346,12 +346,6 @@ def get_morphed_shape_key(obj):
     # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
     return obj.shape_key_add(from_mix=True), True
 
-def get_basis(obj):
-    k = obj.data.shape_keys
-    if k:
-        return k.reference_key.data
-    return obj.data.vertices
-
 def diff_array(obj):
     if hasattr(morphing.morpher, "get_diff") and morphing.morpher.obj == obj:
         return morphing.morpher.get_diff()
@@ -363,7 +357,7 @@ def diff_array(obj):
     basis = basis_cache.get(obj.name)
     if basis is None:
         basis = numpy.empty(len(morphed))
-        get_basis(obj).foreach_get("co", basis)
+        utils.get_basis(obj).foreach_get("co", basis)
         basis_cache[obj.name] = basis
     morphed -= basis
     return morphed.reshape(-1, 3)
@@ -417,7 +411,7 @@ def recalc_comb_mask(char, new_asset=None):
     assets = [asset for asset in assets if masking_enabled(asset)]
     if not assets:
         return
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in get_basis(char)], [f.vertices for f in char.data.polygons])
+    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in utils.get_basis(char)], [f.vertices for f in char.data.polygons])
     bbox_min = mathutils.Vector(assets[0].bound_box[0])
     bbox_max = mathutils.Vector(assets[0].bound_box[0])
     try:

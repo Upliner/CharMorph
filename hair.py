@@ -87,11 +87,11 @@ def attach_scalp(char, obj):
 def create_scalp(name, char, vgi):
     vmap = {}
     verts = []
-    for v in char.data.vertices:
-        for g in v.groups:
+    for mv, bv in zip(char.data.vertices, utils.get_basis(char)):
+        for g in mv.groups:
             if g.group == vgi:
-                vmap[v.index] = len(verts)
-                verts.append(v.co)
+                vmap[mv.index] = len(verts)
+                verts.append(bv.co)
     edges = [(v1, v2) for v1, v2 in ((vmap.get(e.vertices[0]), vmap.get(e.vertices[1])) for e in char.data.edges) if v1 is not None and v2 is not None]
     faces = []
     for f in char.data.polygons:
@@ -148,7 +148,7 @@ epsilon = fitting.epsilon
 def calc_weights(char, arr):
     t = utils.Timer()
 
-    char_verts = fitting.get_basis(char)
+    char_verts = utils.get_basis(char)
     char_faces = char.data.polygons
 
     # calculate weights based on n nearest vertices
@@ -342,7 +342,7 @@ def diff_array(context, char):
     echar = char.evaluated_get(context.evaluated_depsgraph_get())
     try:
         deformed = echar.to_mesh()
-        verts = fitting.get_basis(char)
+        verts = utils.get_basis(char)
         l = len(verts)*3
         result = numpy.empty(l)
         basis = numpy.empty(l)

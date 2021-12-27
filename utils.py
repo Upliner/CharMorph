@@ -53,6 +53,12 @@ def kdtree_from_verts(verts):
     kd.balance()
     return kd
 
+def get_basis(obj):
+    k = obj.data.shape_keys
+    if k:
+        return k.reference_key.data
+    return obj.data.vertices
+
 def is_true(value):
     if isinstance(value, str):
         return value.lower() in ('true', '1', 'y', 'yes')
