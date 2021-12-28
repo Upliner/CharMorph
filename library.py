@@ -94,6 +94,8 @@ class Character:
             "char_file": "char.blend",
             "char_obj": "char",
             "basis": "",
+            "no_morph_categories": False,
+            "custom_morph_order": False,
             "randomize_incl_regex": None,
             "randomize_excl_regex": None,
             "default_type": "",
@@ -184,7 +186,7 @@ class Armature():
             if value:
                 value = char.path(value)
             else:
-                value = char.path(os.path.join(item, name))
+                value = char.path(os.path.join(item, name + ".npz"))
             setattr(self, item, value)
 
         if "bones" not in self.config: # Legacy
@@ -299,6 +301,27 @@ def get_basis(obj):
     obj.data.vertices.foreach_get("co", basis)
     return basis
 
+def list_morph_dir(path):
+    if not os.path.isdir(path):
+        return ()
+    jslist = parse_file(os.path.join(path, "morphs.json"), json.load, None)
+    if jslist is not None:
+        return jslist
+
+    return ({"morph": name[:-4]} for name in sorted(os.listdir(path))
+        if name.endswith(".npz") and os.path.isfile(os.path.join(path, name)))
+
+def create_morph_sk(obj, prefix, morph, counter):
+    if morph.get("separator"):
+        obj.shape_key_add(name="---- sep-%d-%d ----" % tuple(counter), from_mix=False)
+        counter[1] += 1
+        return None
+
+    sk = obj.shape_key_add(name=prefix + morph["morph"], from_mix=False)
+    sk.slider_min = morph.get("min", 0)
+    sk.slider_max = morph.get("max", 1)
+    return sk
+
 def import_morphs(obj, char_name):
     basis = get_basis(obj)
     path = char_file(char_name, "morphs/L1")
@@ -306,35 +329,42 @@ def import_morphs(obj, char_name):
     if os.path.isdir(path):
         for file in sorted(os.listdir(path)):
             if os.path.isfile(os.path.join(path, file)):
-                morph = import_morph(None, obj.shape_key_add(name="L1_" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
+                name = os.path.splitext(file)[0]
+                morph = import_morph(None, obj.shape_key_add(name="L1_" + name, from_mix=False), os.path.join(path, file))
                 if morph is not None:
-                    L1_basis_dict[file] = morph
+                    L1_basis_dict[name] = morph
 
     path = char_file(char_name, "morphs/L2")
-    if os.path.isdir(path):
-        for file in sorted(os.listdir(path)):
-            if os.path.isfile(os.path.join(path, file)):
-                import_morph(basis, obj.shape_key_add(name="L2__" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
-        for file in sorted(os.listdir(path)):
-            if os.path.isdir(os.path.join(path, file)):
-                L1_basis = L1_basis_dict.get(file)
-                if L1_basis is None:
-                    logger.error("Unknown L1 type: %s", file)
-                    continue
-                for file2 in sorted(os.listdir(os.path.join(path, file))):
-                    name, _ = os.path.splitext(file2)
-                    sk = obj.shape_key_add(name="L2_%s_%s" % (file, name), from_mix=False)
-                    sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
-                    import_morph(L1_basis, sk, os.path.join(path, file, file2))
-
-def import_expressions(obj, char_name):
-    path = char_file(char_name, "morphs/L3")
     if not os.path.isdir(path):
         return
-    basis = get_basis(obj)
+
+    counter = [2, 1]
+
+    for morph in list_morph_dir(path):
+        sk = create_morph_sk(obj, "L2__", morph, counter)
+        if sk:
+            import_morph(basis, sk, os.path.join(path, morph["morph"] + ".npz"))
+
     for file in sorted(os.listdir(path)):
-        if os.path.isfile(os.path.join(path, file)):
-            import_morph(basis, obj.shape_key_add(name="L3_" + os.path.splitext(file)[0], from_mix=False), os.path.join(path, file))
+        if os.path.isdir(os.path.join(path, file)):
+            L1_basis = L1_basis_dict.get(file)
+            if L1_basis is None:
+                logger.error("Unknown L1 type: %s", file)
+                continue
+            for morph in list_morph_dir(os.path.join(path, file)):
+                sk = create_morph_sk(obj, "L2_%s_" % file, morph, counter)
+                if sk:
+                    sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
+                    import_morph(L1_basis, sk, os.path.join(path, file, morph["morph"] + ".npz"))
+
+def import_expressions(obj, char_name):
+    basis = get_basis(obj)
+    counter = [3,1]
+    path = char_file(char_name, "morphs/L3")
+    for morph in  list_morph_dir(path):
+        sk = create_morph_sk(obj, "L3_", morph, counter)
+        if sk:
+            import_morph(basis, sk, os.path.join(path, morph["morph"] + ".npz"))
 
 from  . import morphing, materials, fitting
 

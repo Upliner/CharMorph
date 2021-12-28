@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import os, re, numpy
+import os, re, numpy, json
 import bpy, bpy_extras # pylint: disable=import-error
 import idprop          # pylint: disable=import-error
 
@@ -209,12 +209,13 @@ class OpMorphsExport(bpy.types.Operator):
         keys = {}
 
         for sk in m.shape_keys.key_blocks:
-            if r.match(sk.name):
-                name = r.sub(ui.morph_replace, sk.name) + ".npz"
-                keys[name] = sk
-                if os.path.exists(os.path.join(self.directory, name)):
-                    self.report({"ERROR"}, name + ".npz already exists!")
-                    return {"CANCELLED"}
+            if not r.match(sk.name):
+                continue
+            name = r.sub(ui.morph_replace, sk.name) + ".npz"
+            keys[name] = sk
+            if os.path.exists(os.path.join(self.directory, name)):
+                self.report({"ERROR"}, name + ".npz already exists!")
+                return {"CANCELLED"}
 
         rk = m.shape_keys.reference_key
         basis = numpy.empty(len(rk.data)*3)
@@ -240,16 +241,56 @@ class OpMorphsExport(bpy.types.Operator):
 
             morphed -= basis3
             m2 = morphed.reshape(-1, 3)
+
+            if sk.vertex_group:
+                vg = context.object.vertex_groups[sk.vertex_group].index
+                for i, v in enumerate(m.vertices):
+                    for e in v.groups:
+                        if e.group == vg:
+                            m2[i] *= e.weight
+                            break
+                    else:
+                        m2[i] = (0, 0, 0)
+
             idx = ((m2 * m2).sum(1) > epsilonsq).nonzero()[0]
             numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
 
-        return {"CANCELLED"}
+        return {"FINISHED"}
 
     def invoke(self, context, _event):
         if not self.directory:
             self.directory = os.path.dirname(context.blend_data.filepath)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
+
+class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.morphlist_export"
+    bl_label = "Export morph list"
+    bl_description = 'Export morphs list to json file'
+    filename_ext = ".json"
+
+    def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        r = re.compile(ui.morph_regex)
+        lst = []
+        keys = context.object.data.shape_keys
+        for sk in keys.key_blocks:
+            if not r.match(sk.name):
+                continue
+            if sk == keys.reference_key:
+                continue
+            name = r.sub(ui.morph_replace, sk.name)
+            if name.startswith("--"):
+                lst.append({"separator": True})
+            elif sk.slider_min == 0 and sk.slider_max == 1:
+                lst.append({"morph": name})
+            else:
+                lst.append({"morph": name, "min": sk.slider_min, "max": sk.slider_max})
+
+        with open(self.filepath, "w") as f:
+            json.dump(lst, f)
+
+        return {"FINISHED"}
 
 class UIProps:
     vg_regex: bpy.props.StringProperty(
@@ -323,5 +364,6 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.prop(ui, "morph_epsilon")
         l.prop(ui, "morph_float_precicion")
         l.operator("cmedit.morphs_export")
+        l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpMorphsExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpMorphsExport, OpMorphListExport, CHARMORPH_PT_FileIO]

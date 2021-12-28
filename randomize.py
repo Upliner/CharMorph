@@ -81,8 +81,6 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
         global saved_props
         if context.window_manager.charmorph_ui.randomize_mode != "RL1":
             saved_props = None
-        if not hasattr(context.window_manager, 'charmorphs'):
-            return False
         m = morphing.morpher
         if not m:
             return False
@@ -109,14 +107,15 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
             self.layout.prop(ui, "randomize_strength")
         self.layout.operator('charmorph.randomize')
 
-def save_props(cm, version):
+def save_props():
     global saved_props
-    if version == saved_version:
+    m = morphing.morpher
+    if m.version == saved_version:
         return
     saved_props = {}
-    for prop in dir(cm):
-        if prop.startswith("prop_"):
-            saved_props[prop[5:]] = getattr(cm, prop)
+    for name, morph in m.morphs_l2.items():
+        if morph is not None:
+            saved_props[name] = m.prop_get(name)
 
 class OpRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
@@ -131,36 +130,36 @@ class OpRandomize(bpy.types.Operator):
         global saved_version
         wm = context.window_manager
         ui = wm.charmorph_ui
-        cm = wm.charmorphs
-        m = morphing.morpher
         if ui.randomize_mode == "RL1":
-            save_props(cm, m.version)
+            save_props()
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_func == "GAU":
-            random_func = lambda: max(min(random.gauss(0.5, ui.randomize_sigma), 1), 0)
+            random_func = lambda: random.gauss(0.5, ui.randomize_sigma)
         else:
             random_func = random.random
+        m = morphing.morpher
         if ui.randomize_morphs:
             m.lock()
             try:
-                for prop in dir(cm):
-                    if not prop.startswith("prop_"):
-                        continue
-                    propname = prop[5:]
-                    if excl.search(propname) or not incl.search(propname):
+                for name, morph in m.morphs_l2.items():
+                    if excl.search(name) or not incl.search(name):
                         continue
                     if ui.randomize_mode == "OVR":
                         m.reset_meta()
                     if ui.randomize_mode == "SEG":
-                        val = (math.floor((getattr(cm, prop)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
+                        val = (math.floor((m.prop_get(name)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
                     else:
                         val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
                     if ui.randomize_mode == "RL1":
-                        val += saved_props.get(propname, 0)
+                        val += saved_props.get(name, 0)
                     elif ui.randomize_mode == "RL2":
-                        val += getattr(cm, prop)
-                    setattr(cm, prop, val)
+                        val += m.prop_get(name)
+                    if val < 0 and morph.min == 0:
+                        val = -val
+                    if m.clamp:
+                        val = max(min(val, morph.max), morph.min)
+                    m.prop_set(name, val)
             finally:
                 m.unlock()
         if ui.randomize_mode == "RL1":

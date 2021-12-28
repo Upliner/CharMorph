@@ -43,7 +43,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs')
+        return bool(morphing.morpher)
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
@@ -58,11 +58,8 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
             col.operator("charmorph.export_yaml")
         col.operator("charmorph.import")
 
-def morphs_to_data(context):
+def morphs_to_data():
     m = morphing.morpher
-    cm = context.window_manager.charmorphs
-    morphs = {}
-    meta = {}
     typ = []
 
     if m.L1:
@@ -71,12 +68,12 @@ def morphs_to_data(context):
         if alt_name:
             typ.append(alt_name)
 
-    for prop in dir(cm):
-        if prop.startswith("prop_"):
-            morphs[prop[5:]] = getattr(cm, prop)
-        elif prop.startswith("meta_"):
-            meta[prop[5:]] = getattr(cm, prop)
-    return {"type":typ, "morphs":morphs, "meta": meta, "materials": materials.prop_values()}
+    return {
+        "type":   typ,
+        "morphs": {k: m.prop_get(k) for k in m.morphs_l2},
+        "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
+        "materials": materials.prop_values()
+    }
 
 def mblab_to_charmorph(data):
     return {
@@ -112,11 +109,11 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
+        return bool(morphing.morpher)
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
-            json.dump(charmorph_to_mblab(morphs_to_data(context)), f, indent=4, sort_keys=True)
+            json.dump(charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
         return {"FINISHED"}
 
 
@@ -130,11 +127,11 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
+        return bool(morphing.morpher)
 
     def execute(self, context):
         with open(self.filepath, "w") as f:
-            yaml.dump(morphs_to_data(context), f, Dumper=utils.MyDumper)
+            yaml.dump(morphs_to_data(), f, Dumper=utils.MyDumper)
         return {"FINISHED"}
 
 class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -147,9 +144,9 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and hasattr(context.window_manager, "chartype") and morphing.morpher
+        return hasattr(context.window_manager, "chartype") and morphing.morpher
 
-    def execute(self, context):
+    def execute(self, _):
         data = load_morph_data(self.filepath)
         if data is None:
             self.report({'ERROR'}, "Can't recognize format")
@@ -169,7 +166,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                 if m.set_L1(name):
                     break
 
-            m.apply_morph_data(context.window_manager.charmorphs, data, False)
+            m.apply_morph_data(data, False)
         except:
             m.unlock()
             raise
