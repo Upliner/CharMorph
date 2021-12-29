@@ -57,9 +57,8 @@ Rigging:
 Editing:
   - Retopology
   - Simple MB-Lab import/export tools
-  - Fix L2__Body_Size_min and export it back to MB-Lab
+  - Export L2__Body_Size_min back to MB-Lab
   - Refine for XL recalc
-  - Perpendicular raycast
 
 Pose:
   - Fix glitchy capture poses
