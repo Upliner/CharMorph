@@ -217,7 +217,7 @@ class NumpyMorpher(morphing.Morpher):
 
         for k, v in self.morphs_combo.items():
             for name in enum_combo_names(k):
-                self.morphs_l2[name] = v
+                self.morphs_l2[name] = self.morphs_l2.get(name, v)
 
     def _get_dest_shapekey(self):
         if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:

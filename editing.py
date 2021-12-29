@@ -339,6 +339,8 @@ class OpSymmetrizeWeights(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
         mesh = obj.data
+        if mesh.is_editmode:
+            obj.update_from_editmode()
         kd = utils.kdtree_from_verts(mesh.vertices)
         for v in mesh.vertices:
             if not v.select:

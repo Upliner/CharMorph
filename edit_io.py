@@ -292,6 +292,24 @@ class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+def sel_arr(items):
+    return numpy.array([x.select for x in items], dtype=bool).nonzero()[0].astype(dtype=numpy.uint16)
+
+class OpSelSetExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.selset_export"
+    bl_label = "Export vertex+face list"
+    bl_description = 'Export selected vertices and faces to npz file'
+    filename_ext = ".npz"
+
+    def execute(self, context):
+        obj = context.object
+        mesh = obj.data
+        if mesh.is_editmode:
+            obj.update_from_editmode()
+
+        numpy.savez(self.filepath, verts=sel_arr(mesh.vertices), faces=sel_arr(mesh.polygons))
+        return {"FINISHED"}
+
 class UIProps:
     vg_regex: bpy.props.StringProperty(
         name="VG regex",
@@ -351,6 +369,8 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l = self.layout
         l.operator("cmedit.hair_export")
         l.separator()
+        l.operator("cmedit.selset_export")
+        l.separator()
         l.prop(ui, "rig_bones_mode")
         l.operator("cmedit.bones_export")
         l.separator()
@@ -366,4 +386,4 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpMorphsExport, OpMorphListExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]
