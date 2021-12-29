@@ -22,6 +22,7 @@ Materials:
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
+  - Skin coloring for Antonia
 
 Randomize:
   - Randomize eye and skin colors
