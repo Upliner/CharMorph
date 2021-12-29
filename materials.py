@@ -170,7 +170,7 @@ def get_props(obj):
     values = []
     groups = set()
     def scan_nodes(nodes):
-        for node in mtl.node_tree.nodes.values():
+        for node in nodes:
             if node.type == "GROUP" and node.name == "charmorph_settings" and node.node_tree.name not in groups:
                 groups.add(node.node_tree.name)
                 scan_nodes(node.node_tree.nodes.values())
