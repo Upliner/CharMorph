@@ -46,12 +46,15 @@ def lock_obj(obj, is_lock):
     obj.lock_rotations_4d = is_lock
     obj.lock_scale = (is_lock, is_lock, is_lock)
 
-def kdtree_from_verts(verts):
-    kd = mathutils.kdtree.KDTree(len(verts))
-    for idx, vert in enumerate(verts):
+def kdtree_from_verts_enum(verts, cnt):
+    kd = mathutils.kdtree.KDTree(cnt)
+    for idx, vert in verts:
         kd.insert(vert.co, idx)
     kd.balance()
     return kd
+
+def kdtree_from_verts(verts):
+    return kdtree_from_verts_enum(enumerate(verts), len(verts))
 
 def get_basis(obj):
     k = obj.data.shape_keys

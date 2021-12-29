@@ -117,15 +117,21 @@ class Character:
             self.assets = load_assets_dir(self.path("assets"))
             self.poses = load_json_dir(self.path("poses"))
 
+        self.material_lib = self.config.get("material_lib", self.char_file)
+
         self._parse_armature()
 
     def __getattr__(self, item):
         if item == "morphs_meta":
             self.morphs_meta = self.get_yaml("morphs_meta.yaml")
             return self.morphs_meta
-        if item == "material_lib":
-            self.material_lib = self.config.get("material_lib", self.char_file)
-            return self.material_lib
+        if item == "fitting_subset":
+            file = self.path("fitting_subset.npz")
+            if os.path.exists(file):
+                self.fitting_subset = numpy.load(file)
+            else:
+                self.fitting_subset = None
+            return self.fitting_subset
         return self.config[item]
 
     def path(self, file):

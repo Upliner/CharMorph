@@ -147,7 +147,6 @@ class ShapeKeysMorpher(morphing.Morpher):
         if self.is_combo_morph(morph):
             return sum(combo_morpher.get(idx) for combo_morpher, idx in morph.data)/len(morph.data)
         if len(morph.data) == 1:
-            print(morph.data, morph.min, morph.max)
             return morph.data[0].value
         skmin, skmax = tuple(morph.data)
         return (0 if skmax is None else skmax.value) - (0 if skmin is None else skmin.value)
@@ -159,7 +158,7 @@ class NumpyMorpher(morphing.Morpher):
         self.full_basis = self._get_L1_data(self.char.basis)
         if self.full_basis is None:
             self.full_basis = self._get_fallback_basis()
-        self.morphed = self.full_basis
+        self.morphed = None
         self.counter = 1
 
     def has_morphs(self):
@@ -242,20 +241,19 @@ class NumpyMorpher(morphing.Morpher):
             self.morphed = self.basis.copy()
         self.morphed[item[0]] += item[1] * value
 
-    def do_update(self):
+    def _do_all_morphs(self):
         if self.basis is None:
             self.update_L1()
         self.morphed = None
-        morphing.logger.debug("Update %s", self.clamp)
 
         for name, morph in self.morphs_l2.items():
             if morph is None or len(morph.data) > 2:
                 continue
             data = morph.data
             val = self.obj.data.get("cmorph_L2_"+name)
-            if self.clamp:
-                val = max(min(val, morph.max), morph.min)
             if val:
+                if self.clamp:
+                    val = max(min(val, morph.max), morph.min)
                 if len(data) == 1:
                     self._do_morph(data, 0, val)
                 elif len(data) == 2:
@@ -272,6 +270,9 @@ class NumpyMorpher(morphing.Morpher):
 
         if self.morphed is None:
             self.morphed = self.basis
+
+    def do_update(self):
+        self._do_all_morphs()
 
         sk = self._get_dest_shapekey()
         sk.data.foreach_set("co", self.morphed.reshape(-1))
@@ -293,4 +294,6 @@ class NumpyMorpher(morphing.Morpher):
         self.obj.data["cmorph_L2_" + name] = value
 
     def get_diff(self):
+        if self.morphed is None:
+            self._do_all_morphs()
         return self.morphed - self.full_basis

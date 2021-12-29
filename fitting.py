@@ -39,25 +39,55 @@ def invalidate_cache():
     char_cache.clear()
     basis_cache.clear()
 
+def intersect_faces(bvh, faces, co, dist):
+    arr = bvh.find_nearest_range(co, dist)
+    if len(arr) > 5:
+        return None, None
+    if len(arr) > 1:
+        verts = set(faces[arr[0][2]].vertices)
+        fdist = arr[0][3]
+        for _, _, idx2, fdist2 in arr[1:]:
+            verts.intersection_update(faces[idx2].vertices)
+            fdist = min(fdist, fdist2)
+        fdist = max(fdist, epsilon)
+    else:
+        arr = arr[0]
+        verts = faces[arr[2]].vertices
+        fdist = arr[3]
+    return verts, max(fdist, epsilon)
+
 def calc_weights(char, asset, mask):
     t = utils.Timer()
-
-    # dg = bpy.context.view_layer.depsgraph
 
     char_verts = utils.get_basis(char)
     char_faces = char.data.polygons
     asset_verts = asset.data.vertices
     asset_faces = asset.data.polygons
 
+    subset = library.obj_char(char).fitting_subset
+    if subset is None:
+        verts_enum = enumerate(char_verts)
+        kd_verts_cnt = len(char_verts)
+    else:
+        verts_enum = [(i, char_verts[i]) for i in subset["verts"]]
+        verts_set = set(subset["verts"])
+        kd_verts_cnt = len(verts_enum)
+
+    t.time("subset")
+
     # calculate weights based on 32 nearest vertices
-    kd_char = utils.kdtree_from_verts(char_verts)
+    kd_char = utils.kdtree_from_verts_enum(verts_enum, kd_verts_cnt)
     weights = [{idx: 1/(max(dist, epsilon)**2) for loc, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
 
     t.time("kdtree")
 
+    if subset is None:
+        face_list = char_faces
+    else:
+        face_list = [char_faces[i] for i in subset["faces"]]
     # using FromPolygons because objects can have modifiers and there is no way force FromObject to use undeformed mesh
     # will using bmesh be faster?
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
+    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in face_list])
     # calculate weights based on distance from asset vertices to character faces
     for i, avert in enumerate(asset_verts):
         co = avert.co
@@ -66,24 +96,13 @@ def calc_weights(char, asset, mask):
         if loc is None or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
             continue
 
-        fdist = max(fdist, epsilon)
-
-        arr = bvh_char.find_nearest_range(co, fdist * 1.125)
-        if len(arr) > 5:
+        verts, fdist = intersect_faces(bvh_char, face_list, co, max(fdist, epsilon) * 1.125)
+        if verts is None:
             continue
-        if len(arr) > 1:
-            verts = set(char_faces[arr[0][2]].vertices)
-            fdist = arr[0][3]
-            for _, _, idx2, fdist2 in arr[1:]:
-                verts.difference_update(char_faces[idx2].vertices)
-                fdist = min(fdist, fdist2)
-            fdist = max(fdist, epsilon)
-        else:
-            verts = char_faces[idx].vertices
 
         d = weights[i]
         for vi in verts:
-            d[vi] = max(d.get(vi, 0), 1/max(((co-char_verts[vi].co).length * fdist), epsilon))
+            d[vi] = max(d.get(vi, 0), 1/max((co-char_verts[vi].co).length * fdist, epsilon))
 
     t.time("bvh direct")
 
@@ -91,6 +110,8 @@ def calc_weights(char, asset, mask):
     bvh_asset = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in asset_verts], [f.vertices for f in asset_faces])
     #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
     for i, cvert in enumerate(char_verts):
+        if subset and i not in verts_set:
+            continue
         co = cvert.co
         loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
         if idx is None:
@@ -98,14 +119,13 @@ def calc_weights(char, asset, mask):
 
         fdist = max(fdist, epsilon)
 
-        verts = asset_faces[idx].vertices
-        dists = [max((co-asset_verts[vi].co).length, epsilon) for vi in verts]
-        if min(dists)*0.9999 <= fdist:
+        verts, fdist = intersect_faces(bvh_asset, asset_faces, co, max(fdist, epsilon) * 1.001)
+        if verts is None:
             continue
 
-        for vi, dist in zip(verts, dists):
+        for vi in verts:
             d = weights[vi]
-            d[i] = max(d.get(i, 0), 1/(dist*fdist))
+            d[i] = max(d.get(i, 0), 1/max((co-asset_verts[vi].co).length*fdist, epsilon))
 
     t.time("bvh reverse")
 
@@ -137,7 +157,7 @@ def calc_weights(char, asset, mask):
             idx[pos] = k
             wresult[pos] = v
             pos += 1
-        w = wresult[pos1:pos]
+        w  = wresult[pos1:pos]
         w /= w.sum()
 
         #idx[pos:pos+len(d)] = list(d.keys())
