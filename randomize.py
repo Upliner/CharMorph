@@ -143,7 +143,9 @@ class OpRandomize(bpy.types.Operator):
             m.lock()
             try:
                 for name, morph in m.morphs_l2.items():
-                    if excl.search(name) or not incl.search(name):
+                    if morph is None:
+                        continue
+                    if ui.randomize_excl and (excl.search(name) or not incl.search(name)):
                         continue
                     if ui.randomize_mode == "OVR":
                         m.reset_meta()

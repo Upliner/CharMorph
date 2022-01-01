@@ -70,7 +70,7 @@ def morphs_to_data():
 
     return {
         "type":   typ,
-        "morphs": {k: m.prop_get(k) for k in m.morphs_l2},
+        "morphs": {k: m.prop_get(k) for k, v in m.morphs_l2.items() if v is not None},
         "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
         "materials": materials.prop_values()
     }
