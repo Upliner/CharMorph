@@ -170,7 +170,9 @@ class Morpher(metaclass=abc.ABCMeta):
         meta_props = data.get("meta", {})
         self.lock()
         try:
-            for name in self.morphs_l2:
+            for name, morph in self.morphs_l2.items():
+                if morph is None:
+                    continue
                 value = morph_props.get(name, 0)
                 if preset_mix:
                     value = (value+self.prop_get(name))/2
