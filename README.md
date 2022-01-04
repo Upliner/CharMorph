@@ -47,5 +47,5 @@ This project uses git submodules so you to use git clone --recursive when clonin
 
 ## Links
 
-You can see examples of these features at [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
-Discord server: https://discord.gg/bMsvxN3jPY
+* You can see examples of these features at [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
+* Discord server: https://discord.gg/bMsvxN3jPY
