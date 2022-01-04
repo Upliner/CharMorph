@@ -23,6 +23,11 @@ Materials:
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
   - Skin coloring for Antonia
+  - Texture sets (4K/8K for Reom, maybe different resultions for Antonia too)
+
+Reom:
+  - Apply HopeFixes morph to the basis
+  - More symmetry fixes
 
 Randomize:
   - Randomize eye and skin colors
