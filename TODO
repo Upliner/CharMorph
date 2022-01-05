@@ -53,12 +53,14 @@ Rigging:
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia
+  - Deformation cage support?
+  - Sliding joint influence control
   - Force bone bending angle
   - Head pivot shift
   - Live regular rig deform
   - Import MB-Lab expression shape keys alongside with Rigify
   - Rigify morphing? Maybe even create an own Rigify-like rig system?
-  - Blenrig
+  - Blenrig?
 
 Editing:
   - Retopology
