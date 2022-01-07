@@ -41,7 +41,7 @@ def invalidate_cache():
 
 def intersect_faces(bvh, faces, co, dist):
     arr = bvh.find_nearest_range(co, dist)
-    if len(arr) > 5:
+    if len(arr) > 5 or len(arr) == 0:
         return None, None
     if len(arr) > 1:
         verts = set(faces[arr[0][2]].vertices)
