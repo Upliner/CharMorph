@@ -45,6 +45,12 @@ This project uses git submodules so you to use git clone --recursive when clonin
 * git submodule init
 * git submodule update
 
+## Installation manual
+
+* Download zip package from releases. Not GitHub source code but release package. If zip file size is less than 10MB then it contains addon only without character library.
+* In Blender go to Edit->Preferences->Addons, click "Install..." button and point to select downloaded zip package
+* If character library is missing, then you can download it separately to CharMorph data directory. It is located at http://github.com/Upliner/CharMorph-db/ . Usual library location on Windows is C:\Users\<UserName>\AppData\Roaming\Blender Foundation\Blender\<VersionNumber>\scripts\addons\CharMorph\data.
+
 ## Links
 
 * You can see examples of these features at [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
