@@ -10,6 +10,7 @@ Art:
 
 Char creation:
   - Asset list in creation panel
+  - Alternative topologies selection
 
 Morphing:
   - Allow to mix L1 shapes
@@ -63,7 +64,6 @@ Rigging:
   - Blenrig?
 
 Editing:
-  - Retopology
   - Simple MB-Lab import/export tools
   - Export L2__Body_Size_min back to MB-Lab
   - Refine for XL recalc
