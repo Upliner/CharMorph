@@ -143,7 +143,7 @@ def create_default_hair(context, obj, char, scalp):
         hair.vertex_group_length = vg
     return s
 
-epsilon = fitting.epsilon
+epsilon = utils.epsilon
 
 def calc_weights(char, arr):
     t = utils.Timer()
@@ -161,7 +161,7 @@ def calc_weights(char, arr):
     for i, co in enumerate(arr):
         loc, norm, idx, fdist = bvh_char.find_nearest(co)
 
-        fdist = max(fdist, fitting.epsilon)
+        fdist = max(fdist, epsilon)
 
         if not loc or ((co-loc).dot(norm) <= 0 and fdist > fitting.dist_thresh):
             continue

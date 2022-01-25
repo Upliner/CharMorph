@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging, re, abc
-import bpy
+import os, logging, re
+import bpy # pylint: disable=import-error
 
-from . import library, materials, fitting, file_io
+from . import library, materials, fitting, file_io, utils
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class Morph:
         self.max = maxval
         self.data = data
 
-class Morpher(metaclass=abc.ABCMeta):
+class Morpher:
     def __init__(self, obj):
         self.obj = obj
         self.char = library.obj_char(obj)
@@ -71,19 +71,25 @@ class Morpher(metaclass=abc.ABCMeta):
         self.meta_prev = {}
         self.version = 0
         self.L1 = self.get_L1()
-        materials.update_props(obj)
         self.mtl_props = materials.props
+        self.error = None
+        self.alt_topo = False
 
-    @abc.abstractmethod
-    def get_L1(self): pass
-    @abc.abstractmethod
-    def update_L1(self): pass
-    @abc.abstractmethod
-    def get_morphs_L2(self): pass
-    @abc.abstractmethod
-    def prop_get(self, name): pass
-    @abc.abstractmethod
-    def prop_set_internal(self, name, value): pass
+    @staticmethod
+    def get_L1():
+        return ""
+    @staticmethod
+    def update_L1():
+        pass
+    @staticmethod
+    def get_morphs_L2():
+        pass
+    @staticmethod
+    def prop_get(name):
+        return 0
+    @staticmethod
+    def prop_set_internal(name, value):
+        pass
 
     def set_L1(self, L1):
         if L1 not in self.morphs_l1:
@@ -109,12 +115,18 @@ class Morpher(metaclass=abc.ABCMeta):
             description="Select morphing categories to show"))]
 
     def do_update(self):
-        fitting.refit_char_assets(self.obj)
+        fitting.get_fitter(self).refit_all()
 
     def update(self):
         if self.upd_lock:
             return
         self.do_update()
+
+    def get_basis(self):
+        return utils.get_basis_numpy(self.obj)
+
+    def get_basis_alt_topo(self):
+        return self.get_basis()
 
     def lock(self):
         self.upd_lock = True
@@ -375,6 +387,8 @@ def create_charmorphs(obj):
     if obj.type != "MESH":
         return
 
+    materials.update_props(obj)
+
     if obj.data.get("cm_morpher") == "ext":
         m = morphers.NumpyMorpher(obj)
     else:
@@ -392,7 +406,7 @@ def create_charmorphs(obj):
 
     items = [(name, m.char.types.get(name, {}).get("title", name), "") for name in sorted(m.morphs_l1.keys())]
 
-    if not m.L1 and "default_type" in m.char.config:
+    if not m.L1 and m.char.default_type:
         m.set_L1(m.char.default_type)
 
     L1_idx = 0
@@ -429,7 +443,6 @@ def del_charmorphs_L2():
         propGroup = cm.keywords['type']
     del bpy.types.WindowManager.charmorphs
     bpy.utils.unregister_class(propGroup)
-    fitting.invalidate_cache()
 
 def del_charmorphs():
     global last_object, morpher
@@ -479,12 +492,30 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morpher
+        return morpher
 
     def draw(self, context):
-        morphs = context.window_manager.charmorphs
-        ui = context.window_manager.charmorph_ui
         m = morpher
+
+        if m.error:
+            self.layout.label(text="Morphing is impossible:")
+            self.layout.label(text=m.error)
+            return
+
+        if not hasattr(context.window_manager, "charmorphs"):
+            if m.char.name:
+                col = self.layout.column(align=True)
+                col.label(text="Object is detected as")
+                col.label(text="valid CharMorph character,")
+                col.label(text="but the morphing data was removed")
+            else:
+                self.layout.label(text="No morphing data found")
+            return
+
+        morphs = context.window_manager.charmorphs
+
+        ui = context.window_manager.charmorph_ui
+
         self.layout.label(text="Character type")
         col = self.layout.column(align=True)
 
@@ -507,6 +538,8 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.prop(morphs, "clamp")
 
+        morph_list = m.morphs_l2.keys()
+
         self.layout.separator()
 
         self.layout.label(text="MORE MORPHS HERE:")
@@ -514,10 +547,9 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         if morphs.category != "<None>":
             self.layout.prop(ui, "morph_filter")
             col = self.layout.column(align=True)
-            keys = m.morphs_l2
             if not m.char.custom_morph_order:
-                keys = sorted(keys)
-            for prop in keys:
+                morph_list = sorted(morph_list)
+            for prop in morph_list:
                 if m.char.custom_morph_order and m.morphs_l2[prop] is None:
                     col.separator()
                 elif morphs.category == "<All>" or prop.startswith(morphs.category):

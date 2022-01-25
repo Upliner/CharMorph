@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging
+import logging
 import bpy
 
 from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
@@ -31,7 +31,7 @@ bl_info = {
     "version": (0, 2, 9),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
-    "description": "Character creation and morphing (MB-Lab based)",
+    "description": "Character creation and morphing, cloth fitting and rigging tools",
     'wiki_url': "",
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
@@ -81,12 +81,12 @@ def on_select_object():
             obj = obj.parent
         try:
             if asset:
-                ui.fitting_char = obj.name
-                ui.fitting_asset = asset.name
+                ui.fitting_char = obj
+                ui.fitting_asset = asset
             elif library.obj_char(obj).name:
-                ui.fitting_char = obj.name
+                ui.fitting_char = obj
             else:
-                ui.fitting_asset = obj.name
+                ui.fitting_asset = obj
         except:
             pass
 

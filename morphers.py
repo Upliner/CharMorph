@@ -20,7 +20,7 @@
 
 import os, numpy
 
-from . import library, morphing, utils
+from . import library, morphing
 
 def get_combo_item_value(arr_idx, values):
     return sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values))
@@ -49,6 +49,10 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 class ShapeKeysMorpher(morphing.Morpher):
+    def __init__(self, obj):
+        super().__init__(obj)
+        self.basis = None
+
     def update_L1(self):
         for name, sk in self.morphs_l1.items():
             sk.value = 1 if name == self.L1 else 0
@@ -151,13 +155,16 @@ class ShapeKeysMorpher(morphing.Morpher):
         skmin, skmax = tuple(morph.data)
         return (0 if skmax is None else skmax.value) - (0 if skmin is None else skmin.value)
 
+    def get_basis(self):
+        if self.basis is None:
+            self.basis = super().get_basis()
+        return self.basis
+
 class NumpyMorpher(morphing.Morpher):
     def __init__(self, obj):
         super().__init__(obj)
         self.basis = None
-        self.full_basis = self._get_L1_data(self.char.basis)
-        if self.full_basis is None:
-            self.full_basis = self._get_fallback_basis()
+        self.full_basis = self._get_L1_data(self.char.basis) or super().get_basis()
         self.morphed = None
         self.counter = 1
 
@@ -171,12 +178,6 @@ class NumpyMorpher(morphing.Morpher):
         if not os.path.isfile(file):
             return None
         return numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
-
-    def _get_fallback_basis(self):
-        data = utils.get_basis(self.obj)
-        arr = numpy.empty(len(data) * 3)
-        data.foreach_get("co", arr)
-        return arr.reshape(-1, 3)
 
     def update_L1(self):
         self.basis = self._get_L1_data(self.L1)
@@ -292,6 +293,9 @@ class NumpyMorpher(morphing.Morpher):
 
     def prop_set_internal(self, name, value):
         self.obj.data["cmorph_L2_" + name] = value
+
+    def get_basis(self):
+        return self.full_basis
 
     def get_diff(self):
         if self.morphed is None:

@@ -110,15 +110,6 @@ def calc_lst(co, lst):
         return "No vertices were found by the calc method"
     return dict(zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co)))
 
-def lazyprop(fn):
-    attr_name = '_lazy_' + fn.__name__
-    @property
-    def _lazyprop(self):
-        if not hasattr(self, attr_name):
-            setattr(self, attr_name, fn(self))
-        return getattr(self, attr_name)
-    return _lazyprop
-
 #(lambda group, coords: list(zip(group, barycentric_weight_calc(coords, co))))(*tuple(zip(*((vg_full_to_dict(g), co) for g, co in ((g, vg_full_to_avg(g)) for g in groups) if co is not None))))
 def calc_group_weights(groups, co):
     groups2 = []
@@ -145,23 +136,23 @@ class VGCalculator:
 
         self.kdj_groups = None
 
-    @lazyprop
+    @utils.lazyprop
     def vg_full(self):
         return rigging.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
 
-    @lazyprop
+    @utils.lazyprop
     def vg_avg(self):
         return rigging.get_vg_avg(self.char)
 
-    @lazyprop
+    @utils.lazyprop
     def kd_verts(self):
         return utils.kdtree_from_verts(self.char.data.vertices)
 
-    @lazyprop
+    @utils.lazyprop
     def bvh(self):
         return mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in self.char.data.vertices], [f.vertices for f in self.char.data.polygons])
 
-    @lazyprop
+    @utils.lazyprop
     def emap(self):
         result = {}
         for edge in self.char.data.edges:
@@ -173,7 +164,7 @@ class VGCalculator:
                 item.append(edge.index)
         return result
 
-    @lazyprop
+    @utils.lazyprop
     def kd_joints(self):
         all_groups = self.vg_full
         kd = mathutils.kdtree.KDTree(len(all_groups))

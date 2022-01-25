@@ -35,6 +35,7 @@ data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 logger.debug("Looking for the char library in the folder %s", data_dir)
 
 chars = {}
+char_aliases = {}
 additional_assets = {}
 hair_colors = {}
 
@@ -58,7 +59,7 @@ def parse_file(path, parse_func, default):
 def load_yaml(data):
     return yload(data, Loader=SafeLoader)
 
-def load_assets_dir(path):
+def load_data_dir(path, target_ext):
     result = {}
     if not os.path.isdir(path):
         if path:
@@ -66,7 +67,7 @@ def load_assets_dir(path):
         return result
     for file in os.listdir(path):
         name, ext = os.path.splitext(file)
-        if ext == ".blend" and os.path.isfile(os.path.join(path, file)):
+        if ext == target_ext and os.path.isfile(os.path.join(path, file)):
             result[name] = (os.path.join(path, file), name)
     return result
 
@@ -86,56 +87,63 @@ def load_json_dir(path):
 _empty_dict = object()
 
 class Character:
+    description = ""
+    author = ""
+    licence = ""
+    char_file = "char.blend"
+    char_obj = "char"
+    basis = ""
+    no_morph_categories = False
+    custom_morph_order = False
+    randomize_incl_regex = None
+    randomize_excl_regex = None
+    default_type = ""
+    default_armature = ""
+    default_hair_length = 0.1
+    recurse_materials = False
+    armature = {}
+    armature_defaults = {}
+    bones = {}
+    hairstyles = []
+    materials = []
+    material_lib = None
+    default_assets = []
+    underwear = []
+    types = {}
+
     def __init__(self, name):
+        self.title = name
         self.name = name
-        self.armature = {}
-        self.config = {
-            "title": name,
-            "char_file": "char.blend",
-            "char_obj": "char",
-            "basis": "",
-            "no_morph_categories": False,
-            "custom_morph_order": False,
-            "randomize_incl_regex": None,
-            "randomize_excl_regex": None,
-            "default_type": "",
-            "default_armature": "",
-            "default_hair_length": 0.1,
-            "recurse_materials": False,
-            "armature": {},
-            "armature_defaults": {},
-            "hairstyles": [],
-            "materials": [],
-            "default_assets": [],
-            "underwear": [],
-            "types": {},
-            "assets": {},
-            "poses": {},
-        }
-        self.config.update(self.get_yaml("config.yaml"))
+        self.__dict__.update(self.get_yaml("config.yaml"))
+        self.name = name
         if self.name:
-            self.assets = load_assets_dir(self.path("assets"))
+            self.assets = load_data_dir(self.path("assets"), ".blend")
             self.poses = load_json_dir(self.path("poses"))
+            self.alt_topos = load_data_dir(self.path("morphs/alt_topo"), ".npy")
 
-        self.material_lib = self.config.get("material_lib", self.char_file)
+        if self.material_lib is None:
+            self.material_lib = self.char_file
 
-        self._parse_armature()
+        self.armature = self._parse_armature(self.armature)
 
-    def __getattr__(self, item):
-        if item == "morphs_meta":
-            self.morphs_meta = self.get_yaml("morphs_meta.yaml")
-            return self.morphs_meta
-        if item == "fitting_subset":
-            file = self.path("fitting_subset.npz")
-            if os.path.exists(file):
-                self.fitting_subset = numpy.load(file)
-            else:
-                self.fitting_subset = None
-            return self.fitting_subset
-        return self.config[item]
+    @utils.lazyprop
+    def morphs_meta(self):
+        return self.get_yaml("morphs_meta.yaml")
+
+    @utils.lazyprop
+    def fitting_subset(self):
+        return self.get_np("fitting_subset.npz")
+
+    @utils.lazyprop
+    def faces(self):
+        return self.get_np("faces.npy")
 
     def path(self, file):
         return char_file(self.name, file)
+
+    def get_np(self, file):
+        file = self.path(file)
+        return numpy.load(file) if os.path.exists(file) else None
 
     def get_yaml(self, file, default=_empty_dict):
         if default is _empty_dict:
@@ -147,14 +155,14 @@ class Character:
     def blend_file(self):
         return self.path(self.char_file)
 
-    def _parse_armature(self):
-        data = self.config["armature"]
+    def _parse_armature(self, data):
         if isinstance(data, list):
-            self._parse_armature_list(data)
+            return self._parse_armature_list(data)
         else:
-            self._parse_armature_dict(data)
+            return self._parse_armature_dict(data)
 
     def _parse_armature_list(self, data):
+        result = {}
         for i, a in enumerate(data):
             title = a.get("title")
             if title:
@@ -163,74 +171,70 @@ class Character:
                 k = str(i)
                 a["title"] = "<unnamed %s>" % k
             if not self.default_armature:
-                self.config["default_armature"] = k
-            self.armature[k] = Armature(self, k, a)
+                self.default_armature = k
+            result[k] = Armature(self, k, a)
+        return result
 
     def _parse_armature_dict(self, data):
+        result = {}
         for k, v in data.items():
-            self.armature[k] = Armature(self, k, v)
+            result[k] = Armature(self, k, v)
+        return result
+
+def _wrap_lazy_yaml(name, value):
+    if isinstance(value, str):
+        return utils.named_lazyprop(name, lambda self: self.char.get_yaml(value))
+    return value
 
 class Armature():
+    type = "regular"
+    tweaks = []
+    ik_limits = {}
+    bones = None
+    mixin = ""
+    mixin_bones = {}
+    arp_reference_layer = 17
+
     def __init__(self, char: Character, name : str, conf : dict):
+        self.title = name
+        self.obj_name = name
+        self.file = char.char_file
+
+        self.__dict__.update(char.armature_defaults)
+        self.__dict__.update(conf)
+
         self.char = char
-        self.config = {
-            "file": char.char_file,
-            "title": name,
-            "type": "regular",
-            "obj_name": name,
-            "tweaks": [],
-            "ik_limits": {},
-            "mixin": "",
-            "mixin_bones": {},
-            "arp_reference_layer": 17,
-        }
-        self.config.update(char.armature_defaults)
-        self.config.update(conf)
 
         for item in ("weights", "joints"):
-            value = self.config.get(item)
+            value = getattr(self, item, None)
             if value:
                 value = char.path(value)
             else:
                 value = char.path(os.path.join(item, name + ".npz"))
             setattr(self, item, value)
 
-        if "bones" not in self.config: # Legacy
-            self.config["bones"] = char.config.get("bones", {})
+        if self.bones is None:
+            self.bones = char.bones # Legacy
 
-    def __getattr__(self, item):
-        value = self.config[item]
-        if item in ("bones", "mixin_bones"):
-            if isinstance(value, str):
-                value = self.char.get_yaml(value)
-            setattr(self, item, value)
-        return value
+        for item in ("bones", "mixin_bones"):
+            setattr(self, item, _wrap_lazy_yaml(item, getattr(self, item)))
 
 empty_char = Character("")
+
+def char_by_name(name):
+    return chars.get(name) or chars.get(char_aliases.get(name)) or empty_char
 
 def obj_char(obj):
     if not obj:
         return empty_char
-    tpl = obj.data.get("charmorph_template")
-    if tpl:
-        return chars.get(tpl)
-
-    # MB-Lab characters support
-    tpl = obj.get("manuellab_id")
-    if not tpl:
-        return empty_char
-    if tpl in ("f_af01", "f_an03", "f_as01", "f_ca01", "f_ft01", "f_la01"):
-        return chars.get("mb_human_female")
-    if tpl in ("m_af01", "m_an03", "m_as01", "m_ca01", "m_ft01", "m_ft02", "m_la01"):
-        return chars.get("mb_human_male")
-    return empty_char
+    return char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
 
 def update_fitting_assets(ui, _):
     global additional_assets
     path = ui.fitting_library_dir
     if not path:
         return
-    additional_assets = load_assets_dir(path)
+    additional_assets = load_data_dir(path, ".blend")
 
 def fitting_asset_data(context):
     ui = context.window_manager.charmorph_ui
@@ -253,7 +257,15 @@ def load_library():
         logger.error("Directory %s is not found.", format(chardir))
         return
 
-    for char_name in os.listdir(chardir):
+    aliases = parse_file(os.path.join(chardir, "aliases.yaml"), load_yaml, None)
+    char_aliases.clear()
+    for k, v in aliases.items():
+        for k2 in v if isinstance(v, list) else (v,):
+            char_aliases[k2] = k
+
+    for char_name in sorted(os.listdir(chardir)):
+        if not os.path.isdir(os.path.join(chardir, char_name)):
+            continue
         try:
             char = Character(char_name)
         except Exception as e:
@@ -299,13 +311,10 @@ def import_morph(basis, sk, file):
     sk.data.foreach_set("co", data)
     return data
 
-def get_basis(obj):
+def ensure_basis_sk(obj):
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
         obj.shape_key_add(name="Basis", from_mix=False)
-
-    basis = numpy.empty(len(obj.data.vertices) * 3)
-    obj.data.vertices.foreach_get("co", basis)
-    return basis
+    return utils.get_basis_numpy(obj)
 
 def list_morph_dir(path):
     if not os.path.isdir(path):
@@ -329,7 +338,7 @@ def create_morph_sk(obj, prefix, morph, counter):
     return sk
 
 def import_morphs(obj, char_name):
-    basis = get_basis(obj)
+    basis = ensure_basis_sk(obj)
     path = char_file(char_name, "morphs/L1")
     L1_basis_dict = {}
     if os.path.isdir(path):
@@ -364,7 +373,7 @@ def import_morphs(obj, char_name):
                     import_morph(L1_basis, sk, os.path.join(path, file, morph["morph"] + ".npz"))
 
 def import_expressions(obj, char_name):
-    basis = get_basis(obj)
+    basis = ensure_basis_sk(obj)
     counter = [3,1]
     path = char_file(char_name, "morphs/L3")
     for morph in  list_morph_dir(path):
@@ -390,8 +399,25 @@ def get_obj_char(context):
                 return obj, char
     return (None, None)
 
+def get_basis(obj):
+    data = obj
+    if isinstance(data, bpy.types.Object):
+        data = data.data
+    k = data.shape_keys
+    if k:
+        return k.reference_key.data
+
+    m = morphing.morpher
+    if m and m.obj == obj:
+        return m.get_basis_alt_topo()
+
+    alt_topo = data["alt_topo"]
+    if alt_topo and isinstance(alt_topo, str):
+        return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+
+    return data.vertices
+
 def import_obj(file, obj, typ="MESH", link=True):
-    fitting.invalidate_cache()
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
             if len(data_from.objects) == 1:
@@ -448,6 +474,10 @@ class OpImport(bpy.types.Operator):
         obj.data["charmorph_template"] = ui.base_model
         materials.init_materials(obj, char)
 
+        if not ui.use_sk:
+            ui.import_morphs = False
+            ui.import_expressions = False
+
         if ui.import_morphs:
             import_morphs(obj, ui.base_model)
         elif os.path.isdir(char.path("morphs")):
@@ -457,7 +487,7 @@ class OpImport(bpy.types.Operator):
 
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
-        ui.fitting_char = obj.name
+        ui.fitting_char = obj
 
         if char.randomize_incl_regex is not None:
             ui.randomize_incl = char.randomize_incl_regex
@@ -467,18 +497,19 @@ class OpImport(bpy.types.Operator):
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
 
-        for name in char.default_assets:
-            fitting.fit_import(context, *char.assets[name])
+        def fit_clothing(lst):
+            fitting.fit_import(obj, [char.assets[name] for name in lst])
+
+        fit_clothing(char.default_assets)
         if not is_adult_mode():
-            for name in char.underwear:
-                fitting.fit_import(context, *char.assets[name])
+            fit_clothing(char.underwear)
 
         return {"FINISHED"}
 
 class UIProps:
     base_model: bpy.props.EnumProperty(
         name="Base",
-        items=lambda ui, context: [(name, conf.title, "") for name, conf in chars.items()],
+        items=lambda ui, context: [(name, char.title, char.description) for name, char in chars.items()],
         description="Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name="Materials",
@@ -495,12 +526,27 @@ class UIProps:
     material_local: bpy.props.BoolProperty(
         name="Use local materials", default=True,
         description="Use local copies of materials for faster loading")
+    use_sk: bpy.props.BoolProperty(
+        name="Use shape keys for morphing", default=False,
+        description="Use shape keys during morphing (should be on if you plan to resume morphing later, maybe with other versions of CharMorph)")
     import_morphs: bpy.props.BoolProperty(
         name="Import morphing shape keys", default=False,
         description="Import and morph character using shape keys")
     import_expressions: bpy.props.BoolProperty(
         name="Import expression shape keys", default=False,
         description="Import and morph character using shape keys")
+    alt_topo: bpy.props.EnumProperty(
+        name="Alt topo",
+        default="<Base>",
+        description="Select alternative topology to use",
+        items=[
+            ("<Base>", "<Base>", "Use base character topology"),
+            ("<Custom>", "<Custom>", "Use custom local object as ")]
+        )
+    alt_topo_obj: bpy.props.PointerProperty(
+        name="Custom alt topo",
+        type=bpy.types.Object,
+        description="Select custom object to use as alternative topology")
 
 class CHARMORPH_PT_Library(bpy.types.Panel):
     bl_label = "Character library"
@@ -515,6 +561,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
+        ui = context.window_manager.charmorph_ui
         l.operator('charmorph.reload_library')
         l.separator()
         if data_dir == "":
@@ -523,8 +570,29 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if not chars:
             l.label(text="No characters found at {}. Nothing to import.".format(data_dir))
             return
-        for prop in UIProps.__annotations__: # pylint: disable=no-member
-            l.prop(context.window_manager.charmorph_ui, prop)
+        l.prop(ui, "base_model")
+        char = chars.get(ui.base_model)
+        if char:
+            r = l.row()
+            c = r.column()
+            c.label(text="Author:")
+            c.label(text="License:")
+            c = r.column()
+            c.alignment = "LEFT"
+            c.label(text=char.author)
+            c.label(text=char.license)
+        l.prop(ui, "material_mode")
+        l.prop(ui, "import_cursor_z")
+        c = l.column()
+        c.prop(ui, "use_sk")
+        c = c.column()
+        c.enabled = ui.use_sk
+        c.prop(ui, "import_morphs")
+        c.prop(ui, "import_expressions")
+        l.prop(ui, "alt_topo")
+        if ui.alt_topo == "<Custom>":
+            l.prop(ui, "alt_topo_obj")
+
         l.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
         l.alignment = "CENTER"

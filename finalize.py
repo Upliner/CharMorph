@@ -165,7 +165,7 @@ def attach_rig(obj, rig):
     if bpy.context.window_manager.charmorph_ui.fitting_armature:
         fitting.transfer_new_armature(obj)
 
-#FIXME: Use data from morpher instead?
+#FIXME: Use data from morpher instead? But we should consider manual sculpting too.
 def sk_to_verts(obj, sk):
     if isinstance(sk, str):
         k = obj.data.shape_keys

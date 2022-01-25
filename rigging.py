@@ -364,7 +364,7 @@ bbone_attributes = [
 ATTR_CHECKED=False
 
 def check_attributes(bone):
-    # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0 Alpha
+    # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
     global ATTR_CHECKED
     if ATTR_CHECKED:
         return

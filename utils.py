@@ -1,9 +1,11 @@
-import time, logging
-import mathutils # pylint: disable=import-error
+import time, logging, numpy
+import bpy, mathutils # pylint: disable=import-error
 
 from . import yaml
 
 logger = logging.getLogger(__name__)
+
+epsilon = 1e-30
 
 class Timer:
     def __init__(self):
@@ -49,24 +51,50 @@ def lock_obj(obj, is_lock):
 def kdtree_from_verts_enum(verts, cnt):
     kd = mathutils.kdtree.KDTree(cnt)
     for idx, vert in verts:
-        kd.insert(vert.co, idx)
+        kd.insert(vert, idx)
     kd.balance()
     return kd
 
 def kdtree_from_verts(verts):
-    return kdtree_from_verts_enum(enumerate(verts), len(verts))
+    return kdtree_from_verts_enum(((idx, vert.co) for idx, vert in enumerate(verts)), len(verts))
 
-def get_basis(obj):
-    k = obj.data.shape_keys
+def get_basis_verts(data):
+    if isinstance(data, bpy.types.Object):
+        data = data.data
+    k = data.shape_keys
     if k:
         return k.reference_key.data
-    return obj.data.vertices
+    return data.vertices
+
+def verts_to_numpy(data):
+    arr = numpy.empty(len(data) * 3)
+    data.foreach_get("co", arr)
+    return arr.reshape(-1, 3)
+
+def get_basis_numpy(data):
+    return verts_to_numpy(get_basis_verts(data))
 
 def is_true(value):
     if isinstance(value, str):
-        return value.lower() in ('true', '1', 'y', 'yes')
+        return value.lower() in {'true', '1', 'y', 'yes'}
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
         return value > 0
     return False
+
+class named_lazyprop:
+    __slots__ = ("fn", "name")
+    def __init__(self, name, fn):
+        self.fn = fn
+        self.name = name
+
+    def __get__(self, instance, owner):
+        value = self.fn(instance)
+        setattr(instance, self.name, value)
+        return value
+
+class lazyprop(named_lazyprop):
+    __slots__ = ()
+    def __init__(self, fn):
+        super().__init__(fn.__name__, fn)

@@ -183,6 +183,85 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+
+class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.export_l1"
+    bl_label = "Export L1 morph"
+    bl_description = "Export selected shapekey as L1 morph"
+
+    filename_ext = ".npy"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        obj = context.object
+        sk = obj.active_shape_key
+        data = sk.data if sk else obj.data.vertices
+
+        arr = numpy.empty(len(data)*3, dtype=numpy.float64 if ui.morph_float_precicion == "64" else numpy.float32)
+        data.foreach_get("co", arr)
+        numpy.save(self.filepath, arr)
+
+class MorphExporter:
+    def __init__(self, context):
+        self.obj = context.object
+        rk = self.obj.data.shape_keys.reference_key
+        self.rk = rk
+        self.basis = numpy.empty(len(rk.data)*3)
+        self.basis2 = numpy.empty(len(rk.data)*3)
+        self.morphed = numpy.empty(len(rk.data)*3)
+
+        ui = context.window_manager.cmedit_ui
+        self.epsilonsq = ui.morph_epsilon ** 2
+
+        self.dtype = numpy.float64 if ui.morph_float_precicion == "64" else numpy.float32
+
+        rk.data.foreach_get("co", self.basis)
+
+    def do_export(self, sk, path):
+        if sk.relative_key == sk:
+            return
+        sk.data.foreach_get("co", self.morphed)
+        if sk.relative_key == self.rk:
+            basis3 = self.basis
+        else:
+            basis3 = self.basis2
+            sk.relative_key.data.foreach_get("co", basis3)
+
+        self.morphed -= basis3
+        m2 = self.morphed.reshape(-1, 3)
+
+        if sk.vertex_group:
+            vg = self.obj.vertex_groups[sk.vertex_group].index
+            for i, v in enumerate(self.obj.data.vertices):
+                for e in v.groups:
+                    if e.group == vg:
+                        m2[i] *= e.weight
+                        break
+                else:
+                    m2[i] = (0, 0, 0)
+
+        idx = ((m2 * m2).sum(1) > self.epsilonsq).nonzero()[0]
+        numpy.savez(path, idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=self.dtype, casting="same_kind"))
+
+class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.morph_export"
+    bl_label = "Export single morph"
+    bl_description = "Export active shapekey as L2/L3 morph"
+
+    filename_ext = ".npz"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH" and context.object.active_shape_key
+
+    def execute(self, context):
+        MorphExporter(context).do_export(context.object.active_shape_key, self.filepath)
+        return {"FINISHED"}
+
 class OpMorphsExport(bpy.types.Operator):
     bl_idname = "cmedit.morphs_export"
     bl_label = "Export morphs"
@@ -217,43 +296,12 @@ class OpMorphsExport(bpy.types.Operator):
                 self.report({"ERROR"}, name + ".npz already exists!")
                 return {"CANCELLED"}
 
-        rk = m.shape_keys.reference_key
-        basis = numpy.empty(len(rk.data)*3)
-        basis2 = numpy.empty(len(rk.data)*3)
-        morphed = numpy.empty(len(rk.data)*3)
-        rk.data.foreach_get("co", basis)
+        me = MorphExporter(context)
 
-        if ui.morph_float_precicion == "64":
-            dtype = numpy.float64
-        else:
-            dtype = numpy.float32
-
-        epsilonsq = ui.morph_epsilon ** 2
         for name, sk in keys.items():
-            if sk == rk:
+            if sk == me.rk:
                 continue
-            sk.data.foreach_get("co", morphed)
-            if sk.relative_key == rk:
-                basis3 = basis
-            else:
-                sk.relative_key.data.foreach_get("co", basis2)
-                basis3 = basis2
-
-            morphed -= basis3
-            m2 = morphed.reshape(-1, 3)
-
-            if sk.vertex_group:
-                vg = context.object.vertex_groups[sk.vertex_group].index
-                for i, v in enumerate(m.vertices):
-                    for e in v.groups:
-                        if e.group == vg:
-                            m2[i] *= e.weight
-                            break
-                    else:
-                        m2[i] = (0, 0, 0)
-
-            idx = ((m2 * m2).sum(1) > epsilonsq).nonzero()[0]
-            numpy.savez(os.path.join(self.directory, name), idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=dtype, casting="same_kind"))
+            me.do_export(sk, os.path.join(self.directory, name))
 
         return {"FINISHED"}
 
@@ -381,9 +429,11 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.separator()
         l.prop(ui, "morph_regex")
         l.prop(ui, "morph_replace")
-        l.prop(ui, "morph_epsilon")
         l.prop(ui, "morph_float_precicion")
+        l.operator("cmedit.morph_export")
+        l.operator("cmedit.morph_export")
+        l.prop(ui, "morph_epsilon")
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]

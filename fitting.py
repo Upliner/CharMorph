@@ -23,152 +23,19 @@ import os, random, logging, numpy
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from . import library, rigging, utils, morphing
+from . import library, morphing, hair, rigging, utils
 
 logger = logging.getLogger(__name__)
 
 dist_thresh = 0.1
-epsilon = 1e-30
+epsilon = utils.epsilon
 
-obj_cache = {}
-char_cache = {}
-basis_cache = {}
+fitter = None
 
-def invalidate_cache():
-    obj_cache.clear()
-    char_cache.clear()
-    basis_cache.clear()
+special_groups = frozenset(["corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"])
 
-def intersect_faces(bvh, faces, co, dist):
-    arr = bvh.find_nearest_range(co, dist)
-    if len(arr) > 5 or len(arr) == 0:
-        return None, None
-    if len(arr) > 1:
-        verts = set(faces[arr[0][2]].vertices)
-        fdist = arr[0][3]
-        for _, _, idx2, fdist2 in arr[1:]:
-            verts.intersection_update(faces[idx2].vertices)
-            fdist = min(fdist, fdist2)
-        fdist = max(fdist, epsilon)
-    else:
-        arr = arr[0]
-        verts = faces[arr[2]].vertices
-        fdist = arr[3]
-    return verts, max(fdist, epsilon)
-
-def calc_weights(char, asset, mask):
-    t = utils.Timer()
-
-    char_verts = utils.get_basis(char)
-    char_faces = char.data.polygons
-    asset_verts = asset.data.vertices
-    asset_faces = asset.data.polygons
-
-    subset = library.obj_char(char).fitting_subset
-    if subset is None:
-        verts_enum = enumerate(char_verts)
-        kd_verts_cnt = len(char_verts)
-    else:
-        verts_enum = [(i, char_verts[i]) for i in subset["verts"]]
-        verts_set = set(subset["verts"])
-        kd_verts_cnt = len(verts_enum)
-
-    t.time("subset")
-
-    # calculate weights based on 32 nearest vertices
-    kd_char = utils.kdtree_from_verts_enum(verts_enum, kd_verts_cnt)
-    weights = [{idx: 1/(max(dist, epsilon)**2) for loc, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
-
-    t.time("kdtree")
-
-    if subset is None:
-        face_list = char_faces
-    else:
-        face_list = [char_faces[i] for i in subset["faces"]]
-    # using FromPolygons because objects can have modifiers and there is no way force FromObject to use undeformed mesh
-    # will using bmesh be faster?
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in face_list])
-    # calculate weights based on distance from asset vertices to character faces
-    for i, avert in enumerate(asset_verts):
-        co = avert.co
-        loc, norm, idx, fdist = bvh_char.find_nearest(co)
-
-        if loc is None or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
-            continue
-
-        verts, fdist = intersect_faces(bvh_char, face_list, co, max(fdist, epsilon) * 1.125)
-        if verts is None:
-            continue
-
-        d = weights[i]
-        for vi in verts:
-            d[vi] = max(d.get(vi, 0), 1/max((co-char_verts[vi].co).length * fdist, epsilon))
-
-    t.time("bvh direct")
-
-    # calculate weights based on distance from character vertices to assset faces
-    bvh_asset = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in asset_verts], [f.vertices for f in asset_faces])
-    #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
-    for i, cvert in enumerate(char_verts):
-        if subset and i not in verts_set:
-            continue
-        co = cvert.co
-        loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
-        if idx is None:
-            continue
-
-        fdist = max(fdist, epsilon)
-
-        verts, fdist = intersect_faces(bvh_asset, asset_faces, co, max(fdist, epsilon) * 1.001)
-        if verts is None:
-            continue
-
-        for vi in verts:
-            d = weights[vi]
-            d[i] = max(d.get(i, 0), 1/max((co-asset_verts[vi].co).length*fdist, epsilon))
-
-    t.time("bvh reverse")
-
-    if mask:
-        add_mask_from_asset(char, asset, bvh_asset, bvh_char)
-        t.time("mask")
-
-    positions = numpy.empty((len(weights)), dtype=numpy.uint32)
-
-    pos = 0
-
-    for i, d in enumerate(weights):
-        thresh = max(d.values())/16
-        for k,v in list(d.items()):
-            if v < thresh:
-                del d[k]
-        positions[i] = pos
-        pos += len(d)
-
-    t.time("cut")
-
-    idx = numpy.empty((pos), dtype=numpy.uint32)
-    wresult = numpy.empty((pos))
-
-    pos=0
-    for d in weights:
-        pos1 = pos
-        for k,v in d.items():
-            idx[pos] = k
-            wresult[pos] = v
-            pos += 1
-        w  = wresult[pos1:pos]
-        w /= w.sum()
-
-        #idx[pos:pos+len(d)] = list(d.keys())
-        #w = wresult[pos:pos+len(d)]
-        #w[:] = list(d.values())
-        #pos += len(d)
-
-
-    t.time("normalize")
-
-    return (positions, idx, wresult.reshape(-1,1))
+def masking_enabled(asset):
+    return utils.is_true(asset.data.get("charmorph_fit_mask", True))
 
 def mask_name(asset):
     return "cm_mask_{}_{}".format(asset.name, asset.data.get("charmorph_fit_id", "xxx")[:3])
@@ -179,331 +46,504 @@ def update_bbox(bbox_min, bbox_max, obj):
             bbox_min[i] = min(bbox_min[i], v[i])
             bbox_max[i] = max(bbox_max[i], v[i])
 
-def add_mask_from_asset(char, asset, bvh_asset, bvh_char):
-    vg_name = mask_name(asset)
-    if vg_name in char.vertex_groups:
-        return
-    bbox_min = mathutils.Vector(asset.bound_box[0])
-    bbox_max = mathutils.Vector(asset.bound_box[0])
-    update_bbox(bbox_min, bbox_max, asset)
-
-    add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char)
-
-def add_mask(char, vg_name, bbox_min, bbox_max, bvh_asset, bvh_char):
-    def bbox_match(co):
-        for i in range(3):
-            if co[i] < bbox_min[i] or co[i] > bbox_max[i]:
-                return False
-        return True
-
-    bbox_center = (bbox_min+bbox_max)/2
-
-    cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min, bbox_max] for coord in range(3))
-    cube_vector = mathutils.Vector([cube_size] * 3)
-
-    bcube_min = bbox_center-cube_vector
-    bcube_max = bbox_center+cube_vector
-
-    bbox_points = [bcube_min, bbox_center, bcube_max]
-    cast_points = [mathutils.Vector((bbox_points[x][0], bbox_points[y][1], bbox_points[z][2])) for x in range(3) for y in range(3) for z in range(3) if x != 1 or y != 1 or z != 1]
-
-    def cast_rays(co, direction, max_dist=1e30):
-        nonlocal has_cloth
-        _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
-        if idx is None:
-            # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-            _, _, idx, _ = bvh_char.ray_cast(co+direction*0.00001, direction, max_dist*0.99)
-            if idx is None:
-                #print(i, co, direction, max_dist, cvert.normal)
-                return False # No ray hit
-        else:
-            has_cloth = True
-        return True # Have ray hit
-
-
-    covered_verts = set()
-
-    for i, cvert in enumerate(utils.get_basis(char)):
-        co = cvert.co
-        if not bbox_match(co):
-            continue
-
-        has_cloth = False
-        norm = char.data.vertices[i].normal
-
-        #if vertex is too close to cloth, mark it as covered
-        _, _, idx, _ = bvh_asset.find_nearest(co, 0.0005)
-        if idx is not None:
-            #print(i, co, fhit, fdist, "too close")
-            covered_verts.add(i)
-
-        # cast one ray along vertex normal and check is there a clothing nearby
-        if not cast_rays(co, norm):
-            continue
-
-        # cast rays out of 26 outside points to check whether the vertex is visible from any feasible angle
-        for cast_point in cast_points:
-            direction = co-cast_point
-            max_dist = direction.length
-            direction.normalize()
-            if norm.dot(direction) > -0.5:
-                continue # skip back faces and very sharp view angles
-            if not cast_rays(cast_point, direction, max_dist):
-                has_cloth = False
-                break
-
-        if has_cloth:
-            covered_verts.add(i)
-
-    #vg = char.vertex_groups.new(name = "covered")
-    #vg.add(list(covered_verts), 1, 'REPLACE')
-
-    boundary_verts = set()
-    for f in char.data.polygons:
-        for i in f.vertices:
-            if i not in covered_verts:
-                boundary_verts.update(f.vertices)
-
-    covered_verts.difference_update(boundary_verts)
-
-    if not covered_verts:
-        return
-    vg = char.vertex_groups.new(name=vg_name)
-    vg.add(list(covered_verts), 1, 'REPLACE')
-    for mod in char.modifiers:
-        if mod.name == vg_name and mod.type == "MASK":
-            break
+def intersect_faces(bvh, faces, co, dist):
+    arr = bvh.find_nearest_range(co, dist)
+    if len(arr) > 5 or len(arr) == 0:
+        return None, None
+    if len(arr) > 1:
+        verts = set(faces[arr[0][2]])
+        fdist = arr[0][3]
+        for _, _, idx2, fdist2 in arr[1:]:
+            verts.intersection_update(faces[idx2])
+            fdist = min(fdist, fdist2)
+        fdist = max(fdist, epsilon)
     else:
-        mod = char.modifiers.new(vg_name, "MASK")
-    mod.invert_vertex_group = True
-    mod.vertex_group = vg.name
+        arr = arr[0]
+        verts = faces[arr[2]]
+        fdist = arr[3]
+    return verts, max(fdist, epsilon)
 
-def get_obj_weights(char, asset, mask=False):
-    if "charmorph_fit_id" not in asset.data:
-        asset.data["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+def get_fitter(target):
+    global fitter
+    if isinstance(target, morphing.Morpher):
+        morpher = target
+        obj = target.obj
+    elif isinstance(target, bpy.types.Object):
+        morpher = morphing.morpher if morphing.morpher and morphing.morpher.obj == target else None
+        obj = target
+    else:
+        raise Exception("Fitter: invalid target")
+    if not fitter or fitter.morpher != morpher or fitter.obj != obj:
+        fitter = Fitter(morpher, obj)
 
-    fit_id = asset.data["charmorph_fit_id"]
-    weights = obj_cache.get(fit_id)
-    if weights is not None:
+    return fitter
+
+class Fitter:
+    def __init__(self, morpher, obj):
+        self.morpher = morpher
+        self.obj = obj
+        self.char = library.obj_char(obj)
+
+        self.bvh_cache = {}
+        self.weights_cache = {}
+        self.children = None
+        self._lock_cm = False
+
+    def alt_topo(self):
+        return bool(self.morpher) and self.morpher.alt_topo
+
+    @utils.lazyprop
+    def char_verts(self):
+        return self.morpher.get_basis() is self.morpher or utils.get_basis_numpy(self.obj)
+
+    @utils.lazyprop
+    def char_faces(self):
+        return self.char.faces or [f.vertices for f in self.obj.data.polygons]
+
+    @utils.lazyprop
+    def orig_char_bvh(self):
+        return mathutils.bvhtree.BVHTree.FromPolygons(self.char_verts, self.char_faces)
+
+    def get_bvh(self, data):
+        key = 0 if data == self.obj else None
+        if isinstance(data, bpy.types.Object):
+            data = data.data
+        if key is None:
+            key = data.get("charmorph_fit_id", data.name)
+        result = self.bvh_cache.get(data.name)
+        if not result:
+            if key == 0 and not self.alt_topo():
+                result = self.orig_char_bvh
+            else:
+                result = mathutils.bvhtree.BVHTree.FromPolygons(utils.get_basis_numpy(data), [f.vertices for f in data.polygons])
+            self.bvh_cache[key] = result
+        return result
+
+    def calc_weights(self, asset):
+        t = utils.Timer()
+
+        char_verts = self.char_verts
+
+        asset_verts = asset.data.vertices
+        asset_faces = [f.vertices for f in asset.data.polygons] #FIXME: performance
+
+        subset = self.char.fitting_subset
+        if subset is None:
+            verts_enum = enumerate(char_verts)
+            kd_verts_cnt = len(char_verts)
+        else:
+            verts_enum = [(i, char_verts[i]) for i in subset["verts"]]
+            verts_set = set(subset["verts"])
+            kd_verts_cnt = len(verts_enum)
+
+        t.time("subset")
+
+        # calculate weights based on 32 nearest vertices
+        kd_char = utils.kdtree_from_verts_enum(verts_enum, kd_verts_cnt)
+        weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
+
+        t.time("kdtree")
+
+        face_list = self.char_faces
+        if subset is None:
+            bvh_char = self.orig_char_bvh
+        else:
+            face_list = [face_list[i] for i in subset["faces"]]
+            bvh_char = mathutils.bvhtree.BVHTree.FromPolygons(char_verts, face_list)
+
+        # calculate weights based on distance from asset vertices to character faces
+        for i, avert in enumerate(asset_verts):
+            co = avert.co
+            loc, norm, idx, fdist = bvh_char.find_nearest(co)
+
+            if loc is None or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
+                continue
+
+            verts, fdist = intersect_faces(bvh_char, face_list, co, max(fdist, epsilon) * 1.125)
+            if verts is None:
+                continue
+
+            d = weights[i]
+            for vi in verts:
+                d[vi] = max(d.get(vi, 0), 1/max((co-mathutils.Vector(char_verts[vi])).length * fdist, epsilon))
+
+        t.time("bvh direct")
+
+        # calculate weights based on distance from character vertices to assset faces
+        bvh_asset = self.get_bvh(asset)
+        #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
+        for i, cvert in enumerate(char_verts):
+            if subset and i not in verts_set:
+                continue
+            co = mathutils.Vector(cvert)
+            loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
+            if idx is None:
+                continue
+
+            fdist = max(fdist, epsilon)
+
+            verts, fdist = intersect_faces(bvh_asset, asset_faces, co, max(fdist, epsilon) * 1.001)
+            if verts is None:
+                continue
+
+            for vi in verts:
+                d = weights[vi]
+                d[i] = max(d.get(i, 0), 1/max((co-asset_verts[vi].co).length*fdist, epsilon))
+
+        t.time("bvh reverse")
+
+        positions = numpy.empty((len(weights)), dtype=numpy.uint32)
+
+        pos = 0
+
+        for i, d in enumerate(weights):
+            thresh = max(d.values())/16
+            for k,v in list(d.items()):
+                if v < thresh:
+                    del d[k]
+            positions[i] = pos
+            pos += len(d)
+
+        t.time("cut")
+
+        idx = numpy.empty((pos), dtype=numpy.uint32)
+        wresult = numpy.empty((pos))
+
+        pos=0
+        for d in weights:
+            pos1 = pos
+            for k,v in d.items():
+                idx[pos] = k
+                wresult[pos] = v
+                pos += 1
+            w  = wresult[pos1:pos]
+            w /= w.sum()
+
+            #idx[pos:pos+len(d)] = list(d.keys())
+            #w = wresult[pos:pos+len(d)]
+            #w[:] = list(d.values())
+            #pos += len(d)
+
+
+        t.time("normalize")
+
+        return (positions, idx, wresult.reshape(-1,1))
+
+    def add_mask_from_asset(self, asset):
+        vg_name = mask_name(asset)
+        if vg_name in self.obj.vertex_groups:
+            return
+        bbox_min = mathutils.Vector(asset.bound_box[0])
+        bbox_max = mathutils.Vector(asset.bound_box[0])
+        update_bbox(bbox_min, bbox_max, asset)
+
+        self.add_mask(self.get_bvh(asset), vg_name, bbox_min, bbox_max)
+
+    def add_mask(self, bvh_asset, vg_name, bbox_min, bbox_max):
+        def bbox_match(co):
+            for i in range(3):
+                if co[i] < bbox_min[i] or co[i] > bbox_max[i]:
+                    return False
+            return True
+
+        bvh_char = self.get_bvh(self.obj)
+
+        bbox_center = (bbox_min+bbox_max)/2
+
+        cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min, bbox_max] for coord in range(3))
+        cube_vector = mathutils.Vector([cube_size] * 3)
+
+        bcube_min = bbox_center-cube_vector
+        bcube_max = bbox_center+cube_vector
+
+        bbox_points = [bcube_min, bbox_center, bcube_max]
+        cast_points = [mathutils.Vector((bbox_points[x][0], bbox_points[y][1], bbox_points[z][2])) for x in range(3) for y in range(3) for z in range(3) if x != 1 or y != 1 or z != 1]
+
+        def cast_rays(co, direction, max_dist=1e30):
+            nonlocal has_cloth
+            _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
+            if idx is None:
+                # Vertex is not blocked by cloth. Maybe blocked by the body itself?
+                _, _, idx, _ = bvh_char.ray_cast(co+direction*0.00001, direction, max_dist*0.99)
+                if idx is None:
+                    #print(i, co, direction, max_dist, cvert.normal)
+                    return False # No ray hit
+            else:
+                has_cloth = True
+            return True # Have ray hit
+
+
+        covered_verts = set()
+
+        for i, cvert in enumerate(utils.get_basis_verts(self.obj)):
+            co = cvert.co
+            if not bbox_match(co):
+                continue
+
+            has_cloth = False
+            norm = self.obj.data.vertices[i].normal
+
+            #if vertex is too close to cloth, mark it as covered
+            _, _, idx, _ = bvh_asset.find_nearest(co, 0.0005)
+            if idx is not None:
+                #print(i, co, fhit, fdist, "too close")
+                covered_verts.add(i)
+
+            # cast one ray along vertex normal and check is there a clothing nearby
+            if not cast_rays(co, norm):
+                continue
+
+            # cast rays out of 26 outside points to check whether the vertex is visible from any feasible angle
+            for cast_point in cast_points:
+                direction = co-cast_point
+                max_dist = direction.length
+                direction.normalize()
+                if norm.dot(direction) > -0.5:
+                    continue # skip back faces and very sharp view angles
+                if not cast_rays(cast_point, direction, max_dist):
+                    has_cloth = False
+                    break
+
+            if has_cloth:
+                covered_verts.add(i)
+
+        #vg = char.vertex_groups.new(name = "covered")
+        #vg.add(list(covered_verts), 1, 'REPLACE')
+
+        boundary_verts = set()
+        for f in self.obj.data.polygons:
+            for i in f.vertices:
+                if i not in covered_verts:
+                    boundary_verts.update(f.vertices)
+
+        covered_verts.difference_update(boundary_verts)
+
+        if not covered_verts:
+            return
+        vg = self.obj.vertex_groups.new(name=vg_name)
+        vg.add(list(covered_verts), 1, 'REPLACE')
+        for mod in self.obj.modifiers:
+            if mod.name == vg_name and mod.type == "MASK":
+                break
+        else:
+            mod = self.obj.modifiers.new(vg_name, "MASK")
+        mod.invert_vertex_group = True
+        mod.vertex_group = vg.name
+
+    def get_obj_weights(self, asset):
+        if "charmorph_fit_id" not in asset.data:
+            asset.data["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+
+        fit_id = asset.data["charmorph_fit_id"]
+        weights = self.weights_cache.get(fit_id)
+        if weights is not None:
+            return weights
+
+        weights = self.calc_weights(asset)
+        self.weights_cache[fit_id] = weights
         return weights
 
-    weights = calc_weights(char, asset, mask)
-    obj_cache[fit_id] = weights
-    return weights
+    def transfer_weights(self, asset, bones):
+        if not bones:
+            return
+        t = utils.Timer()
+        positions, idx, weights = self.get_obj_weights(asset)
+        char_verts = self.obj.data.vertices
 
-special_groups = frozenset(["corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"])
+        groups = {}
 
-def transfer_weights(char, asset, bones):
-    if not bones:
-        return
-    t = utils.Timer()
-    positions, idx, weights = get_obj_weights(char, asset)
-    char_verts = char.data.vertices
+        i = 0
+        for ptr in range(len(idx)):
+            while i < len(positions)-1 and ptr >= positions[i+1]:
+                i += 1
+            for src in char_verts[idx[ptr]].groups:
+                gid = src.group
+                group_name = self.obj.vertex_groups[gid].name
+                if group_name not in bones and group_name not in special_groups:
+                    continue
+                vg_dst = groups.get(gid)
+                if vg_dst is None:
+                    if group_name in asset.vertex_groups:
+                        asset.vertex_groups.remove(asset.vertex_groups[group_name])
+                    vg_dst = asset.vertex_groups.new(name=group_name)
+                    groups[gid] = vg_dst
+                vg_dst.add([i], src.weight*weights[ptr][0], 'ADD')
 
-    groups = {}
+        t.time("weights")
 
-    i = 0
-    for ptr in range(len(idx)):
-        while i < len(positions)-1 and ptr >= positions[i+1]:
-            i += 1
-        for src in char_verts[idx[ptr]].groups:
-            gid = src.group
-            group_name = char.vertex_groups[gid].name
-            if group_name not in bones and group_name not in special_groups:
-                continue
-            vg_dst = groups.get(gid)
-            if vg_dst is None:
-                if group_name in asset.vertex_groups:
-                    asset.vertex_groups.remove(asset.vertex_groups[group_name])
-                vg_dst = asset.vertex_groups.new(name=group_name)
-                groups[gid] = vg_dst
-            vg_dst.add([i], src.weight*weights[ptr][0], 'ADD')
+    def transfer_armature(self, asset):
+        existing = set()
+        for mod in asset.modifiers:
+            if mod.type == "ARMATURE" and mod.object:
+                existing.add(mod.object.name)
 
-    t.time("weights")
+        bones = set()
 
-def transfer_armature(char, asset):
-    existing = set()
-    for mod in asset.modifiers:
-        if mod.type == "ARMATURE" and mod.object:
-            existing.add(mod.object.name)
+        modifiers = []
 
-    bones = set()
+        for mod in self.obj.modifiers:
+            if mod.type == "ARMATURE" and mod.object and mod.object.name not in existing:
+                modifiers.append(mod)
+                for bone in mod.object.data.bones:
+                    if bone.use_deform:
+                        bones.add(bone.name)
 
-    modifiers = []
+        self.transfer_weights(asset, bones)
 
-    for mod in char.modifiers:
-        if mod.type == "ARMATURE" and mod.object and mod.object.name not in existing:
-            modifiers.append(mod)
-            for bone in mod.object.data.bones:
-                if bone.use_deform:
-                    bones.add(bone.name)
-
-    transfer_weights(char, asset, bones)
-
-    for mod in modifiers:
-        newmod = asset.modifiers.new(mod.name, "ARMATURE")
-        newmod.object = mod.object
-        newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
-        newmod.invert_vertex_group = mod.invert_vertex_group
-        newmod.use_bone_envelopes = mod.use_bone_envelopes
-        newmod.use_vertex_groups = mod.use_vertex_groups
-        newmod.use_multi_modifier = mod.use_multi_modifier
-        newmod.vertex_group = mod.vertex_group
-        rigging.reposition_armature_modifier(asset)
+        for mod in modifiers:
+            newmod = asset.modifiers.new(mod.name, "ARMATURE")
+            newmod.object = mod.object
+            newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
+            newmod.invert_vertex_group = mod.invert_vertex_group
+            newmod.use_bone_envelopes = mod.use_bone_envelopes
+            newmod.use_vertex_groups = mod.use_vertex_groups
+            newmod.use_multi_modifier = mod.use_multi_modifier
+            newmod.vertex_group = mod.vertex_group
+            rigging.reposition_armature_modifier(asset)
 
 
-def transfer_new_armature(char):
-    for asset in get_assets(char):
-        transfer_armature(char, asset)
+    def transfer_new_armature(self):
+        for asset in self.get_assets():
+            self.transfer_armature(asset)
 
-def get_morphed_shape_key(obj):
-    k = obj.data.shape_keys
-    if k and k.key_blocks:
-        result = k.key_blocks.get("charmorph_final")
-        if result:
-            return result, False
+    def get_morphed_shape_key(self):
+        k = self.obj.data.shape_keys
+        if k and k.key_blocks:
+            result = k.key_blocks.get("charmorph_final")
+            if result:
+                return result, False
 
-    # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-    return obj.shape_key_add(from_mix=True), True
+        # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
+        return self.obj.shape_key_add(from_mix=True), True
 
-def diff_array(obj):
-    if hasattr(morphing.morpher, "get_diff") and morphing.morpher.obj == obj:
-        return morphing.morpher.get_diff()
-    morphed_shapekey, temporary = get_morphed_shape_key(obj)
-    morphed = numpy.empty(len(morphed_shapekey.data)*3)
-    morphed_shapekey.data.foreach_get("co", morphed)
-    if temporary:
-        obj.shape_key_remove(morphed_shapekey)
-    basis = basis_cache.get(obj.name)
-    if basis is None:
-        basis = numpy.empty(len(morphed))
-        utils.get_basis(obj).foreach_get("co", basis)
-        basis_cache[obj.name] = basis
-    morphed -= basis
-    return morphed.reshape(-1, 3)
+    def diff_array(self):
+        if hasattr(self.morpher, "get_diff"):
+            return self.morpher.get_diff()
+        morphed_shapekey, temporary = self.get_morphed_shape_key()
+        morphed = numpy.empty(len(morphed_shapekey.data)*3)
+        morphed_shapekey.data.foreach_get("co", morphed)
+        if temporary:
+            self.obj.shape_key_remove(morphed_shapekey)
+        morphed = morphed.reshape(-1, 3)
+        morphed -= self.char_verts
+        return morphed
 
-from . import hair
+    def do_fit(self, assets, fit_hair = False):
+        t = utils.Timer()
 
-def do_fit(char, assets):
-    t = utils.Timer()
-
-    diff_arr = diff_array(char)
-    for asset in assets:
-        weights = get_obj_weights(char, asset)
-        if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
-            asset.shape_key_add(name="Basis", from_mix=False)
-        asset_fitkey = asset.data.shape_keys.key_blocks.get("charmorph_fitting")
-        if not asset_fitkey:
-            asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
-
-        verts = numpy.empty(len(asset_fitkey.data)*3)
-        asset.data.vertices.foreach_get("co", verts)
-        verts = verts.reshape(-1, 3)
-        verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
-        asset_fitkey.data.foreach_set("co", verts.reshape(-1))
-
-        asset_fitkey.value = max(asset_fitkey.value, 1)
-
-    t.time("fit")
-    if bpy.context.window_manager.charmorph_ui.hair_deform:
-        hair.fit_all_hair(char, diff_arr)
-
-def masking_enabled(asset):
-    return utils.is_true(asset.data.get("charmorph_fit_mask", True))
-
-def recalc_comb_mask(char, new_asset=None):
-    t = utils.Timer()
-    # Cleanup old masks
-    for mod in char.modifiers:
-        if mod.name == "cm_mask_combined":
-            # We preserve cm_mask_combined modifier to keep its position in case if user moved it
-            mod.vertex_group = ""
-        elif mod.name.startswith("cm_mask_"):
-            char.modifiers.remove(mod)
-
-    for vg in char.vertex_groups:
-        if vg.name.startswith("cm_mask_"):
-            char.vertex_groups.remove(vg)
-
-    assets = get_assets(char)
-    if new_asset:
-        assets.append(new_asset)
-    assets = [asset for asset in assets if masking_enabled(asset)]
-    if not assets:
-        return
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in utils.get_basis(char)], [f.vertices for f in char.data.polygons])
-    bbox_min = mathutils.Vector(assets[0].bound_box[0])
-    bbox_max = mathutils.Vector(assets[0].bound_box[0])
-    try:
-        bm = bmesh.new()
+        diff_arr = self.diff_array()
         for asset in assets:
-            bm.from_mesh(asset.data)
-            update_bbox(bbox_min, bbox_max, asset)
-        bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
-    finally:
-        bm.free()
+            weights = self.get_obj_weights(asset)
+            if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
+                asset.shape_key_add(name="Basis", from_mix=False)
+            asset_fitkey = asset.data.shape_keys.key_blocks.get("charmorph_fitting")
+            if not asset_fitkey:
+                asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
-    add_mask(char, "cm_mask_combined", bbox_min, bbox_max, bvh_assets, bvh_char)
-    t.time("comb_mask")
+            verts = numpy.empty(len(asset_fitkey.data)*3)
+            asset.data.vertices.foreach_get("co", verts)
+            verts = verts.reshape(-1, 3)
+            verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
+            asset_fitkey.data.foreach_set("co", verts.reshape(-1))
 
-def fit_new(char, asset):
-    ui = bpy.context.window_manager.charmorph_ui
-    if ui.fitting_transforms:
-        utils.apply_transforms(asset)
+            asset_fitkey.value = max(asset_fitkey.value, 1)
 
-    if masking_enabled(asset):
-        if ui.fitting_mask == "SEPR":
-            get_obj_weights(char, asset, True)
-        elif ui.fitting_mask == "COMB":
-            recalc_comb_mask(char, asset)
+        t.time("fit")
+        if fit_hair and bpy.context.window_manager.charmorph_ui.hair_deform:
+            hair.fit_all_hair(self.obj, diff_arr)
 
-    do_fit(char, [asset])
-    asset.parent = char
-    char_cache.clear()
-    if ui.fitting_armature:
-        transfer_armature(char, asset)
+    def recalc_comb_mask(self):
+        t = utils.Timer()
+        # Cleanup old masks
+        for mod in self.obj.modifiers:
+            if mod.name == "cm_mask_combined":
+                # We preserve cm_mask_combined modifier to keep its position in case if user moved it
+                mod.vertex_group = ""
+            elif mod.name.startswith("cm_mask_"):
+                self.obj.modifiers.remove(mod)
 
-def get_children(char):
-    if char.name in char_cache:
-        return char_cache[char.name]
+        for vg in self.obj.vertex_groups:
+            if vg.name.startswith("cm_mask_"):
+                self.obj.vertex_groups.remove(vg)
 
-    children = [obj.name for obj in char.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data]
-    char_cache[char.name] = children
-    return children
+        assets = [asset for asset in self.get_assets() if masking_enabled(asset)]
+        if not assets:
+            return
+        bbox_min = mathutils.Vector(assets[0].bound_box[0])
+        bbox_max = mathutils.Vector(assets[0].bound_box[0])
+        if len(assets) == 1:
+            bvh_assets = self.get_bvh(assets[0])
+            update_bbox(bbox_min, bbox_max, assets[0])
+        else:
+            try:
+                bm = bmesh.new()
+                for asset in assets:
+                    bm.from_mesh(asset.data)
+                    update_bbox(bbox_min, bbox_max, asset)
+                bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
+            finally:
+                bm.free()
 
-def get_assets(char):
-    return [asset for asset in (bpy.data.objects[name] for name in get_children(char)) if asset.type == "MESH" and 'charmorph_fit_id' in asset.data]
+        self.add_mask(bvh_assets, "cm_mask_combined", bbox_min, bbox_max)
+        t.time("comb_mask")
 
-def traverse_collection(c):
-    # Some versions of Blender have bugs with LayerCollection.is_visible, so using this visibility check instead
-    if c.hide_viewport or c.exclude or c.collection.hide_viewport:
-        return
-    for obj in c.collection.objects:
-        if obj.type == "MESH":
-            yield obj
-    for child in c.children:
-        yield from traverse_collection(child)
+    def lock_comb_mask(self):
+        self._lock_cm = True
 
-def get_visible_meshes(_, context):
-    result = [(o.name, o.name, "") for o in traverse_collection(context.layer_collection)]
-    if len(result) == 0:
-        return [("", "<None>", "")]
-    return result
+    def unlock_comb_mask(self):
+        self._lock_cm = False
+        if bpy.context.window_manager.charmorph_ui.fitting_mask == "COMB":
+            self.recalc_comb_mask()
+
+    def fit_new(self, asset):
+        ui = bpy.context.window_manager.charmorph_ui
+        if ui.fitting_transforms:
+            utils.apply_transforms(asset)
+
+        if self.children is None:
+            self.get_children()
+        self.children.append(asset)
+
+        if masking_enabled(asset):
+            if ui.fitting_mask == "SEPR":
+                self.add_mask_from_asset(asset)
+            elif ui.fitting_mask == "COMB" and not self._lock_cm:
+                self.recalc_comb_mask()
+
+        self.do_fit([asset])
+        asset.parent = self.obj
+        if ui.fitting_armature:
+            self.transfer_armature(asset)
+
+    def get_children(self):
+        if self.children is None:
+            self.children = [obj for obj in self.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data]
+        return self.children
+
+    def get_assets(self):
+        return [asset for asset in self.get_children() if asset.type == "MESH" and 'charmorph_fit_id' in asset.data]
+
+    def refit_all(self):
+        assets = self.get_assets()
+        if self.alt_topo():
+            assets.append(self.obj)
+        if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(self.obj)):
+            self.do_fit(assets, True)
+
 
 def get_fitting_assets(ui, _):
-    obj = bpy.data.objects.get(ui.fitting_char)
-    char = library.obj_char(obj)
+    char = library.obj_char(ui.fitting_char)
     return [("char_" + k, k, '') for k in sorted(char.assets.keys())] + [("add_" + k, k, '') for k in sorted(library.additional_assets.keys())]
 
 class UIProps:
-    fitting_char: bpy.props.EnumProperty(
+    fitting_char: bpy.props.PointerProperty(
         name="Char",
         description="Character for fitting",
-        items=get_visible_meshes)
-    fitting_asset: bpy.props.EnumProperty(
+        type=bpy.types.Object)
+    fitting_asset: bpy.props.PointerProperty(
         name="Local asset",
         description="Asset for fitting",
-        items=get_visible_meshes)
+        type=bpy.types.Object)
     fitting_mask: bpy.props.EnumProperty(
         name="Mask",
         default="COMB",
@@ -531,6 +571,15 @@ class UIProps:
         update=library.update_fitting_assets,
         subtype='DIR_PATH')
 
+def get_char(context):
+    obj = mesh_obj(context.window_manager.charmorph_ui.fitting_char)
+    if not obj or 'charmorph_fit_id' in obj.data:
+        return None
+    return obj
+
+def get_asset(context):
+    return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
+
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -553,8 +602,8 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         col.prop(ui, "fitting_transforms")
         col.prop(ui, "fitting_armature")
         self.layout.separator()
-        obj = bpy.data.objects.get(ui.fitting_asset)
-        if obj and 'charmorph_fit_id' in obj.data:
+        obj = get_asset(context)
+        if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
             self.layout.operator("charmorph.unfit")
         else:
             self.layout.operator("charmorph.fit_local")
@@ -565,26 +614,10 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "fitting_library_dir")
         self.layout.separator()
 
-def mesh_obj(name):
-    if not name:
-        return None
-    obj = bpy.data.objects.get(name)
+def mesh_obj(obj):
     if obj and obj.type == "MESH":
         return obj
     return None
-
-def get_char():
-    obj = mesh_obj(bpy.context.window_manager.charmorph_ui.fitting_char)
-    if not obj or 'charmorph_fit_id' in obj.data:
-        return None
-    return obj
-def get_asset():
-    return mesh_obj(bpy.context.window_manager.charmorph_ui.fitting_asset)
-
-def refit_char_assets(char):
-    assets = get_assets(char)
-    if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(char)):
-        do_fit(char, assets)
 
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"
@@ -596,28 +629,34 @@ class OpFitLocal(bpy.types.Operator):
     def poll(cls, context):
         if context.mode != "OBJECT":
             return False
-        char = get_char()
+        char = get_char(context)
         if not char:
             return False
-        asset = get_asset()
+        asset = get_asset(context)
         if not asset or asset == char:
             return False
         return True
 
-    def execute(self, _): #pylint: disable=no-self-use
-        fit_new(get_char(), get_asset())
+    def execute(self, context): #pylint: disable=no-self-use
+        get_fitter(get_char(context)).fit_new(get_asset(context))
         return {"FINISHED"}
 
 def fitExtPoll(context):
-    return context.mode == "OBJECT" and get_char()
+    return context.mode == "OBJECT" and get_char(context)
 
-def fit_import(context, file, obj):
-    char = get_char()
-    asset = library.import_obj(file, obj)
-    if asset is None:
-        return False
-    fit_new(char, asset)
-    context.window_manager.charmorph_ui.fitting_char = char.name # For some reason combo box value changes after importing, fix it
+def fit_import(char, lst):
+    f = get_fitter(char)
+    f.lock_comb_mask()
+    for file, obj in lst:
+        asset = library.import_obj(file, obj)
+        if asset is None:
+            return False
+        f.fit_new(asset)
+    f.unlock_comb_mask()
+    ui = bpy.context.window_manager.charmorph_ui
+    ui.fitting_char = char # For some reason combo box value changes after importing, fix it
+    if len(lst) == 1:
+        ui.fitting_asset = asset
     return True
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -635,7 +674,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        if fit_import(context, self.filepath, name):
+        if fit_import(get_char(context), ((self.filepath, name),)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -655,7 +694,7 @@ class OpFitLibrary(bpy.types.Operator):
         if asset_data is None:
             self.report({'ERROR'}, "Asset is not found")
             return {"CANCELLED"}
-        if fit_import(context, *asset_data):
+        if fit_import(get_char(context), (asset_data,)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -667,36 +706,32 @@ class OpUnfit(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        asset = get_asset()
+        asset = get_asset(context)
         return context.mode == "OBJECT" and asset and 'charmorph_fit_id' in asset.data
 
     def execute(self, context): # pylint: disable=no-self-use
-        char_cache.clear()
         ui = context.window_manager.charmorph_ui
         asset_name = ui.fitting_asset
         asset = bpy.data.objects[asset_name]
 
         mask = mask_name(asset)
-        for char in [asset.parent, bpy.data.objects.get(ui.fitting_char)]:
+        for char in [asset.parent, ui.fitting_char]:
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
-            found = False
             if mask in char.modifiers:
                 char.modifiers.remove(char.modifiers[mask])
-                found = True
             if mask in char.vertex_groups:
                 char.vertex_groups.remove(char.vertex_groups[mask])
-                found = True
-            if found:
-                break
+            if "cm_mask_combined" in char.modifiers:
+                f = get_fitter(char)
+                f.children = None
+                f.recalc_comb_mask()
         if asset.parent:
             asset.parent = asset.parent.parent
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
         del asset.data['charmorph_fit_id']
 
-        if "cm_mask_combined" in char.modifiers:
-            recalc_comb_mask(char)
 
         return {"FINISHED"}
 
