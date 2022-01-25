@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020-2021 Michael Vigovsky
+# Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, json, logging, traceback, numpy
 import bpy # pylint: disable=import-error
@@ -143,7 +143,7 @@ class Character:
 
     def get_np(self, file):
         file = self.path(file)
-        return numpy.load(file) if os.path.exists(file) else None
+        return numpy.load(file) if os.path.isfile(file) else None
 
     def get_yaml(self, file, default=_empty_dict):
         if default is _empty_dict:
@@ -154,6 +154,9 @@ class Character:
 
     def blend_file(self):
         return self.path(self.char_file)
+
+    def get_basis(self):
+        return self.get_np("morphs/L1/%s.npy" % self.basis)
 
     def _parse_armature(self, data):
         if isinstance(data, list):
@@ -186,7 +189,7 @@ def _wrap_lazy_yaml(name, value):
         return utils.named_lazyprop(name, lambda self: self.char.get_yaml(value))
     return value
 
-class Armature():
+class Armature:
     type = "regular"
     tweaks = []
     ik_limits = {}
@@ -207,17 +210,13 @@ class Armature():
 
         for item in ("weights", "joints"):
             value = getattr(self, item, None)
-            if value:
-                value = char.path(value)
-            else:
-                value = char.path(os.path.join(item, name + ".npz"))
-            setattr(self, item, value)
+            setattr(self, item, char.path(value) if value else char.path(os.path.join(item, name + ".npz")))
 
         if self.bones is None:
             self.bones = char.bones # Legacy
 
-        for item in ("bones", "mixin_bones"):
-            setattr(self, item, _wrap_lazy_yaml(item, getattr(self, item)))
+        self.bones       = _wrap_lazy_yaml("bones", self.bones)
+        self.mixin_bones = _wrap_lazy_yaml("mixin_bones", self.mixin_bones)
 
 empty_char = Character("")
 
@@ -399,21 +398,29 @@ def get_obj_char(context):
                 return obj, char
     return (None, None)
 
-def get_basis(obj):
-    data = obj
+def get_basis(data):
     if isinstance(data, bpy.types.Object):
         data = data.data
     k = data.shape_keys
     if k:
-        return k.reference_key.data
+        return utils.verts_to_numpy(k.reference_key.data)
 
     m = morphing.morpher
-    if m and m.obj == obj:
-        return m.get_basis_alt_topo()
+    if m and m.obj.data == data:
+        result = m.get_basis_alt_topo()
+        if result:
+            return result
 
-    alt_topo = data["alt_topo"]
-    if alt_topo and isinstance(alt_topo, str):
-        return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+    char = char_by_name(data.get("charmorph_template"))
+
+    alt_topo = data.get("cm_alt_topo")
+    if isinstance(alt_topo, bpy.types.Object) or isinstance(alt_topo, bpy.types.Mesh):
+        return utils.verts_to_numpy(get_basis(alt_topo))
+    if char.name:
+        if not alt_topo:
+            return
+        if isinstance(alt_topo, str):
+            return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 
     return data.vertices
 
@@ -461,10 +468,40 @@ class OpImport(bpy.types.Operator):
 
         char = chars[ui.base_model]
 
-        obj = import_obj(char.blend_file(), char.char_obj)
-        if obj is None:
-            self.report({'ERROR'}, "Import failed")
+        if ui.alt_topo != "<Base>" and char.faces is None:
+            self.report({'ERROR'}, "Cannot use alternative topology when the character doesn't have faces.npy")
             return {"CANCELLED"}
+
+        if ui.alt_topo == "<Custom>":
+            if not ui.alt_topo_obj or ui.alt_topo_obj.type != "MESH":
+                self.report({'ERROR'}, "Please select correct custom alternative topology object")
+                return {"CANCELLED"}
+
+            orig_mesh = ui.alt_topo_obj.data
+            mesh = orig_mesh.copy()
+            mesh.name = char.name
+            #TODO: cleanup shape keys
+            mesh["cm_alt_topo"] = orig_mesh
+
+            obj = bpy.data.objects.new(char.name, mesh)
+        else:
+            obj = import_obj(char.blend_file(), char.char_obj)
+            if obj is None:
+                self.report({'ERROR'}, "Import failed")
+                return {"CANCELLED"}
+
+            if not ui.use_sk:
+                ui.import_morphs = False
+                ui.import_expressions = False
+
+            if ui.import_morphs:
+                import_morphs(obj, ui.base_model)
+            elif os.path.isdir(char.path("morphs")):
+                obj.data["cm_morpher"] = "ext"
+            if ui.import_expressions:
+                import_expressions(obj, ui.base_model)
+
+            materials.init_materials(obj, char)
 
         obj.location = context.scene.cursor.location
         if ui.import_cursor_z:
@@ -472,18 +509,6 @@ class OpImport(bpy.types.Operator):
             obj.rotation_euler = (0, 0, context.scene.cursor.rotation_euler[2])
 
         obj.data["charmorph_template"] = ui.base_model
-        materials.init_materials(obj, char)
-
-        if not ui.use_sk:
-            ui.import_morphs = False
-            ui.import_expressions = False
-
-        if ui.import_morphs:
-            import_morphs(obj, ui.base_model)
-        elif os.path.isdir(char.path("morphs")):
-            obj.data["cm_morpher"] = "ext"
-        if ui.import_expressions:
-            import_expressions(obj, ui.base_model)
 
         morphing.create_charmorphs(obj)
         context.view_layer.objects.active = obj
@@ -497,12 +522,14 @@ class OpImport(bpy.types.Operator):
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
 
-        def fit_clothing(lst):
-            fitting.fit_import(obj, [char.assets[name] for name in lst])
-
-        fit_clothing(char.default_assets)
+        assets = []
+        def add_assets(lst):
+            assets.extend((char.assets[name] for name in lst))
+        add_assets(char.default_assets)
         if not is_adult_mode():
-            fit_clothing(char.underwear)
+            add_assets(char.underwear)
+
+        fitting.fit_import(obj, assets)
 
         return {"FINISHED"}
 
@@ -541,7 +568,7 @@ class UIProps:
         description="Select alternative topology to use",
         items=[
             ("<Base>", "<Base>", "Use base character topology"),
-            ("<Custom>", "<Custom>", "Use custom local object as ")]
+            ("<Custom>", "<Custom>", "Use custom local object as alt topo")]
         )
     alt_topo_obj: bpy.props.PointerProperty(
         name="Custom alt topo",
@@ -586,7 +613,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         c = l.column()
         c.prop(ui, "use_sk")
         c = c.column()
-        c.enabled = ui.use_sk
+        c.enabled = ui.use_sk and ui.alt_topo == "<Base>"
         c.prop(ui, "import_morphs")
         c.prop(ui, "import_expressions")
         l.prop(ui, "alt_topo")

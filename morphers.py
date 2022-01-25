@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, numpy
 
@@ -164,9 +164,12 @@ class NumpyMorpher(morphing.Morpher):
     def __init__(self, obj):
         super().__init__(obj)
         self.basis = None
-        self.full_basis = self._get_L1_data(self.char.basis) or super().get_basis()
+        self.full_basis = self._get_L1_data(self.char.basis)
+        if self.full_basis is None:
+            self.full_basis = super().get_basis()
         self.morphed = None
         self.counter = 1
+        self.alt_topo = bool(obj.data.get("cm_alt_topo"))
 
     def has_morphs(self):
         return bool(self.char.name)
@@ -275,9 +278,10 @@ class NumpyMorpher(morphing.Morpher):
     def do_update(self):
         self._do_all_morphs()
 
-        sk = self._get_dest_shapekey()
-        sk.data.foreach_set("co", self.morphed.reshape(-1))
-        sk.value = 1
+        if not self.alt_topo:
+            sk = self._get_dest_shapekey()
+            sk.data.foreach_set("co", self.morphed.reshape(-1))
+            sk.value = 1
 
         super().do_update()
 

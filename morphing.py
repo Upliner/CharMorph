@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, logging, re
 import bpy # pylint: disable=import-error
@@ -389,7 +389,7 @@ def create_charmorphs(obj):
 
     materials.update_props(obj)
 
-    if obj.data.get("cm_morpher") == "ext":
+    if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
         m = morphers.NumpyMorpher(obj)
     else:
         m = morphers.ShapeKeysMorpher(obj)

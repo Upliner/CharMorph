@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2021 Michael Vigovsky
+# Copyright (C) 2021-2022 Michael Vigovsky
 
 import os, re, numpy, json
 import bpy, bpy_extras # pylint: disable=import-error
@@ -125,6 +125,22 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+class OpFaceExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.face_export"
+    bl_label = "Export faces"
+    bl_description = 'Export full face list to npy file'
+    filename_ext = ".npy"
+
+    filter_glob: bpy.props.StringProperty(default="*.npy", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        numpy.save(self.filepath, numpy.array([f.vertices for f in context.object.data.polygons]).astype(dtype=numpy.uint16))
+        return {"FINISHED"}
+
 class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "cmedit.vg_import"
     bl_label = "Import VGs"
@@ -185,11 +201,13 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
 
 class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
-    bl_idname = "cmedit.export_l1"
+    bl_idname = "cmedit.l1_export"
     bl_label = "Export L1 morph"
     bl_description = "Export selected shapekey as L1 morph"
 
     filename_ext = ".npy"
+
+    filter_glob: bpy.props.StringProperty(default="*.npy", options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
@@ -253,6 +271,8 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_description = "Export active shapekey as L2/L3 morph"
 
     filename_ext = ".npz"
+
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
@@ -416,7 +436,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         ui = context.window_manager.cmedit_ui
         l = self.layout
         l.operator("cmedit.hair_export")
-        l.separator()
+        l.operator("cmedit.face_export")
         l.operator("cmedit.selset_export")
         l.separator()
         l.prop(ui, "rig_bones_mode")
@@ -430,10 +450,10 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.prop(ui, "morph_regex")
         l.prop(ui, "morph_replace")
         l.prop(ui, "morph_float_precicion")
-        l.operator("cmedit.morph_export")
+        l.operator("cmedit.l1_export")
         l.operator("cmedit.morph_export")
         l.prop(ui, "morph_epsilon")
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpFaceExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]

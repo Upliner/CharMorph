@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2020 Michael Vigovsky
+# Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, random, logging, numpy
 
@@ -98,7 +98,7 @@ class Fitter:
 
     @utils.lazyprop
     def char_faces(self):
-        return self.char.faces or [f.vertices for f in self.obj.data.polygons]
+        return self.char.faces if self.char.faces is not None else [f.vertices for f in self.obj.data.polygons]
 
     @utils.lazyprop
     def orig_char_bvh(self):
@@ -129,7 +129,7 @@ class Fitter:
 
         subset = self.char.fitting_subset
         if subset is None:
-            verts_enum = enumerate(char_verts)
+            verts_enum = list(enumerate(char_verts))
             kd_verts_cnt = len(char_verts)
         else:
             verts_enum = [(i, char_verts[i]) for i in subset["verts"]]
@@ -172,7 +172,7 @@ class Fitter:
         # calculate weights based on distance from character vertices to assset faces
         bvh_asset = self.get_bvh(asset)
         #bvh_asset = mathutils.bvhtree.BVHTree.FromObject(asset, dg)
-        for i, cvert in enumerate(char_verts):
+        for i, cvert in verts_enum:
             if subset and i not in verts_set:
                 continue
             co = mathutils.Vector(cvert)
@@ -557,10 +557,15 @@ class UIProps:
         name="Apply transforms",
         default=True,
         description="Apply object transforms before fitting")
-    fitting_armature: bpy.props.BoolProperty(
-        name="Transfer armature",
-        default=True,
-        description="Transfer character armature modifiers to the asset")
+    fitting_weights: bpy.props.EnumProperty(
+        name="Weights",
+        default="ORIG",
+        items= [
+            ("NONE", "None", "Don't transfer weights and armature modifiers to the asset"),
+            ("ORIG", "Original", "Use original weights from character library"),
+            ("OBJ", "Object", "Use weights directly from object (use it if you manually weight-painted the character before fitting the asset)"),
+        ],
+        description="Select source for armature deform weights")
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",
@@ -599,8 +604,8 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         col.prop(ui, "fitting_asset")
         self.layout.prop(ui, "fitting_mask")
         col = self.layout.column(align=True)
+        col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_transforms")
-        col.prop(ui, "fitting_armature")
         self.layout.separator()
         obj = get_asset(context)
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
@@ -645,6 +650,8 @@ def fitExtPoll(context):
     return context.mode == "OBJECT" and get_char(context)
 
 def fit_import(char, lst):
+    if len(lst) == 0:
+        return
     f = get_fitter(char)
     f.lock_comb_mask()
     for file, obj in lst:
