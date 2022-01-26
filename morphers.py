@@ -169,7 +169,11 @@ class NumpyMorpher(morphing.Morpher):
             self.full_basis = super().get_basis()
         self.morphed = None
         self.counter = 1
-        self.alt_topo = bool(obj.data.get("cm_alt_topo"))
+        if obj.data.get("cm_alt_topo"):
+            self.alt_topo = True
+            self.alt_topo_basis = library.get_basis(obj, False)
+        else:
+            self.alt_topo_basis = self.full_basis
 
     def has_morphs(self):
         return bool(self.char.name)
@@ -300,6 +304,9 @@ class NumpyMorpher(morphing.Morpher):
 
     def get_basis(self):
         return self.full_basis
+
+    def get_basis_alt_topo(self):
+        return self.alt_topo_basis
 
     def get_diff(self):
         if self.morphed is None:

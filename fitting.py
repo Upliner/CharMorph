@@ -94,7 +94,7 @@ class Fitter:
 
     @utils.lazyprop
     def char_verts(self):
-        return self.morpher.get_basis() is self.morpher or utils.get_basis_numpy(self.obj)
+        return self.morpher.get_basis() if self.morpher else library.get_basis(self.obj)
 
     @utils.lazyprop
     def char_faces(self):

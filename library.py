@@ -136,7 +136,9 @@ class Character:
 
     @utils.lazyprop
     def faces(self):
-        return self.get_np("faces.npy")
+        result = self.get_np("faces.npy")
+        # This array is used for building BVHTree and Blender crashes if array type is other than "object"
+        return None if result is None else result.astype(object)
 
     def path(self, file):
         return char_file(self.name, file)
@@ -398,7 +400,7 @@ def get_obj_char(context):
                 return obj, char
     return (None, None)
 
-def get_basis(data):
+def get_basis(data, use_morpher=True):
     if isinstance(data, bpy.types.Object):
         data = data.data
     k = data.shape_keys
@@ -406,10 +408,8 @@ def get_basis(data):
         return utils.verts_to_numpy(k.reference_key.data)
 
     m = morphing.morpher
-    if m and m.obj.data == data:
-        result = m.get_basis_alt_topo()
-        if result:
-            return result
+    if use_morpher and m and m.obj.data == data:
+        return m.get_basis_alt_topo()
 
     char = char_by_name(data.get("charmorph_template"))
 
@@ -484,6 +484,7 @@ class OpImport(bpy.types.Operator):
             mesh["cm_alt_topo"] = orig_mesh
 
             obj = bpy.data.objects.new(char.name, mesh)
+            context.collection.objects.link(obj)
         else:
             obj = import_obj(char.blend_file(), char.char_obj)
             if obj is None:
