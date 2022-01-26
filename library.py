@@ -415,14 +415,14 @@ def get_basis(data, use_morpher=True):
 
     alt_topo = data.get("cm_alt_topo")
     if isinstance(alt_topo, bpy.types.Object) or isinstance(alt_topo, bpy.types.Mesh):
-        return utils.verts_to_numpy(get_basis(alt_topo))
+        return get_basis(alt_topo)
     if char.name:
         if not alt_topo:
-            return
+            return char.get_basis()
         if isinstance(alt_topo, str):
             return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 
-    return data.vertices
+    return utils.verts_to_numpy(data.vertices)
 
 def import_obj(file, obj, typ="MESH", link=True):
     with bpy.data.libraries.load(file) as (data_from, data_to):
