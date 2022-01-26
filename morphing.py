@@ -52,6 +52,16 @@ else:
     def prefixed_prop(prefix, prop):
         return (prefix + prop.keywords["name"], prop)
 
+def get_target(obj):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        return obj.data.vertices
+    sk = obj.data.shape_keys.key_blocks.get("charmorph_final")
+    if sk is None:
+        sk = obj.shape_key_add(name="charmorph_final", from_mix=False)
+    if sk.value < 0.75:
+        sk.value = 1
+    return sk.data
+
 class Morph:
     __slots = "min", "max", "data"
     def __init__(self, data, minval=0, maxval=0):

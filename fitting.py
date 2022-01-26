@@ -78,6 +78,16 @@ def get_fitter(target):
 
     return fitter
 
+def get_fitting_shapekey(obj):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        obj.shape_key_add(name="Basis", from_mix=False)
+    sk = obj.data.shape_keys.key_blocks.get("charmorph_fitting")
+    if not sk:
+        sk = obj.shape_key_add(name="charmorph_fitting", from_mix=False)
+    if sk.value < 0.75:
+        sk.value = 1
+    return sk.data
+
 class Fitter:
     def __init__(self, morpher, obj):
         self.morpher = morpher
@@ -428,25 +438,20 @@ class Fitter:
         morphed -= self.char_verts
         return morphed
 
+    def get_target(self, asset):
+        return morphing.get_target(asset) if asset == self.obj else get_fitting_shapekey(asset)
+
     def do_fit(self, assets, fit_hair = False):
         t = utils.Timer()
 
         diff_arr = self.diff_array()
         for asset in assets:
             weights = self.get_obj_weights(asset)
-            if not asset.data.shape_keys or not asset.data.shape_keys.key_blocks:
-                asset.shape_key_add(name="Basis", from_mix=False)
-            asset_fitkey = asset.data.shape_keys.key_blocks.get("charmorph_fitting")
-            if not asset_fitkey:
-                asset_fitkey = asset.shape_key_add(name="charmorph_fitting", from_mix=False)
 
-            verts = numpy.empty(len(asset_fitkey.data)*3)
-            asset.data.vertices.foreach_get("co", verts)
-            verts = verts.reshape(-1, 3)
+            verts = utils.get_basis_numpy(asset)
             verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
-            asset_fitkey.data.foreach_set("co", verts.reshape(-1))
-
-            asset_fitkey.value = max(asset_fitkey.value, 1)
+            self.get_target(asset).foreach_set("co", verts.reshape(-1))
+            asset.data.update()
 
         t.time("fit")
         if fit_hair and bpy.context.window_manager.charmorph_ui.hair_deform:

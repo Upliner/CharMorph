@@ -228,15 +228,6 @@ class NumpyMorpher(morphing.Morpher):
             for name in enum_combo_names(k):
                 self.morphs_l2[name] = self.morphs_l2.get(name, v)
 
-    def _get_dest_shapekey(self):
-        if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
-            self.obj.shape_key_add(name="Basis", from_mix=False)
-        kb = self.obj.data.shape_keys.key_blocks
-        sk = kb.get("charmorph_final")
-        if sk is not None:
-            return sk
-        return self.obj.shape_key_add(name="charmorph_final", from_mix=False)
-
     def _do_morph(self, data, idx, value):
         if value < 0.001:
             return
@@ -285,9 +276,8 @@ class NumpyMorpher(morphing.Morpher):
         self._do_all_morphs()
 
         if not self.alt_topo:
-            sk = self._get_dest_shapekey()
-            sk.data.foreach_set("co", self.morphed.reshape(-1))
-            sk.value = 1
+            morphing.get_target(self.obj).foreach_set("co", self.morphed.reshape(-1))
+            self.obj.data.update()
 
         super().do_update()
 
