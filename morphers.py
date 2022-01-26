@@ -174,6 +174,8 @@ class NumpyMorpher(morphing.Morpher):
             self.alt_topo_basis = library.get_basis(obj, False)
         else:
             self.alt_topo_basis = self.full_basis
+        if len(self.alt_topo_basis) != len(obj.data.vertices):
+            self.error = "Vertex count mismatch"
 
     def has_morphs(self):
         return bool(self.char.name)
