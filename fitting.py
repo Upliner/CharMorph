@@ -330,11 +330,16 @@ class Fitter:
         mod.invert_vertex_group = True
         mod.vertex_group = vg.name
 
-    def get_obj_weights(self, asset):
+    def get_fit_id(self, asset):
+        if asset == self.obj:
+            return 0
         if "charmorph_fit_id" not in asset.data:
             asset.data["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+        return asset.data["charmorph_fit_id"]
 
-        fit_id = asset.data["charmorph_fit_id"]
+    def get_obj_weights(self, asset):
+        fit_id = self.get_fit_id(asset)
+
         weights = self.weights_cache.get(fit_id)
         if weights is not None:
             return weights
