@@ -46,23 +46,6 @@ def update_bbox(bbox_min, bbox_max, obj):
             bbox_min[i] = min(bbox_min[i], v[i])
             bbox_max[i] = max(bbox_max[i], v[i])
 
-def intersect_faces(bvh, faces, co, dist):
-    arr = bvh.find_nearest_range(co, dist)
-    if len(arr) > 5 or len(arr) == 0:
-        return None, None
-    if len(arr) > 1:
-        verts = set(faces[arr[0][2]])
-        fdist = arr[0][3]
-        for _, _, idx2, fdist2 in arr[1:]:
-            verts.intersection_update(faces[idx2])
-            fdist = min(fdist, fdist2)
-        fdist = max(fdist, epsilon)
-    else:
-        arr = arr[0]
-        verts = faces[arr[2]]
-        fdist = arr[3]
-    return verts, max(fdist, epsilon)
-
 def get_fitter(target):
     global fitter
     if isinstance(target, morphing.Morpher):
@@ -115,17 +98,15 @@ class Fitter:
         return mathutils.bvhtree.BVHTree.FromPolygons(self.char_verts, self.char_faces)
 
     def get_bvh(self, data):
-        key = 0 if data == self.obj else None
         if isinstance(data, bpy.types.Object):
             data = data.data
-        if key is None:
-            key = data.get("charmorph_fit_id", data.name)
+        key = 0 if data == self.obj.data else data.get("charmorph_fit_id", data.name)
         result = self.bvh_cache.get(data.name)
         if not result:
             if key == 0 and not self.alt_topo():
                 result = self.orig_char_bvh
             else:
-                result = mathutils.bvhtree.BVHTree.FromPolygons(utils.get_basis_numpy(data), [f.vertices for f in data.polygons])
+                result = mathutils.bvhtree.BVHTree.FromPolygons(library.get_basis(data), [f.vertices for f in data.polygons])
             self.bvh_cache[key] = result
         return result
 
@@ -148,9 +129,9 @@ class Fitter:
 
         t.time("subset")
 
-        # calculate weights based on 32 nearest vertices
+        # calculate weights based on nearest vertices
         kd_char = utils.kdtree_from_verts_enum(verts_enum, kd_verts_cnt)
-        weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(avert.co, 32)} for avert in asset_verts]
+        weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(avert.co, 16)} for avert in asset_verts]
 
         t.time("kdtree")
 
@@ -160,22 +141,25 @@ class Fitter:
         else:
             face_list = [face_list[i] for i in subset["faces"]]
             bvh_char = mathutils.bvhtree.BVHTree.FromPolygons(char_verts, face_list)
+        t.time("bvh build")
 
         # calculate weights based on distance from asset vertices to character faces
         for i, avert in enumerate(asset_verts):
             co = avert.co
-            loc, norm, idx, fdist = bvh_char.find_nearest(co)
+            loc, _, idx, fdist = bvh_char.find_nearest(co, dist_thresh)
 
-            if loc is None or ((co-loc).dot(norm) <= 0 and fdist > dist_thresh):
+            if loc is None:
                 continue
 
-            verts, fdist = intersect_faces(bvh_char, face_list, co, max(fdist, epsilon) * 1.125)
-            if verts is None:
-                continue
+            #if fdist > sum((vert-co).sum() ** 0.5 for vert in verts)/(len(verts)*2):
+            #    continue
+
+            bw_list = mathutils.interpolate.poly_3d_calc(char_verts[face_list[idx]].tolist(), loc)
 
             d = weights[i]
-            for vi in verts:
-                d[vi] = max(d.get(vi, 0), 1/max((co-mathutils.Vector(char_verts[vi])).length * fdist, epsilon))
+            fdist = max(fdist ** 2, epsilon)
+            for vi, bw in zip(face_list[idx], bw_list):
+                d[vi] = max(d.get(vi, 0), bw/fdist)
 
         t.time("bvh direct")
 
@@ -186,19 +170,16 @@ class Fitter:
             if subset and i not in verts_set:
                 continue
             co = mathutils.Vector(cvert)
-            loc, norm, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
+            loc, _, idx, fdist = bvh_asset.find_nearest(co, dist_thresh)
             if idx is None:
                 continue
 
-            fdist = max(fdist, epsilon)
+            bw_list = mathutils.interpolate.poly_3d_calc([asset_verts[i].co for i in asset_faces[idx]], loc)
 
-            verts, fdist = intersect_faces(bvh_asset, asset_faces, co, max(fdist, epsilon) * 1.001)
-            if verts is None:
-                continue
-
-            for vi in verts:
+            fdist = max(fdist ** 2, epsilon)
+            for vi, bw in zip(asset_faces[idx], bw_list):
                 d = weights[vi]
-                d[i] = max(d.get(i, 0), 1/max((co-asset_verts[vi].co).length*fdist, epsilon))
+                d[i] = max(d.get(i, 0), bw/fdist)
 
         t.time("bvh reverse")
 
@@ -207,7 +188,7 @@ class Fitter:
         pos = 0
 
         for i, d in enumerate(weights):
-            thresh = max(d.values())/16
+            thresh = max(d.values())/32
             for k,v in list(d.items()):
                 if v < thresh:
                     del d[k]
@@ -258,9 +239,14 @@ class Fitter:
 
         bvh_char = self.get_bvh(self.obj)
 
-        bbox_center = (bbox_min+bbox_max)/2
+        bbox_min2 = bbox_min
+        bbox_max2 = bbox_max
 
-        cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min, bbox_max] for coord in range(3))
+        update_bbox(bbox_min2, bbox_max2, self.obj)
+
+        bbox_center = (bbox_min2+bbox_max2)/2
+
+        cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min2, bbox_max2] for coord in range(3))*2
         cube_vector = mathutils.Vector([cube_size] * 3)
 
         bcube_min = bbox_center-cube_vector
@@ -274,7 +260,7 @@ class Fitter:
             _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
             if idx is None:
                 # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-                _, _, idx, _ = bvh_char.ray_cast(co+direction*0.00001, direction, max_dist*0.99)
+                _, _, idx, _ = bvh_char.ray_cast(co, direction, max_dist*0.99)
                 if idx is None:
                     #print(i, co, direction, max_dist, cvert.normal)
                     return False # No ray hit
@@ -285,34 +271,38 @@ class Fitter:
 
         covered_verts = set()
 
-        for i, cvert in enumerate(utils.get_basis_verts(self.obj)):
-            co = cvert.co
+        for i, cvert in enumerate(library.get_basis(self.obj)):
+            co = mathutils.Vector(cvert)
             if not bbox_match(co):
                 continue
 
             has_cloth = False
-            norm = self.obj.data.vertices[i].normal
+            cnt = 0
 
             #if vertex is too close to cloth, mark it as covered
-            _, _, idx, _ = bvh_asset.find_nearest(co, 0.0005)
+            _, _, idx, _ = bvh_asset.find_nearest(co, 0.001)
             if idx is not None:
                 #print(i, co, fhit, fdist, "too close")
                 covered_verts.add(i)
+                continue
 
             # cast one ray along vertex normal and check is there a clothing nearby
-            if not cast_rays(co, norm):
-                continue
+            # TODO: get new normals source
+            #if not cast_rays(co, norm):
+            #    continue
 
             # cast rays out of 26 outside points to check whether the vertex is visible from any feasible angle
             for cast_point in cast_points:
                 direction = co-cast_point
                 max_dist = direction.length
                 direction.normalize()
-                if norm.dot(direction) > -0.5:
-                    continue # skip back faces and very sharp view angles
+                #if norm.dot(direction) > -0.5:
+                #    continue # skip back faces and very sharp view angles
                 if not cast_rays(cast_point, direction, max_dist):
-                    has_cloth = False
-                    break
+                    cnt += 1
+                    if cnt == 2:
+                        has_cloth = False
+                        break
 
             if has_cloth:
                 covered_verts.add(i)
@@ -448,7 +438,7 @@ class Fitter:
         for asset in assets:
             weights = self.get_obj_weights(asset)
 
-            verts = utils.get_basis_numpy(asset)
+            verts = library.get_basis(asset)
             verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
@@ -505,19 +495,21 @@ class Fitter:
         if ui.fitting_transforms:
             utils.apply_transforms(asset)
 
-        if self.children is None:
-            self.get_children()
-        self.children.append(asset)
+        self.do_fit([asset])
 
         if masking_enabled(asset):
             if ui.fitting_mask == "SEPR":
                 self.add_mask_from_asset(asset)
             elif ui.fitting_mask == "COMB" and not self._lock_cm:
+                if self.children is None:
+                    self.get_children()
+                self.children.append(asset)
                 self.recalc_comb_mask()
 
-        self.do_fit([asset])
         asset.parent = self.obj
-        if ui.fitting_armature:
+
+        if ui.fitting_weights != "NONE":
+            # TODO: obj and orig transfers
             self.transfer_armature(asset)
 
     def get_children(self):
@@ -723,9 +715,9 @@ class OpUnfit(bpy.types.Operator):
 
     def execute(self, context): # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
-        asset_name = ui.fitting_asset
-        asset = bpy.data.objects[asset_name]
+        asset = ui.fitting_asset
 
+        del asset.data['charmorph_fit_id']
         mask = mask_name(asset)
         for char in [asset.parent, ui.fitting_char]:
             if not char or char == asset or 'charmorph_fit_id' in char.data:
@@ -742,8 +734,6 @@ class OpUnfit(bpy.types.Operator):
             asset.parent = asset.parent.parent
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
-        del asset.data['charmorph_fit_id']
-
 
         return {"FINISHED"}
 

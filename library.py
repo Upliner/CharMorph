@@ -136,9 +136,8 @@ class Character:
 
     @utils.lazyprop
     def faces(self):
-        result = self.get_np("faces.npy")
-        # This array is used for building BVHTree and Blender crashes if array type is other than "object"
-        return None if result is None else result.astype(object)
+        # Use regular python array instead of numpy for compatibility with BVHTree
+        return self.get_np("faces.npy").tolist()
 
     def path(self, file):
         return char_file(self.name, file)
@@ -241,7 +240,7 @@ def fitting_asset_data(context):
     ui = context.window_manager.charmorph_ui
     item = ui.fitting_library_asset
     if item.startswith("char_"):
-        obj = bpy.data.objects.get(ui.fitting_char)
+        obj = ui.fitting_char
         char = obj_char(obj)
         return char.assets.get(item[5:])
     if item.startswith("add_"):
@@ -414,7 +413,7 @@ def get_basis(data, use_morpher=True):
     char = char_by_name(data.get("charmorph_template"))
 
     alt_topo = data.get("cm_alt_topo")
-    if isinstance(alt_topo, bpy.types.Object) or isinstance(alt_topo, bpy.types.Mesh):
+    if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
         return get_basis(alt_topo)
     if char.name:
         if not alt_topo:
