@@ -95,8 +95,6 @@ def on_select_object():
     if obj is morphing.last_object:
         return
 
-    logger.debug("switching objects: old %s, new %s", morphing.last_object.name if morphing.last_object else morphing.last_object, obj.name)
-
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent

@@ -396,6 +396,10 @@ def create_charmorphs(obj):
     last_object = obj
     if obj.type != "MESH":
         return
+    if morpher and morpher.obj == obj:
+        return
+
+    logger.debug("switching object to %s", obj.name)
 
     materials.update_props(obj)
 
