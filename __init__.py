@@ -19,9 +19,10 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging
-import bpy
+import bpy # pylint: disable=import-error
 
-from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, editing
+from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, cmedit
+from .lib import charlib
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
         pass
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = "CharMorph"
 
     adult_mode: bpy.props.BoolProperty(
         name="Adult mode",
@@ -82,7 +83,7 @@ def on_select_object():
         if asset:
             ui.fitting_char = obj
             ui.fitting_asset = asset
-        elif library.obj_char(obj).name:
+        elif charlib.obj_char(obj).name:
             ui.fitting_char = obj
         else:
             ui.fitting_asset = obj
@@ -123,7 +124,7 @@ class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def register():
     logger.debug("Charmorph register")
-    library.load_library()
+    charlib.load_library()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
 
@@ -138,11 +139,11 @@ def register():
     bpy.app.handlers.redo_post.append(select_handler)
     bpy.app.handlers.depsgraph_update_post.append(select_handler)
 
-    editing.register()
+    cmedit.register()
 
 def unregister():
     logger.debug("Charmorph unregister")
-    editing.unregister()
+    cmedit.unregister()
 
     for hlist in bpy.app.handlers:
         if not isinstance(hlist, list):

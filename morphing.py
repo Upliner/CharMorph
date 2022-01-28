@@ -21,7 +21,8 @@
 import logging, re
 import bpy # pylint: disable=import-error
 
-from . import library, materials, fitting, utils
+from . import materials, fitting
+from .lib import charlib, utils
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,45 @@ def get_target(obj):
         sk.value = 1
     return sk.data
 
+def get_obj_char(context):
+    if morpher:
+        return morpher.obj, morpher.char
+    obj = context.object
+    if obj:
+        if obj.type == "ARMATURE":
+            children = obj.children
+            if len(children) == 1:
+                obj = children[0]
+        if obj.type == "MESH":
+            char = charlib.obj_char(obj)
+            if char:
+                return obj, char
+    return (None, None)
+
+def get_basis(data, use_morpher=True):
+    if isinstance(data, bpy.types.Object):
+        data = data.data
+    k = data.shape_keys
+    if k:
+        return utils.verts_to_numpy(k.reference_key.data)
+
+    m = morpher
+    if use_morpher and m and m.obj.data == data:
+        return m.get_basis_alt_topo()
+
+    char = charlib.char_by_name(data.get("charmorph_template"))
+
+    alt_topo = data.get("cm_alt_topo")
+    if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
+        return get_basis(alt_topo)
+    if char:
+        if not alt_topo:
+            return char.get_basis()
+        if isinstance(alt_topo, str):
+            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+
+    return utils.verts_to_numpy(data.vertices)
+
 class Morph:
     __slots = "min", "max", "data"
     def __init__(self, data, minval=0, maxval=0):
@@ -82,7 +122,7 @@ class Morpher:
 
     def __init__(self, obj):
         self.obj = obj
-        self.char = library.obj_char(obj)
+        self.char = charlib.obj_char(obj)
         self.morphs_l1 = {}
         self.morphs_l2 = {}
         self.morphs_combo = {}
@@ -435,8 +475,6 @@ def del_charmorphs():
     global last_object, morpher
     last_object = None
     morpher = null_morpher
-    if hasattr(bpy.types.WindowManager, "chartype"):
-        del bpy.types.WindowManager.chartype
     del_charmorphs_L2()
 
 def bad_object():

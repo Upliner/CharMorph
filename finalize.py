@@ -21,7 +21,8 @@
 import numpy, logging, traceback
 import bpy # pylint: disable=import-error
 
-from . import library, morphing, fitting, rigging, rigify, utils
+from .lib import rigging, utils
+from . import morphing, fitting, rigify
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def add_rig(obj, char, rig_name, verts):
     if rig_type not in ("arp", "rigify", "regular"):
         raise rigging.RigException("Rig type {} is not supported".format(rig_type))
 
-    rig = library.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
+    rig = utils.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
     if not rig:
         raise rigging.RigException("Rig import failed")
 
@@ -185,7 +186,7 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and library.get_obj_char(context)[0]
+        return context.mode == "OBJECT" and morphing.get_obj_char(context)[0]
 
     def execute(self, context):
         t = utils.Timer()
@@ -194,8 +195,8 @@ class OpFinalize(bpy.types.Operator):
             return {"CANCELLED"}
 
         ui = context.window_manager.charmorph_ui
-        obj, char = library.get_obj_char(context)
-        if not char.name:
+        obj, char = morphing.get_obj_char(context)
+        if char:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 
@@ -346,11 +347,11 @@ class OpUnrig(bpy.types.Operator):
     def poll(cls, context):
         if context.mode != "OBJECT":
             return False
-        obj = library.get_obj_char(context)[0]
+        obj = morphing.get_obj_char(context)[0]
         return obj.find_armature()
 
     def execute(self, context): # pylint: disable=no-self-use
-        obj, char = library.get_obj_char(context)
+        obj, char = morphing.get_obj_char(context)
 
         old_rig = obj.find_armature()
         if old_rig:
@@ -364,7 +365,7 @@ class OpUnrig(bpy.types.Operator):
         return {"FINISHED"}
 
 def get_rigs(_, context):
-    char = library.get_obj_char(context)[1]
+    char = morphing.get_obj_char(context)[1]
     if not char:
         return []
     return [("-", "<None>", "Don't generate rig")] + [(name, rig.title, "") for name, rig in char.armature.items()]
@@ -432,7 +433,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and library.get_obj_char(context)[0]
+        return context.mode == "OBJECT" and morphing.get_obj_char(context)[0]
 
     def draw(self, context):
         l = self.layout

@@ -20,7 +20,8 @@
 
 import os, numpy
 
-from . import library, morphing
+from .lib import charlib
+from . import morphing
 
 def get_combo_item_value(arr_idx, values):
     return sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values))
@@ -172,7 +173,7 @@ class NumpyMorpher(morphing.Morpher):
         self.counter = 1
         if obj.data.get("cm_alt_topo"):
             self.alt_topo = True
-            self.alt_topo_basis = library.get_basis(obj, False)
+            self.alt_topo_basis = morphing.get_basis(obj, False)
         else:
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):
@@ -209,7 +210,7 @@ class NumpyMorpher(morphing.Morpher):
 
     def _load_dir(self, path):
         path = self.char.path(path)
-        for morph in library.list_morph_dir(path):
+        for morph in charlib.list_morph_dir(path):
             if morph.get("separator"):
                 self.morphs_l2["\0\0\0%d" % self.counter] = None
                 self.counter += 1

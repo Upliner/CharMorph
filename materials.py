@@ -19,9 +19,9 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, logging, collections
-import bpy
+import bpy # pylint: disable=import-error
 
-from . import library
+from .lib import charlib, utils
 
 props = None
 
@@ -42,7 +42,7 @@ def load_materials(obj, char):
     ui = bpy.context.window_manager.charmorph_ui
     materials_to_load = []
     load_ids = []
-    adult_mode = library.is_adult_mode()
+    adult_mode = utils.is_adult_mode()
     for i, mtl_name in enumerate(mtllist):
         if not mtl_name:
             continue
@@ -74,7 +74,7 @@ def load_materials(obj, char):
 def load_texdir(path):
     if not os.path.exists(path):
         return {}
-    settings = library.parse_file(os.path.join(path, "settings.yaml"), library.load_yaml, {})
+    settings = charlib.parse_file(os.path.join(path, "settings.yaml"), charlib.load_yaml, {})
     default_setting = settings.get("*")
 
     result = {}
@@ -91,8 +91,8 @@ def load_texdir(path):
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
 def load_texmap(char):
     result = {}
-    char_texes = load_texdir(library.char_file(char, "textures"))
-    for k, v in load_texdir(os.path.join(library.data_dir, "textures")).items():
+    char_texes = load_texdir(charlib.char_file(char, "textures"))
+    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures")).items():
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
     for k, v in char_texes.items():
@@ -193,13 +193,6 @@ def update_props(obj):
 def prop_values():
     return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in props.items()}
 
-def parse_color(val):
-    if isinstance(val, list):
-        if len(val) == 3:
-            return val + [1]
-        return val
-    return [0, 0, 0, 0]
-
 def apply_props(data, mtl_props=None):
     if mtl_props is None:
         mtl_props = props
@@ -210,7 +203,7 @@ def apply_props(data, mtl_props=None):
         if not prop:
             continue
         if prop.node.type == "RGB":
-            mtl_props[k].default_value = parse_color(v)
+            mtl_props[k].default_value = utils.parse_color(v)
         else:
             mtl_props[k].default_value = v
 

@@ -23,7 +23,8 @@ import os, random, logging, numpy
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from . import library, morphing, hair, rigging, utils
+from .lib import charlib, rigging, utils
+from . import morphing, hair
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class Fitter:
     def __init__(self, morpher, obj):
         self.morpher = morpher
         self.obj = obj
-        self.char = library.obj_char(obj)
+        self.char = charlib.obj_char(obj)
 
         self.bvh_cache = {}
         self.weights_cache = {}
@@ -87,7 +88,7 @@ class Fitter:
 
     @utils.lazyprop
     def char_verts(self):
-        return self.morpher.get_basis() if self.morpher else library.get_basis(self.obj)
+        return self.morpher.get_basis() if self.morpher else morphing.get_basis(self.obj)
 
     @utils.lazyprop
     def char_faces(self):
@@ -106,7 +107,7 @@ class Fitter:
             if key == 0 and not self.alt_topo():
                 result = self.orig_char_bvh
             else:
-                result = mathutils.bvhtree.BVHTree.FromPolygons(library.get_basis(data), [f.vertices for f in data.polygons])
+                result = mathutils.bvhtree.BVHTree.FromPolygons(morphing.get_basis(data), [f.vertices for f in data.polygons])
             self.bvh_cache[key] = result
         return result
 
@@ -271,7 +272,7 @@ class Fitter:
 
         covered_verts = set()
 
-        for i, cvert in enumerate(library.get_basis(self.obj)):
+        for i, cvert in enumerate(morphing.get_basis(self.obj)):
             co = mathutils.Vector(cvert)
             if not bbox_match(co):
                 continue
@@ -359,10 +360,10 @@ class Fitter:
         groups = {}
 
         i = 0
-        for ptr in range(len(idx)):
+        for ptr, item in enumerate(idx):
             while i < len(positions)-1 and ptr >= positions[i+1]:
                 i += 1
-            for src in char_verts[idx[ptr]].groups:
+            for src in char_verts[item].groups:
                 gid = src.group
                 group_name = self.obj.vertex_groups[gid].name
                 if group_name not in bones and group_name not in special_groups:
@@ -445,7 +446,7 @@ class Fitter:
             logger.debug("fit: %s", asset.name)
             weights = self.get_obj_weights(asset)
 
-            verts = library.get_basis(asset)
+            verts = morphing.get_basis(asset)
             verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
@@ -537,8 +538,8 @@ class Fitter:
 
 
 def get_fitting_assets(ui, _):
-    char = library.obj_char(ui.fitting_char)
-    return [("char_" + k, k, '') for k in sorted(char.assets.keys())] + [("add_" + k, k, '') for k in sorted(library.additional_assets.keys())]
+    char = charlib.obj_char(ui.fitting_char)
+    return [("char_" + k, k, '') for k in sorted(char.assets.keys())] + [("add_" + k, k, '') for k in sorted(charlib.additional_assets.keys())]
 
 class UIProps:
     fitting_char: bpy.props.PointerProperty(
@@ -578,7 +579,7 @@ class UIProps:
     fitting_library_dir: bpy.props.StringProperty(
         name="Library dir",
         description="Additional library directory",
-        update=library.update_fitting_assets,
+        update=charlib.update_fitting_assets,
         subtype='DIR_PATH')
 
 def get_char(context):
@@ -612,7 +613,6 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_transforms")
         self.layout.separator()
-        obj = get_asset(context)
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
             self.layout.operator("charmorph.unfit")
         else:
@@ -656,11 +656,11 @@ def fitExtPoll(context):
 
 def fit_import(char, lst):
     if len(lst) == 0:
-        return
+        return True
     f = get_fitter(char)
     f.lock_comb_mask()
     for file, obj in lst:
-        asset = library.import_obj(file, obj)
+        asset = utils.import_obj(file, obj)
         if asset is None:
             return False
         f.fit_new(asset)
@@ -702,7 +702,7 @@ class OpFitLibrary(bpy.types.Operator):
         return fitExtPoll(context)
 
     def execute(self, context):
-        asset_data = library.fitting_asset_data(context)
+        asset_data = charlib.fitting_asset_data(context)
         if asset_data is None:
             self.report({'ERROR'}, "Asset is not found")
             return {"CANCELLED"}

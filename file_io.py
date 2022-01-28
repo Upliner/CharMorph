@@ -19,10 +19,11 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import json
-import bpy, bpy_extras
+import bpy, bpy_extras # pylint: disable=import-error
 
-from .library import charmorph_to_mblab, load_morph_data
-from . import yaml, morphing, materials, utils
+from .lib import yaml, utils
+from .lib.charlib import charmorph_to_mblab, load_morph_data
+from . import morphing, materials
 
 class UIProps:
     export_format: bpy.props.EnumProperty(

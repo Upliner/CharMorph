@@ -27,8 +27,8 @@ import math
 import bpy          # pylint: disable=import-error
 import rna_prop_ui  # pylint: disable=import-error, no-name-in-module
 
-
-from . import library, rigging, utils
+from . import morphing
+from .lib import charlib, rigging, utils
 
 def remove_rig(rig):
     try:
@@ -106,7 +106,7 @@ def add_mixin(char, conf, rig):
     obj_name = conf.mixin
     if not obj_name:
         return (None, None)
-    mixin = library.import_obj(char.path(conf.file), obj_name, "ARMATURE")
+    mixin = utils.import_obj(char.path(conf.file), obj_name, "ARMATURE")
     bones = [b.name for b in mixin.data.bones]
     joints = rigging.all_joints(mixin)
     bpy.ops.object.join({
@@ -130,7 +130,7 @@ def do_rig(obj, conf, rigger):
         rigging.rigify_finalize(rig, obj)
         apply_rig_parameters(rig, conf)
 
-        char = library.obj_char(obj)
+        char = charlib.obj_char(obj)
         new_bones, new_joints = add_mixin(char, conf, rig)
 
         pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(char.path("."), conf.tweaks)
@@ -209,7 +209,7 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        rig = library.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
+        rig = morphing.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
         if not rig:
             return False
         result = rig.type == "rigify"
