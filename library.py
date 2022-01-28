@@ -86,6 +86,30 @@ def load_json_dir(path):
 
 _empty_dict = object()
 
+def mblab_to_charmorph(data):
+    return {
+        "morphs": {k:v*2-1 for k, v in data.get("structural", {}).items()},
+        "materials": data.get("materialproperties", {}),
+        "meta": {(k[10:] if k.startswith("character_") else k):v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
+        "type": data.get("type", []),
+    }
+
+def charmorph_to_mblab(data):
+    return {
+        "structural": {k:(v+1)/2 for k, v in data.get("morphs", {}).items()},
+        "metaproperties": {k:v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
+        "materialproperties": data.get("materials"),
+        "type": data.get("type", []),
+    }
+
+def load_morph_data(fn):
+    with open(fn, "r") as f:
+        if fn[-5:] == ".yaml":
+            return load_yaml(f)
+        if fn[-5:] == ".json":
+            return mblab_to_charmorph(json.load(f))
+    return None
+
 class Character:
     description = ""
     author = ""
@@ -119,7 +143,7 @@ class Character:
         self.name = name
         self.__dict__.update(self.get_yaml("config.yaml"))
         self.name = name
-        if self.name:
+        if name:
             self.assets = load_data_dir(self.path("assets"), ".blend")
             self.poses = load_json_dir(self.path("poses"))
             self.alt_topos = load_data_dir(self.path("morphs/alt_topo"), ".npy")
@@ -128,6 +152,9 @@ class Character:
             self.material_lib = self.char_file
 
         self.armature = self._parse_armature(self.armature)
+
+    def __bool__(self):
+        return bool(self.name)
 
     @utils.lazyprop
     def morphs_meta(self):
@@ -142,6 +169,10 @@ class Character:
         # Use regular python array instead of numpy for compatibility with BVHTree
         return self.get_np("faces.npy").tolist()
 
+    @utils.lazyprop
+    def presets(self):
+        return self.load_presets("presets")
+
     def path(self, file):
         return char_file(self.name, file)
 
@@ -152,9 +183,25 @@ class Character:
     def get_yaml(self, file, default=_empty_dict):
         if default is _empty_dict:
             default = {}
-        if self.name == "":
+        if not self:
             return default
         return parse_file(self.path(file), load_yaml, default)
+
+    def load_presets(self, path):
+        path = self.path(path)
+        if not os.path.isdir(path):
+            return {}
+        result = {}
+        try:
+            for file in os.listdir(path):
+                fpath = os.path.join(path, file)
+                if os.path.isfile(fpath):
+                    data = load_morph_data(fpath)
+                    if data is not None:
+                        result[os.path.splitext(file)[0]] = data
+        except Exception as e:
+            logger.error(e)
+        return result
 
     def blend_file(self):
         return self.path(self.char_file)
@@ -183,10 +230,7 @@ class Character:
         return result
 
     def _parse_armature_dict(self, data):
-        result = {}
-        for k, v in data.items():
-            result[k] = Armature(self, k, v)
-        return result
+        return {k: Armature(self, k, v) for k,v in data.items()}
 
 def _lazy_yaml_props(*prop_lst):
     def wrap_class(superclass):
@@ -406,7 +450,7 @@ def get_obj_char(context):
                 obj = children[0]
         if obj.type == "MESH":
             char = obj_char(obj)
-            if char.name:
+            if char:
                 return obj, char
     return (None, None)
 
@@ -426,7 +470,7 @@ def get_basis(data, use_morpher=True):
     alt_topo = data.get("cm_alt_topo")
     if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
         return get_basis(alt_topo)
-    if char.name:
+    if char:
         if not alt_topo:
             return char.get_basis()
         if isinstance(alt_topo, str):

@@ -21,6 +21,7 @@
 import json
 import bpy, bpy_extras
 
+from .library import charmorph_to_mblab, load_morph_data
 from . import yaml, morphing, materials, utils
 
 class UIProps:
@@ -74,30 +75,6 @@ def morphs_to_data():
         "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
         "materials": materials.prop_values()
     }
-
-def mblab_to_charmorph(data):
-    return {
-        "morphs": {k:v*2-1 for k, v in data.get("structural", {}).items()},
-        "materials": data.get("materialproperties", {}),
-        "meta": {(k[10:] if k.startswith("character_") else k):v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
-        "type": data.get("type", []),
-    }
-
-def charmorph_to_mblab(data):
-    return {
-        "structural": {k:(v+1)/2 for k, v in data.get("morphs", {}).items()},
-        "metaproperties": {k:v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
-        "materialproperties": data.get("materials"),
-        "type": data.get("type", []),
-    }
-
-def load_morph_data(fn):
-    with open(fn, "r") as f:
-        if fn[-5:] == ".yaml":
-            return yaml.safe_load(f)
-        if fn[-5:] == ".json":
-            return mblab_to_charmorph(json.load(f))
-    return None
 
 class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_json"

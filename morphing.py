@@ -18,15 +18,14 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, logging, re
+import logging, re
 import bpy # pylint: disable=import-error
 
-from . import library, materials, fitting, file_io, utils
+from . import library, materials, fitting, utils
 
 logger = logging.getLogger(__name__)
 
 last_object = None
-morpher = None
 
 sep_re = re.compile(r"[ _-]")
 
@@ -70,20 +69,32 @@ class Morph:
         self.data = data
 
 class Morpher:
+    upd_lock = False
+    clamp = True
+    version = 0
+    error = None
+    alt_topo = False
+    categories = []
+    L1_idx = 0
+
+    presets = {}
+    presets_list = [("_", "(reset)", "")]
+
     def __init__(self, obj):
         self.obj = obj
         self.char = library.obj_char(obj)
-        self.upd_lock = False
-        self.clamp = False
         self.morphs_l1 = {}
         self.morphs_l2 = {}
         self.morphs_combo = {}
         self.meta_prev = {}
-        self.version = 0
-        self.L1 = self.get_L1()
         self.mtl_props = materials.props
-        self.error = None
-        self.alt_topo = False
+
+        self.L1 = self.get_L1()
+        self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
+        self.update_L1_idx()
+
+    def __bool__(self):
+        return self.obj is not None
 
     @staticmethod
     def get_L1():
@@ -101,28 +112,36 @@ class Morpher:
     def prop_set_internal(name, value):
         pass
 
+    def has_morphs(self):
+        return bool(self.char)
+
+    def update_L1_idx(self):
+        try:
+            self.L1_idx = next((i for i, item in enumerate(self.L1_list) if item[0] == self.L1))
+        except StopIteration:
+            pass
+
     def set_L1(self, L1):
+        result = self._set_L1(L1)
+        if result:
+            self.update_L1_idx()
+        return result
+
+    def _set_L1(self, L1):
         if L1 not in self.morphs_l1:
             return False
         self.L1 = L1
         self.update_L1()
+        self.create_charmorphs_L2()
         self.apply_materials(self.char.types.get(L1, {}).get("mtl_props"))
         self.update()
         return True
 
-    def morph_categories_prop(self):
-        default = None
-        items = [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")]
-        if self.char.no_morph_categories:
-            default = "<All>"
-        else:
-            items.extend((name, name, "") for name in sorted(set(morph_category_name(morph) for morph in self.morphs_l2)))
-
-        return [("category", bpy.props.EnumProperty(
-            name="Category",
-            items=items,
-            default=default,
-            description="Select morphing categories to show"))]
+    def set_L1_by_idx(self, idx):
+        if idx == self.L1_idx or idx >= len(self.L1_list):
+            return
+        self.L1_idx = idx
+        self._set_L1(self.L1_list[idx][0])
 
     def do_update(self):
         fitting.get_fitter(self).refit_all()
@@ -296,43 +315,6 @@ class Morpher:
             set=setter,
             update=update)
 
-    def preset_prop(self):
-        presets = self.load_presets()
-        if not presets:
-            return []
-
-        def update(cm, context):
-            if not cm.preset:
-                return
-            self.apply_morph_data(presets.get(cm.preset, {}), context.window_manager.charmorph_ui.preset_mix)
-
-        return [("preset", bpy.props.EnumProperty(
-            name="Presets",
-            default="_",
-            items=[("_", "(reset)", "")] + [(name, name, "") for name in sorted(presets.keys())],
-            description="Choose morphing preset",
-            update=update))]
-
-    def load_presets(self):
-        if not self.char.name:
-            return None
-        result = {}
-        def load_dir(path):
-            path = os.path.join(library.data_dir, path)
-            if not os.path.isdir(path):
-                return
-            for fn in os.listdir(path):
-                if os.path.isfile(os.path.join(path, fn)):
-                    data = file_io.load_morph_data(os.path.join(path, fn))
-                    if data is not None:
-                        result[fn[:-5]] = data
-        try:
-            load_dir(self.char.path("presets"))
-            load_dir(self.char.path("presets/" + self.L1))
-        except Exception as e:
-            logger.error(e)
-        return result
-
     def prop_set(self, name, value):
         self.version += 1
         self.prop_set_internal(name, value)
@@ -350,22 +332,28 @@ class Morpher:
             get=lambda _: self.prop_get(name),
             set=setter)
 
-    def clamp_prop(self):
-        def setter(_, value):
-            self.clamp = value
-        prop = bpy.props.BoolProperty(
-            name="Clamp props",
-            description="Clamp properties to (-1..1) so they remain in realistic range",
-            get=lambda _: self.clamp,
-            set=setter,
-            update=lambda cm, ctx: self.update(),
-            default=True)
-        return ("clamp", prop)
+    def get_presets(self):
+        if not self.char:
+            return {}
+        result = self.char.presets.copy()
+        result.update(self.char.load_presets("presets/" + self.L1))
+        return result
+
+    def update_presets(self):
+        self.presets = self.get_presets()
+        self.presets_list = Morpher.presets_list + [(name, name, "") for name in sorted(self.presets.keys())]
+
+    def update_morph_categories(self):
+        if not self.char.no_morph_categories:
+            self.categories = [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + [
+                (name, name, "") for name in sorted(set(morph_category_name(morph) for morph in self.morphs_l2))]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
         del_charmorphs_L2()
         self.get_morphs_L2()
+        self.update_morph_categories()
+        self.update_presets()
         if not self.morphs_l2:
             return
 
@@ -377,7 +365,6 @@ class Morpher:
             {
                 "__annotations__":
                 dict(
-                    [self.clamp_prop()] + self.preset_prop() + self.morph_categories_prop() +
                     [prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items() if v is not None] +
                     [prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.meta_dict().items()]
                     )
@@ -389,6 +376,14 @@ class Morpher:
         bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
             type=propGroup, options={"SKIP_SAVE"})
 
+    def set_clamp(self, clamp):
+        self.clamp = clamp
+
+null_morpher = Morpher(None)
+null_morpher.lock()
+
+morpher = null_morpher
+
 from . import morphers
 
 def create_charmorphs(obj):
@@ -396,7 +391,7 @@ def create_charmorphs(obj):
     last_object = obj
     if obj.type != "MESH":
         return
-    if morpher and morpher.obj == obj:
+    if morpher.obj == obj:
         return
 
     logger.debug("switching object to %s", obj.name)
@@ -408,43 +403,21 @@ def create_charmorphs(obj):
     else:
         m = morphers.ShapeKeysMorpher(obj)
 
-    ui = bpy.context.window_manager.charmorph_ui
-
     if not m.has_morphs():
         return
 
     morpher = m
 
+    ui = bpy.context.window_manager.charmorph_ui
+
     if m.char.default_armature and ui.fin_rig not in m.char.armature:
         ui.fin_rig = m.char.default_armature
-
-    items = [(name, m.char.types.get(name, {}).get("title", name), "") for name in sorted(m.morphs_l1.keys())]
 
     if not m.L1 and m.char.default_type:
         m.set_L1(m.char.default_type)
 
-    L1_idx = 0
-    for i in range(1, len(items)-1):
-        if items[i][0] == m.L1:
-            L1_idx = i
-            break
-
-    def chartype_setter(_, value):
-        nonlocal L1_idx
-        if value == L1_idx:
-            return
-        L1_idx = value
-        m.set_L1(items[L1_idx][0])
-
-    bpy.types.WindowManager.chartype = bpy.props.EnumProperty(
-        name="Type",
-        items=items,
-        description="Choose character type",
-        get=lambda self: L1_idx,
-        set=chartype_setter,
-        options={"SKIP_SAVE"})
-
-    m.create_charmorphs_L2()
+    if not m.morphs_l2:
+        m.create_charmorphs_L2()
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -461,7 +434,7 @@ def del_charmorphs_L2():
 def del_charmorphs():
     global last_object, morpher
     last_object = None
-    morpher = None
+    morpher = null_morpher
     if hasattr(bpy.types.WindowManager, "chartype"):
         del bpy.types.WindowManager.chartype
     del_charmorphs_L2()
@@ -476,10 +449,6 @@ def bad_object():
         return True
 
 class UIProps:
-    preset_mix: bpy.props.BoolProperty(
-        name="Mix with current",
-        description="Mix selected preset with current morphs",
-        default=False)
     relative_meta: bpy.props.BoolProperty(
         name="Relative meta props",
         description="Adjust meta props relatively",
@@ -497,6 +466,32 @@ class UIProps:
         description="Show only morphs mathing this name",
         options={"TEXTEDIT_UPDATE"},
     )
+    morph_clamp: bpy.props.BoolProperty(
+        name="Clamp props",
+        description="Clamp properties to (-1..1) so they remain in realistic range",
+        get=lambda _: morpher.clamp,
+        set=lambda _, value: morpher.set_clamp(value),
+        update=lambda ui, _: morpher.update())
+    morph_l1: bpy.props.EnumProperty(
+        name="Type",
+        description="Choose character type",
+        items=lambda ui, _: morpher.L1_list,
+        get=lambda _: morpher.L1_idx,
+        set=lambda _, value: morpher.set_L1_by_idx(value),
+        options={"SKIP_SAVE"})
+    morph_category: bpy.props.EnumProperty(
+        name="Category",
+        items=lambda ui, _: morpher.categories,
+        description="Select morphing categories to show")
+    morph_preset: bpy.props.EnumProperty(
+        name="Presets",
+        items=lambda ui, _: morpher.presets_list,
+        description="Choose morphing preset",
+        update=lambda ui, _: morpher.apply_morph_data(morpher.presets.get(ui.morph_preset, {}), ui.morph_preset_mix))
+    morph_preset_mix: bpy.props.BoolProperty(
+        name="Mix with current",
+        description="Mix selected preset with current morphs",
+        default=False)
 
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
@@ -518,7 +513,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             return
 
         if not hasattr(context.window_manager, "charmorphs"):
-            if m.char.name:
+            if m.char:
                 col = self.layout.column(align=True)
                 col.label(text="Object is detected as")
                 col.label(text="valid CharMorph character,")
@@ -527,20 +522,20 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 self.layout.label(text="No morphing data found")
             return
 
-        morphs = context.window_manager.charmorphs
-
         ui = context.window_manager.charmorph_ui
 
         self.layout.label(text="Character type")
         col = self.layout.column(align=True)
+        if m.morphs_l1:
+            col.prop(ui, "morph_l1")
 
-        col.prop(context.window_manager, "chartype")
-        if hasattr(morphs, "preset"):
-            col.prop(morphs, "preset")
-            col.prop(ui, "preset_mix")
+        col = self.layout.column(align=True)
+        col.prop(ui, "morph_preset")
+        col.prop(ui, "morph_preset_mix")
 
         col.separator()
 
+        morphs = context.window_manager.charmorphs
         meta_morphs = m.meta_dict().keys()
         if meta_morphs:
             self.layout.label(text="Meta morphs")
@@ -551,24 +546,27 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             for prop in meta_morphs:
                 col.prop(morphs, "meta_" + prop, slider=True)
 
-        self.layout.prop(morphs, "clamp")
+        self.layout.prop(ui, "morph_clamp")
 
         morph_list = m.morphs_l2.keys()
 
         self.layout.separator()
 
-        self.layout.label(text="MORE MORPHS HERE:")
-        self.layout.prop(morphs, "category")
-        if morphs.category != "<None>":
-            self.layout.prop(ui, "morph_filter")
-            col = self.layout.column(align=True)
-            if not m.char.custom_morph_order:
-                morph_list = sorted(morph_list)
-            for prop in morph_list:
-                if m.char.custom_morph_order and m.morphs_l2[prop] is None:
-                    col.separator()
-                elif morphs.category == "<All>" or prop.startswith(morphs.category):
-                    if ui.morph_filter.lower() in prop.lower():
-                        col.prop(morphs, "prop_" + prop, slider=True)
+        if len(m.categories) > 2:
+            self.layout.label(text="MORE MORPHS HERE:")
+            self.layout.prop(ui, "morph_category")
+            if ui.morph_category == "<None>":
+                return
+
+        self.layout.prop(ui, "morph_filter")
+        col = self.layout.column(align=True)
+        if not m.char.custom_morph_order:
+            morph_list = sorted(morph_list)
+        for prop in morph_list:
+            if m.char.custom_morph_order and m.morphs_l2[prop] is None:
+                col.separator()
+            elif ui.morph_category == "<All>" or prop.startswith(ui.morph_category):
+                if ui.morph_filter.lower() in prop.lower():
+                    col.prop(morphs, "prop_" + prop, slider=True)
 
 classes = [CHARMORPH_PT_Morphing]

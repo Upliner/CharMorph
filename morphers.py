@@ -94,6 +94,7 @@ class ShapeKeysMorpher(morphing.Morpher):
 
     def get_morphs_L2(self):
         self.morphs_l2.clear()
+        self.morphs_combo.clear()
         if not self.obj.data.shape_keys:
             return
 
@@ -176,9 +177,6 @@ class NumpyMorpher(morphing.Morpher):
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):
             self.error = "Vertex count mismatch"
-
-    def has_morphs(self):
-        return bool(self.char.name)
 
     def _get_L1_data(self, name):
         if not name:
