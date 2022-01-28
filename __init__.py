@@ -79,21 +79,23 @@ def on_select_object():
                 "charmorph_template" not in obj.data):
             asset = obj
             obj = obj.parent
-        try:
-            if asset:
-                ui.fitting_char = obj
-                ui.fitting_asset = asset
-            elif library.obj_char(obj).name:
-                ui.fitting_char = obj
-            else:
-                ui.fitting_asset = obj
-        except:
-            pass
+        if asset:
+            ui.fitting_char = obj
+            ui.fitting_asset = asset
+        elif library.obj_char(obj).name:
+            ui.fitting_char = obj
+        else:
+            ui.fitting_asset = obj
 
         # Prevent morphing of rigged characters
         arm = obj.find_armature()
         if arm:
             obj = arm
+
+    if obj is morphing.last_object:
+        return
+
+    logger.debug("switching objects: old %s, new %s", morphing.last_object.name if morphing.last_object else morphing.last_object, obj.name)
 
     morphing.create_charmorphs(obj)
 

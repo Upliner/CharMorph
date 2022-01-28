@@ -100,7 +100,7 @@ class Fitter:
     def get_bvh(self, data):
         if isinstance(data, bpy.types.Object):
             data = data.data
-        key = 0 if data == self.obj.data else data.get("charmorph_fit_id", data.name)
+        key = 0 if data is self.obj.data else data.get("charmorph_fit_id", data.name)
         result = self.bvh_cache.get(data.name)
         if not result:
             if key == 0 and not self.alt_topo():
@@ -331,11 +331,12 @@ class Fitter:
         mod.vertex_group = vg.name
 
     def get_fit_id(self, asset):
-        if asset == self.obj:
+        if asset is self.obj:
             return 0
-        if "charmorph_fit_id" not in asset.data:
-            asset.data["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
-        return asset.data["charmorph_fit_id"]
+        asset = asset.data
+        if "charmorph_fit_id" not in asset:
+            asset["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+        return asset["charmorph_fit_id"]
 
     def get_obj_weights(self, asset):
         fit_id = self.get_fit_id(asset)
@@ -434,13 +435,14 @@ class Fitter:
         return morphed
 
     def get_target(self, asset):
-        return morphing.get_target(asset) if asset == self.obj else get_fitting_shapekey(asset)
+        return morphing.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
 
     def do_fit(self, assets, fit_hair = False):
         t = utils.Timer()
 
         diff_arr = self.diff_array()
         for asset in assets:
+            logger.debug("fit: %s", asset.name)
             weights = self.get_obj_weights(asset)
 
             verts = library.get_basis(asset)
@@ -502,16 +504,17 @@ class Fitter:
 
         self.do_fit([asset])
 
+        if self.children is None:
+            self.get_children()
+        self.children.append(asset)
+        asset.parent = self.obj
+
         if masking_enabled(asset):
             if ui.fitting_mask == "SEPR":
                 self.add_mask_from_asset(asset)
             elif ui.fitting_mask == "COMB" and not self._lock_cm:
-                if self.children is None:
-                    self.get_children()
-                self.children.append(asset)
                 self.recalc_comb_mask()
 
-        asset.parent = self.obj
 
         if ui.fitting_weights != "NONE":
             # TODO: obj and orig transfers
@@ -519,7 +522,7 @@ class Fitter:
 
     def get_children(self):
         if self.children is None:
-            self.children = [obj for obj in self.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data]
+            self.children = [obj for obj in self.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()]
         return self.children
 
     def get_assets(self):

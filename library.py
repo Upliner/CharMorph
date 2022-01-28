@@ -110,6 +110,9 @@ class Character:
     default_assets = []
     underwear = []
     types = {}
+    assets = {}
+    poses = {}
+    alt_topos = {}
 
     def __init__(self, name):
         self.title = name
@@ -185,24 +188,35 @@ class Character:
             result[k] = Armature(self, k, v)
         return result
 
-def _wrap_lazy_yaml(name, value):
-    if isinstance(value, str):
-        return utils.named_lazyprop(name, lambda self: self.char.get_yaml(value))
-    return value
+def _lazy_yaml_props(*prop_lst):
+    def wrap_class(superclass):
+        class Child(superclass):
+            def __init__(self, *args):
+                super().__init__(*args)
+                for prop in prop_lst:
+                    value = getattr(self, prop)
+                    if isinstance(value, str):
+                        setattr(self, "_lazy_yaml_"+prop, value)
+                        delattr(self, prop)
+        for prop in prop_lst:
+            setattr(Child, prop, utils.named_lazyprop(prop, lambda self, name=prop: self.char.get_yaml(getattr(self, "_lazy_yaml_"+name))))
+        return Child
 
+    return wrap_class
+
+@_lazy_yaml_props("bones", "mixin_bones")
 class Armature:
     type = "regular"
     tweaks = []
     ik_limits = {}
-    bones = None
     mixin = ""
-    mixin_bones = {}
     arp_reference_layer = 17
 
     def __init__(self, char: Character, name : str, conf : dict):
         self.title = name
         self.obj_name = name
         self.file = char.char_file
+        self.mixin_bones = {}
 
         self.__dict__.update(char.armature_defaults)
         self.__dict__.update(conf)
@@ -213,11 +227,8 @@ class Armature:
             value = getattr(self, item, None)
             setattr(self, item, char.path(value) if value else char.path(os.path.join(item, name + ".npz")))
 
-        if self.bones is None:
+        if "bones" not in self.__dict__:
             self.bones = char.bones # Legacy
-
-        self.bones       = _wrap_lazy_yaml("bones", self.bones)
-        self.mixin_bones = _wrap_lazy_yaml("mixin_bones", self.mixin_bones)
 
 empty_char = Character("")
 

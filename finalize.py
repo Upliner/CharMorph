@@ -52,12 +52,12 @@ def clear_old_weights(obj, char, rig):
 
 def clear_old_weights_with_assets(obj, char, rig):
     clear_old_weights(obj, char, rig)
-    for asset in fitting.get_assets(obj):
+    for asset in fitting.get_fitter(obj).get_assets():
         clear_old_weights(asset, char, rig)
 
 def delete_old_rig_with_assets(obj, rig):
     delete_old_rig(obj, rig)
-    for asset in fitting.get_assets(obj):
+    for asset in fitting.get_fitter(obj).get_assets():
         remove_armature_modifiers(asset)
 
 def add_rig(obj, char, rig_name, verts):
@@ -162,8 +162,8 @@ def attach_rig(obj, rig):
     else:
         mod.use_deform_preserve_volume = True
 
-    if bpy.context.window_manager.charmorph_ui.fitting_armature:
-        fitting.transfer_new_armature(obj)
+    if bpy.context.window_manager.charmorph_ui.fitting_weights != "NONE":
+        fitting.get_fitter(obj).transfer_new_armature()
 
 #FIXME: Use data from morpher instead? But we should consider manual sculpting too.
 def sk_to_verts(obj, sk):
@@ -195,7 +195,7 @@ class OpFinalize(bpy.types.Operator):
 
         ui = context.window_manager.charmorph_ui
         obj, char = library.get_obj_char(context)
-        if not char.name or not char.config:
+        if not char.name:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 
@@ -293,7 +293,7 @@ class OpFinalize(bpy.types.Operator):
         add_corrective_smooth(obj)
         add_subsurf(obj)
 
-        for asset in fitting.get_assets(obj):
+        for asset in fitting.get_fitter(obj).get_assets():
             if ui.fin_csmooth_assets == "RO":
                 sk_to_verts(asset, "charmorph_fitting")
             elif ui.fin_csmooth_assets == "FR":

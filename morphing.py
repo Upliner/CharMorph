@@ -468,6 +468,7 @@ def bad_object():
     try:
         return bpy.data.objects.get(morpher.obj.name) is not morpher.obj
     except ReferenceError:
+        logger.warning("Current morphing object is bad, resetting...")
         return True
 
 class UIProps:
