@@ -36,6 +36,7 @@ Randomize:
 Hair:
   - Move hair.blend to char.blend?
   - Hair refitting after edit
+  - Lichtso hair engine
 
 Fitting:
   - MakeHuman asset support ?
