@@ -77,15 +77,35 @@ def get_vg_avg(char, verts=None):
         data_item[1] += co*gw.weight
     return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
 
+def vg_weights_to_arrays(obj, filter):
+    m = {}
+    names = []
+    idx = []
+    weights = []
+    for vg in obj.vertex_groups:
+        if filter(vg.name):
+            m[vg.index] = len(idx)
+            names.append(vg.name)
+            idx.append([])
+            weights.append([])
+
+    if len(names) > 0:
+        for v in obj.data.vertices:
+            for g in v.groups:
+                i = m.get(g.group)
+                if i is None:
+                    continue
+                idx[i].append(v.index)
+                weights[i].append(g.weight)
+
+    return names, idx, weights
+
 def vg_names(file):
     if isinstance(file, str):
         file = numpy.load(file)
     return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
 
-def process_vg_file_zipped(z, callback):
-    process_vg_file(z, lambda name, idx, weights: callback(name, zip(idx, weights)))
-
-def process_vg_file(z, callback):
+def vg_read(z):
     if z is None:
         return
     if isinstance(z, str):
@@ -96,7 +116,7 @@ def process_vg_file(z, callback):
     weights = z["weights"]
     for name, cnt in zip(names, z["cnt"]):
         i2 = i+cnt
-        callback(name, idx[i:i2], weights[i:i2])
+        yield name, idx[i:i2], weights[i:i2]
         i = i2
 
 def char_weights_npz(obj, char):
@@ -120,18 +140,17 @@ def char_rig_vg_names(char, rig):
 
 def import_vg(obj, file, overwrite):
     names = set()
-    def callback(name, data):
+    for name, idx, weights in vg_read(file):
         names.add(name)
         if name in obj.vertex_groups:
             if overwrite:
                 obj.vertex_groups.remove(obj.vertex_groups[name])
             else:
-                return
+                continue
         vg = obj.vertex_groups.new(name=name)
-        for i, weight in data:
+        for i, weight in zip(idx, weights):
             vg.add([int(i)], weight, 'REPLACE')
 
-    process_vg_file_zipped(file, callback)
     return names
 
 def bb_prev_roll(bone):
@@ -207,17 +226,16 @@ class Rigger:
         self.jdata = get_vg_avg(char, verts)
 
     def joints_from_file(self, file, verts):
-        def callback(name, data):
+        for name, idx, weights in vg_read(file):
             if not name.startswith("joint_"):
-                return
+                continue
             if name in self.jdata:
-                return
+                continue
             item = [0, Vector()]
             self.jdata[name] = item
-            for i, weight in data:
+            for i, weight in zip(idx, weights):
                 item[0] += weight
                 item[1] += verts[i].co*weight
-        process_vg_file_zipped(file, callback)
 
     def set_opts(self, opts):
         if not opts:

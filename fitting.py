@@ -33,7 +33,7 @@ epsilon = utils.epsilon
 
 fitter = None
 
-special_groups = frozenset(["corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"])
+special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
 def masking_enabled(asset):
     return utils.is_true(asset.data.get("charmorph_fit_mask", True))
@@ -362,57 +362,35 @@ class Fitter(MorphGeometry):
         self.weights_cache[fit_id] = weights
         return weights
 
-    def transfer_weights_numpy(self, asset):
-        t = utils.Timer()
+    def _transfer_weights(self, asset, data):
         if self.char_buf is None:
             self.char_buf = numpy.empty((len(self.verts)))
         positions, fit_idx, fit_weights = self.get_obj_weights(asset)
         fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
-        def callback(name, vg_idx, vg_weights):
+        overwrite = bpy.context.window_manager.charmorph_ui.fitting_weights_ovr
+        for name, vg_idx, vg_weights in data:
             self.char_buf.fill(0)
             self.char_buf.put(vg_idx, vg_weights)
             result = numpy.add.reduceat(self.char_buf[fit_idx] * fit_weights, positions)
             if name in asset.vertex_groups:
-                asset.vertex_groups.remove(asset.vertex_groups[name])
+                if overwrite:
+                    asset.vertex_groups.remove(asset.vertex_groups[name])
+                else:
+                    continue
             idx = (result > 0.0001).nonzero()[0]
             if len(idx) == 0:
-                return
+                continue
             vg = asset.vertex_groups.new(name=name)
             for i, weight in zip(idx.tolist(), result[idx]):
                 vg.add([i], weight, 'REPLACE')
 
-        rigging.process_vg_file(rigging.char_weights_npz(self.obj, self.char), callback)
-        t.time("weights_numpy")
+    def _transfer_weights_orig(self, asset):
+        self._transfer_weights(asset, rigging.vg_read(rigging.char_weights_npz(self.obj, self.char)))
 
-    def transfer_weights_obj(self, asset, bones):
-        if not bones:
-            return
+    def _transfer_weights_obj(self, asset, vgs):
         if asset is self.obj:
             raise Exception("Tried to self-transfer weights")
-        t = utils.Timer()
-        positions, idx, weights = self.get_obj_weights(asset)
-        char_verts = self.obj.data.vertices
-
-        groups = {}
-
-        i = 0
-        for ptr, item in enumerate(idx):
-            while i < len(positions)-1 and ptr >= positions[i+1]:
-                i += 1
-            for src in char_verts[item].groups:
-                gid = src.group
-                group_name = self.obj.vertex_groups[gid].name
-                if group_name not in bones and group_name not in special_groups:
-                    continue
-                vg_dst = groups.get(gid)
-                if vg_dst is None:
-                    if group_name in asset.vertex_groups:
-                        asset.vertex_groups.remove(asset.vertex_groups[group_name])
-                    vg_dst = asset.vertex_groups.new(name=group_name)
-                    groups[gid] = vg_dst
-                vg_dst.add([i], src.weight*weights[ptr][0], 'ADD')
-
-        t.time("weights_obj")
+        self._transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
 
     def transfer_armature(self, asset):
         existing = set()
@@ -420,24 +398,27 @@ class Fitter(MorphGeometry):
             if mod.type == "ARMATURE" and mod.object:
                 existing.add(mod.object.name)
 
-        bones = set()
+        vgs = special_groups.copy()
 
         modifiers = []
 
         for mod in self.obj.modifiers:
-            if mod.type == "ARMATURE" and mod.object and mod.object.name not in existing:
-                modifiers.append(mod)
+            if mod.type == "ARMATURE" and mod.object:
+                if mod.object.name not in existing:
+                    modifiers.append(mod)
                 for bone in mod.object.data.bones:
                     if bone.use_deform:
-                        bones.add(bone.name)
+                        vgs.add(bone.name)
 
+        t = utils.Timer()
         source = bpy.context.window_manager.charmorph_ui.fitting_weights
         if source == "ORIG":
-            self.transfer_weights_numpy(asset)
+            self._transfer_weights_orig(asset)
         elif source == "OBJ":
-            self.transfer_weights_obj(asset, bones)
+            self._transfer_weights_obj(asset, vgs)
         else:
             raise Exception("Unknown weights source: " + source)
+        t.time("weights")
 
         for mod in modifiers:
             newmod = asset.modifiers.new(mod.name, "ARMATURE")
@@ -561,7 +542,6 @@ class Fitter(MorphGeometry):
             elif ui.fitting_mask == "COMB" and not self._lock_cm:
                 self.recalc_comb_mask()
 
-
         if ui.fitting_weights != "NONE":
             self.transfer_armature(asset)
 
@@ -623,6 +603,10 @@ class UIProps:
             ("OBJ", "Object", "Use weights directly from object (use it if you manually weight-painted the character before fitting the asset)"),
         ],
         description="Select source for armature deform weights")
+    fitting_weights_ovr: bpy.props.BoolProperty(
+        name="Weights overwrite",
+        default=False,
+        description="Overwrite existing asset weights")
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",
@@ -662,6 +646,7 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
         self.layout.prop(ui, "fitting_mask")
         col = self.layout.column(align=True)
         col.prop(ui, "fitting_weights")
+        col.prop(ui, "fitting_weights_ovr")
         col.prop(ui, "fitting_transforms")
         self.layout.separator()
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:

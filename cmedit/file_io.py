@@ -69,6 +69,9 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             bpy.ops.particle.connect_hair(override)
         return {"FINISHED"}
 
+def float_dtype(context):
+    return numpy.float64 if context.window_manager.cmedit_ui.morph_float_precicion == "64" else numpy.float32
+
 class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.vg_export"
     bl_label = "Export VGs"
@@ -83,45 +86,15 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, context):
         r = re.compile(context.window_manager.cmedit_ui.vg_regex)
-        m = {}
-        arr = []
-        dt = numpy.uint8
-        names = bytearray()
-        for vg in context.object.vertex_groups:
-            if r.search(vg.name):
-                m[vg.index] = len(arr)
-                arr.append([])
-                if len(names) > 0:
-                    names.append(0)
-                names.extend(vg.name.encode("utf-8"))
+        names, idx, weights, cnt = rigging.vg_weights_to_arrays(context.object, lambda name: r.search(name))
+        cnt = [len(i) for i in idx]
 
-        for v in context.object.data.vertices:
-            for g in v.groups:
-                i = m.get(g.group)
-                if i is None:
-                    continue
-                a = arr[i]
-                a.append((v.index, g.weight))
-                if len(a) > 255:
-                    dt = numpy.uint16
-
-        cnt = numpy.empty(len(arr), dtype=dt)
-        total = 0
-        for i, a in enumerate(arr):
-            cnt[i] = len(a)
-            total += len(a)
-
-        idx = numpy.empty(total, dtype=numpy.uint16)
-        weights = numpy.empty(total, dtype=numpy.float64)
-
-        i = 0
-        for a in arr:
-            for t in a:
-                idx[i] = t[0]
-                weights[i] = t[1]
-                i += 1
-
-        numpy.savez_compressed(self.filepath, names=names, cnt=cnt, idx=idx, weights=weights)
+        numpy.savez_compressed(self.filepath,
+            names=b'\0'.join(name.encode("utf-8") for name in names),
+            cnt=numpy.array(cnt, dtype=numpy.uint16 if max(cnt) > 255 else numpy.uint8),
+            idx=numpy.array(idx, dtype=numpy.uint16),
+            weights=numpy.array(weights, dtype = float_dtype(context))
+        )
 
         return {"FINISHED"}
 
