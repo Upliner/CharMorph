@@ -95,8 +95,7 @@ def add_rig(obj, char, rig_name, verts):
         if old_rig:
             clear_old_weights_with_assets(obj, char, old_rig)
 
-        if conf.weights:
-            new_vgs = rigging.import_vg(obj, conf.weights, False)
+        new_vgs = rigging.import_vg(obj, conf.weights_npz, False)
 
         attach = True
         if rig_type == "rigify":
@@ -122,6 +121,7 @@ def add_rig(obj, char, rig_name, verts):
 
         rig.data["charmorph_template"] = obj.data.get("charmorph_template", "")
         rig.data["charmorph_rig_type"] = rig_name
+        obj.data["charmorph_rig_type"] = rig_name
 
         if old_rig:
             delete_old_rig_with_assets(obj, old_rig)
@@ -196,7 +196,7 @@ class OpFinalize(bpy.types.Operator):
 
         ui = context.window_manager.charmorph_ui
         obj, char = morphing.get_obj_char(context)
-        if char:
+        if not char:
             self.report({'ERROR'}, "Character config is not found")
             return {"CANCELLED"}
 

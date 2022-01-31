@@ -233,6 +233,9 @@ class Character:
     def _parse_armature_dict(self, data):
         return {k: Armature(self, k, v) for k,v in data.items()}
 
+# allows to mark some properties of the class as lazy yaml
+# if property value is dict or some other value, leave it as is
+# if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
 def _lazy_yaml_props(*prop_lst):
     def wrap_class(superclass):
         class Child(superclass):
@@ -255,6 +258,7 @@ class Armature:
     tweaks = []
     ik_limits = {}
     mixin = ""
+    weights: str = None
     arp_reference_layer = 17
 
     def __init__(self, char: Character, name : str, conf : dict):
@@ -274,6 +278,10 @@ class Armature:
 
         if "bones" not in self.__dict__:
             self.bones = char.bones # Legacy
+
+    @utils.lazyprop
+    def weights_npz(self):
+        return self.char.get_np(self.weights)
 
 empty_char = Character("")
 

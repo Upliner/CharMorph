@@ -204,13 +204,15 @@ class MorphGeometry(ObjGeometry):
         return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.subset_faces)
 
 class Fitter(MorphGeometry):
+    char_buf: numpy.ndarray = None
+    children: list = None
+    _lock_cm = False
+
     def __init__(self, morpher, obj):
         super().__init__(morpher, obj)
 
         self.bvh_cache = {}
         self.weights_cache = {}
-        self.children = None
-        self._lock_cm = False
 
     def alt_topo(self):
         return bool(self.morpher) and self.morpher.alt_topo
@@ -360,9 +362,33 @@ class Fitter(MorphGeometry):
         self.weights_cache[fit_id] = weights
         return weights
 
-    def transfer_weights(self, asset, bones):
+    def transfer_weights_numpy(self, asset):
+        t = utils.Timer()
+        if self.char_buf is None:
+            self.char_buf = numpy.empty((len(self.verts)))
+        positions, fit_idx, fit_weights = self.get_obj_weights(asset)
+        fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
+        def callback(name, vg_idx, vg_weights):
+            self.char_buf.fill(0)
+            self.char_buf.put(vg_idx, vg_weights)
+            result = numpy.add.reduceat(self.char_buf[fit_idx] * fit_weights, positions)
+            if name in asset.vertex_groups:
+                asset.vertex_groups.remove(asset.vertex_groups[name])
+            idx = (result > 0.0001).nonzero()[0]
+            if len(idx) == 0:
+                return
+            vg = asset.vertex_groups.new(name=name)
+            for i, weight in zip(idx.tolist(), result[idx]):
+                vg.add([i], weight, 'REPLACE')
+
+        rigging.process_vg_file(rigging.char_weights_npz(self.obj, self.char), callback)
+        t.time("weights_numpy")
+
+    def transfer_weights_obj(self, asset, bones):
         if not bones:
             return
+        if asset is self.obj:
+            raise Exception("Tried to self-transfer weights")
         t = utils.Timer()
         positions, idx, weights = self.get_obj_weights(asset)
         char_verts = self.obj.data.vertices
@@ -386,7 +412,7 @@ class Fitter(MorphGeometry):
                     groups[gid] = vg_dst
                 vg_dst.add([i], src.weight*weights[ptr][0], 'ADD')
 
-        t.time("weights")
+        t.time("weights_obj")
 
     def transfer_armature(self, asset):
         existing = set()
@@ -405,7 +431,13 @@ class Fitter(MorphGeometry):
                     if bone.use_deform:
                         bones.add(bone.name)
 
-        self.transfer_weights(asset, bones)
+        source = bpy.context.window_manager.charmorph_ui.fitting_weights
+        if source == "ORIG":
+            self.transfer_weights_numpy(asset)
+        elif source == "OBJ":
+            self.transfer_weights_obj(asset, bones)
+        else:
+            raise Exception("Unknown weights source: " + source)
 
         for mod in modifiers:
             newmod = asset.modifiers.new(mod.name, "ARMATURE")
@@ -418,10 +450,13 @@ class Fitter(MorphGeometry):
             newmod.vertex_group = mod.vertex_group
             rigging.reposition_armature_modifier(asset)
 
-
     def transfer_new_armature(self):
+        if self.alt_topo():
+            self.transfer_weights_numpy(self.obj)
         for asset in self.get_assets():
             self.transfer_armature(asset)
+        if self.char_buf is not None:
+            self.char_buf = None
 
     def get_morphed_shape_key(self):
         k = self.obj.data.shape_keys
@@ -454,10 +489,10 @@ class Fitter(MorphGeometry):
         diff_arr = self.diff_array()
         for asset in assets:
             logger.debug("fit: %s", asset.name)
-            weights = self.get_obj_weights(asset)
+            positions, idx, weights = self.get_obj_weights(asset)
 
             verts = morphing.get_basis(asset)
-            verts += numpy.add.reduceat(diff_arr[weights[1]] * weights[2], weights[0])
+            verts += numpy.add.reduceat(diff_arr[idx] * weights, positions)
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
 
@@ -528,7 +563,6 @@ class Fitter(MorphGeometry):
 
 
         if ui.fitting_weights != "NONE":
-            # TODO: obj and orig transfers
             self.transfer_armature(asset)
 
     def get_children(self):

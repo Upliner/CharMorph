@@ -82,26 +82,40 @@ def vg_names(file):
         file = numpy.load(file)
     return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
 
-def process_vg_file(file, callback):
-    z = numpy.load(file)
+def process_vg_file_zipped(z, callback):
+    process_vg_file(z, lambda name, idx, weights: callback(name, zip(idx, weights)))
+
+def process_vg_file(z, callback):
+    if z is None:
+        return
+    if isinstance(z, str):
+        z = numpy.load(z)
     names = vg_names(z)
     i = 0
     idx = z["idx"]
     weights = z["weights"]
     for name, cnt in zip(names, z["cnt"]):
         i2 = i+cnt
-        callback(name, zip(idx[i:i2], weights[i:i2]))
+        callback(name, idx[i:i2], weights[i:i2])
         i = i2
 
+def char_weights_npz(obj, char):
+    rig_type = obj.data.get("charmorph_rig_type")
+    if rig_type is None:
+        obj = obj.find_armature()
+        if obj:
+            rig_type = obj.data.get("charmorph_rig_type")
+    if rig_type is None:
+        return None
+    conf = char.armature.get(rig_type)
+    if conf is None:
+        return None
+    return conf.weights_npz
+
 def char_rig_vg_names(char, rig):
-    conf = char.armature.get(rig.data.get("charmorph_rig_type"))
-    if conf:
-        weights = conf.weights
-        if weights:
-            try:
-                return vg_names(char.path(weights))
-            except:
-                pass
+    weights = char_weights_npz(rig, char)
+    if weights:
+        return vg_names(weights)
     return []
 
 def import_vg(obj, file, overwrite):
@@ -117,7 +131,7 @@ def import_vg(obj, file, overwrite):
         for i, weight in data:
             vg.add([int(i)], weight, 'REPLACE')
 
-    process_vg_file(file, callback)
+    process_vg_file_zipped(file, callback)
     return names
 
 def bb_prev_roll(bone):
@@ -203,7 +217,7 @@ class Rigger:
             for i, weight in data:
                 item[0] += weight
                 item[1] += verts[i].co*weight
-        process_vg_file(file, callback)
+        process_vg_file_zipped(file, callback)
 
     def set_opts(self, opts):
         if not opts:
