@@ -228,7 +228,7 @@ class NumpyMorpher(morphing.Morpher):
         return self.obj.shape_key_add(name="charmorph_final", from_mix=False)
 
     def _do_morph(self, data, idx, value):
-        if value < 0.001:
+        if abs(value) < 0.001:
             return
         item = data[idx]
         if item is None:
