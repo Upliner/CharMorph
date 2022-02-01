@@ -72,39 +72,6 @@ def get_fitting_shapekey(obj):
         sk.value = 1
     return sk.data
 
-# calculate weights based on distance from asset vertices to character faces
-def calc_weights_direct(weights, geom, asset):
-    verts = geom.verts
-    faces = geom.subset_faces
-    bvh = geom.subset_bvh
-    for i, avert in enumerate(asset.data.vertices):
-        co = avert.co
-        loc, _, idx, fdist = bvh.find_nearest(co, dist_thresh)
-        if loc is None:
-            continue
-        face = faces[idx]
-        bw_list = mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)
-        d = weights[i]
-        fdist = max(fdist ** 2, epsilon)
-        for vi, bw in zip(face, bw_list):
-            d[vi] = max(d.get(vi, 0), bw/fdist)
-
-# calculate weights based on distance from character vertices to assset faces
-def calc_weights_reverse(weights, geom, asset, asset_bvh):
-    asset_verts = asset.data.vertices
-    asset_faces = asset.data.polygons
-    for i, cvert in geom.subset_verts_enum():
-        co = mathutils.Vector(cvert)
-        loc, _, idx, fdist = asset_bvh.find_nearest(co, dist_thresh)
-        if idx is None:
-            continue
-        face = asset_faces[idx].vertices
-        bw_list = mathutils.interpolate.poly_3d_calc([asset_verts[i].co for i in face], loc)
-        fdist = max(fdist ** 2, epsilon)
-        for vi, bw in zip(face, bw_list):
-            d = weights[vi]
-            d[i] = max(d.get(i, 0), bw/fdist)
-
 def weights_finalize(weights):
     positions = numpy.empty((len(weights)), dtype=numpy.uint32)
     pos = 0
@@ -126,20 +93,6 @@ def weights_finalize(weights):
     w = wresult[positions[len(positions)-1]:]
     w /= w.sum()
     return positions, idx, wresult.reshape(-1,1)
-
-def calc_weights(geom, asset, asset_bvh):
-    t = utils.Timer()
-    # calculate weights based on nearest vertices
-    kd_char = utils.kdtree_from_verts_enum(geom.subset_verts_enum(), geom.subset_verts_cnt())
-    weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(avert.co, 16)} for avert in asset.data.vertices]
-    t.time("kdtree")
-    calc_weights_direct(weights, geom, asset)
-    t.time("bvh direct")
-    calc_weights_reverse(weights, geom, asset, asset_bvh)
-    t.time("bvh reverse")
-    result = weights_finalize(weights)
-    t.time("finalize")
-    return result
 
 class ObjGeometry:
     def __init__(self, obj):
@@ -170,12 +123,107 @@ class ObjGeometry:
     def subset_bvh(self):
         return self.bvh
 
-class MorphGeometry(ObjGeometry):
+class ObjFitCalculator(ObjGeometry):
+    tmp_buf: numpy.ndarray = None
+    alt_topo = False
+
+    def __init__(self, obj):
+        super().__init__(obj)
+        self.bvh_cache = {}
+
+    def get_bvh(self, data):
+        if isinstance(data, bpy.types.Object):
+            data = data.data
+        key = 0 if data is self.obj.data else data.get("charmorph_fit_id", data.name)
+        result = self.bvh_cache.get(data.name)
+        if not result:
+            if key == 0 and not self.alt_topo:
+                result = self.bvh
+            else:
+                result = mathutils.bvhtree.BVHTree.FromPolygons(morphing.get_basis(data), [f.vertices for f in data.polygons])
+            self.bvh_cache[key] = result
+        return result
+
+    # calculate weights based on distance from asset vertices to character faces
+    def _calc_weights_direct(self, weights, asset):
+        verts = self.verts
+        faces = self.subset_faces
+        bvh = self.subset_bvh
+        for i, avert in enumerate(asset.data.vertices):
+            co = avert.co
+            loc, _, idx, fdist = bvh.find_nearest(co, dist_thresh)
+            if loc is None:
+                continue
+            face = faces[idx]
+            bw_list = mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)
+            d = weights[i]
+            fdist = max(fdist ** 2, epsilon)
+            for vi, bw in zip(face, bw_list):
+                d[vi] = max(d.get(vi, 0), bw/fdist)
+
+    # calculate weights based on distance from character vertices to assset faces
+    def _calc_weights_reverse(self, weights, asset):
+        verts = asset.data.vertices
+        faces = asset.data.polygons
+        bvh = self.get_bvh(asset)
+        for i, cvert in self.subset_verts_enum():
+            co = mathutils.Vector(cvert)
+            loc, _, idx, fdist = bvh.find_nearest(co, dist_thresh)
+            if idx is None:
+                continue
+            face = faces[idx].vertices
+            bw_list = mathutils.interpolate.poly_3d_calc([verts[i].co for i in face], loc)
+            fdist = max(fdist ** 2, epsilon)
+            for vi, bw in zip(face, bw_list):
+                d = weights[vi]
+                d[i] = max(d.get(i, 0), bw/fdist)
+
+    def _calc_weights(self, asset):
+        t = utils.Timer()
+        # calculate weights based on nearest vertices
+        kd_char = utils.kdtree_from_verts_enum(self.subset_verts_enum(), self.subset_verts_cnt())
+        weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(avert.co, 16)} for avert in asset.data.vertices]
+        t.time("kdtree")
+        self._calc_weights_direct(weights, asset)
+        t.time("bvh direct")
+        self._calc_weights_reverse(weights, asset)
+        t.time("bvh reverse")
+        result = weights_finalize(weights)
+        t.time("finalize")
+        return result
+
+    def get_weights(self, asset):
+        return self._calc_weights(asset)
+
+    def transfer_weights(self, asset, vg_data):
+        if self.tmp_buf is None:
+            self.tmp_buf = numpy.empty((len(self.verts)))
+        positions, fit_idx, fit_weights = self.get_weights(asset)
+        fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
+        overwrite = bpy.context.window_manager.charmorph_ui.fitting_weights_ovr
+        for name, vg_idx, vg_weights in vg_data:
+            self.tmp_buf.fill(0)
+            self.tmp_buf.put(vg_idx, vg_weights)
+            result = numpy.add.reduceat(self.tmp_buf[fit_idx] * fit_weights, positions)
+            if name in asset.vertex_groups:
+                if overwrite:
+                    asset.vertex_groups.remove(asset.vertex_groups[name])
+                else:
+                    continue
+            idx = (result > 0.0001).nonzero()[0]
+            if len(idx) == 0:
+                continue
+            vg = asset.vertex_groups.new(name=name)
+            for i, weight in zip(idx.tolist(), result[idx]):
+                vg.add([i], weight, 'REPLACE')
+
+class MorpherFitCalculator(ObjFitCalculator):
     def __init__(self, morpher, obj):
         super().__init__(obj)
         self.morpher = morpher
         self.char = charlib.obj_char(obj)
         self.subset = self.char.fitting_subset
+        self.alt_topo = bool(self.morpher) and self.morpher.alt_topo
 
     @utils.lazyprop
     def verts(self):
@@ -203,35 +251,13 @@ class MorphGeometry(ObjGeometry):
             return self.bvh
         return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.subset_faces)
 
-class Fitter(MorphGeometry):
-    char_buf: numpy.ndarray = None
+class Fitter(MorpherFitCalculator):
     children: list = None
     _lock_cm = False
 
     def __init__(self, morpher, obj):
         super().__init__(morpher, obj)
-
-        self.bvh_cache = {}
         self.weights_cache = {}
-
-    def alt_topo(self):
-        return bool(self.morpher) and self.morpher.alt_topo
-
-    def get_bvh(self, data):
-        if isinstance(data, bpy.types.Object):
-            data = data.data
-        key = 0 if data is self.obj.data else data.get("charmorph_fit_id", data.name)
-        result = self.bvh_cache.get(data.name)
-        if not result:
-            if key == 0 and not self.alt_topo():
-                result = self.bvh
-            else:
-                result = mathutils.bvhtree.BVHTree.FromPolygons(morphing.get_basis(data), [f.vertices for f in data.polygons])
-            self.bvh_cache[key] = result
-        return result
-
-    def _calc_weights(self, asset):
-        return calc_weights(self, asset, self.get_bvh(asset))
 
     def add_mask_from_asset(self, asset):
         vg_name = mask_name(asset)
@@ -351,7 +377,7 @@ class Fitter(MorphGeometry):
             asset["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
         return asset["charmorph_fit_id"]
 
-    def get_obj_weights(self, asset):
+    def get_weights(self, asset):
         fit_id = self._get_fit_id(asset)
 
         weights = self.weights_cache.get(fit_id)
@@ -362,35 +388,18 @@ class Fitter(MorphGeometry):
         self.weights_cache[fit_id] = weights
         return weights
 
-    def _transfer_weights(self, asset, data):
-        if self.char_buf is None:
-            self.char_buf = numpy.empty((len(self.verts)))
-        positions, fit_idx, fit_weights = self.get_obj_weights(asset)
-        fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
-        overwrite = bpy.context.window_manager.charmorph_ui.fitting_weights_ovr
-        for name, vg_idx, vg_weights in data:
-            self.char_buf.fill(0)
-            self.char_buf.put(vg_idx, vg_weights)
-            result = numpy.add.reduceat(self.char_buf[fit_idx] * fit_weights, positions)
-            if name in asset.vertex_groups:
-                if overwrite:
-                    asset.vertex_groups.remove(asset.vertex_groups[name])
-                else:
-                    continue
-            idx = (result > 0.0001).nonzero()[0]
-            if len(idx) == 0:
-                continue
-            vg = asset.vertex_groups.new(name=name)
-            for i, weight in zip(idx.tolist(), result[idx]):
-                vg.add([i], weight, 'REPLACE')
-
     def _transfer_weights_orig(self, asset):
-        self._transfer_weights(asset, rigging.vg_read(rigging.char_weights_npz(self.obj, self.char)))
+        self.transfer_weights(asset, rigging.vg_read(rigging.char_weights_npz(self.obj, self.char)))
 
     def _transfer_weights_obj(self, asset, vgs):
         if asset is self.obj:
             raise Exception("Tried to self-transfer weights")
-        self._transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
+        if self.alt_topo:
+            calcer = ObjFitCalculator(self.obj)
+            calcer.bvh_cache = self.bvh_cache
+        else:
+            calcer = self
+        calcer.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
 
     def transfer_armature(self, asset):
         existing = set()
@@ -432,12 +441,12 @@ class Fitter(MorphGeometry):
             rigging.reposition_armature_modifier(asset)
 
     def transfer_new_armature(self):
-        if self.alt_topo():
-            self.transfer_weights_numpy(self.obj)
+        if self.alt_topo:
+            self._transfer_weights_orig(self.obj)
         for asset in self.get_assets():
             self.transfer_armature(asset)
-        if self.char_buf is not None:
-            self.char_buf = None
+        if self.tmp_buf is not None:
+            self.tmp_buf = None
 
     def get_morphed_shape_key(self):
         k = self.obj.data.shape_keys
@@ -469,8 +478,8 @@ class Fitter(MorphGeometry):
 
         diff_arr = self.diff_array()
         for asset in assets:
-            logger.debug("fit: %s", asset.name)
-            positions, idx, weights = self.get_obj_weights(asset)
+            #logger.debug("fit: %s", asset.name)
+            positions, idx, weights = self.get_weights(asset)
 
             verts = morphing.get_basis(asset)
             verts += numpy.add.reduceat(diff_arr[idx] * weights, positions)
@@ -562,7 +571,7 @@ class Fitter(MorphGeometry):
 
     def refit_all(self):
         assets = self.get_assets()
-        if self.alt_topo():
+        if self.alt_topo:
             assets.append(self.obj)
         if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(self.obj)):
             self.do_fit(assets, True)
@@ -619,7 +628,7 @@ class UIProps:
 
 def get_char(context):
     obj = mesh_obj(context.window_manager.charmorph_ui.fitting_char)
-    if not obj or 'charmorph_fit_id' in obj.data:
+    if not obj or ('charmorph_fit_id' in obj.data and 'cm_alt_topo' not in obj.data):
         return None
     return obj
 
