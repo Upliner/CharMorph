@@ -228,7 +228,7 @@ class NumpyMorpher(morphing.Morpher):
                 self.morphs_l2[name] = self.morphs_l2.get(name, v)
 
     def _do_morph(self, data, idx, value):
-        if value < 0.001:
+        if abs(value) < 0.001:
             return
         item = data[idx]
         if item is None:
