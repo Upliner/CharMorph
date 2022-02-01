@@ -167,8 +167,9 @@ class Character:
 
     @utils.lazyprop
     def faces(self):
+        npy = self.get_np("faces.npy")
         # Use regular python array instead of numpy for compatibility with BVHTree
-        return self.get_np("faces.npy").tolist()
+        return None if npy is None else npy.tolist()
 
     @utils.lazyprop
     def presets(self):

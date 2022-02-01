@@ -243,7 +243,7 @@ class MorpherFitCalculator(ObjFitCalculator):
         if self.subset is None:
             return self.faces
         faces = self.faces
-        return (faces[i] for i in self.subset["faces"])
+        return [faces[i] for i in self.subset["faces"]]
 
     @utils.lazyprop
     def subset_bvh(self):
