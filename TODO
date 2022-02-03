@@ -1,5 +1,6 @@
 General:
   - Proper context handling (use bpy.context only if really necessary)
+  - Unzipper for character/asset packages
 
 Performance:
   - Fast YAML library
