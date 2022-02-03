@@ -257,8 +257,10 @@ class NumpyMorpher(morphing.Morpher):
                 if len(data) == 1:
                     self._do_morph(data, 0, val)
                 elif len(data) == 2:
-                    self._do_morph(data, 0, -val)
-                    self._do_morph(data, 1, val)
+                    if val < 0:
+                        self._do_morph(data, 0, -val)
+                    else:
+                        self._do_morph(data, 1, val)
 
         for name, morph in self.morphs_combo.items():
             values = [self.prop_get_clamped(morph_name) for morph_name in enum_combo_names(name)]
