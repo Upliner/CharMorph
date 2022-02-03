@@ -40,7 +40,7 @@ def load_materials(obj, char):
         return
 
     ui = bpy.context.window_manager.charmorph_ui
-    materials_to_load = []
+    materials_to_load = set()
     load_ids = []
     adult_mode = utils.is_adult_mode()
     for i, mtl_name in enumerate(mtllist):
@@ -54,16 +54,18 @@ def load_materials(obj, char):
                 mtl = mtl.copy()
             obj.data.materials[i] = mtl
         elif not "_censor" in mtl_name or not adult_mode:
-            materials_to_load.append(mtl_name)
+            materials_to_load.add(mtl_name)
             load_ids.append(i)
 
     if materials_to_load:
+        materials_to_load = list(materials_to_load)
         with bpy.data.libraries.load(char.path(char.material_lib)) as (_, data_to):
             data_to.materials = materials_to_load
+        material_dict = {}
         for i, mtl in enumerate(data_to.materials):
-            mtl = data_to.materials[i]
-            if mtl:
-                obj.data.materials[load_ids[i]] = mtl
+            material_dict[materials_to_load[i]] = mtl
+        for i in load_ids:
+            obj.data.materials[i] = material_dict.get(mtllist[i])
 
     if adult_mode:
         for i in range(len(mtllist)-1, 0, -1):
