@@ -23,7 +23,7 @@ import os, numpy
 from . import library, morphing, utils
 
 def get_combo_item_value(arr_idx, values):
-    return sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values))
+    return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)
 
 def enum_combo_names(name):
     nameParts = name.split("_")
