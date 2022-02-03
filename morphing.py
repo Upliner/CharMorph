@@ -426,26 +426,20 @@ morpher = null_morpher
 
 from . import morphers
 
-def create_charmorphs(obj):
-    global last_object, morpher
-    last_object = obj
-    if obj.type != "MESH":
-        return
-    if morpher.obj == obj:
-        return
-
+def get_morpher(obj) -> Morpher:
     logger.debug("switching object to %s", obj.name)
 
     materials.update_props(obj)
 
-    if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
-        m = morphers.NumpyMorpher(obj)
+    if obj.data.get("cm_morpher") == "ext":
+        return morphers.NumpyMorpher(obj)
+    elif not obj.data.get("cm_alt_topo"):
+        return morphers.ShapeKeysMorpher(obj)
     else:
-        m = morphers.ShapeKeysMorpher(obj)
+        return null_morpher
 
-    if not m.has_morphs():
-        return
-
+def update_morpher(m: Morpher):
+    global morpher
     morpher = m
 
     ui = bpy.context.window_manager.charmorph_ui
@@ -458,6 +452,24 @@ def create_charmorphs(obj):
 
     if not m.morphs_l2:
         m.create_charmorphs_L2()
+
+def create_charmorphs(obj):
+    global last_object, morpher
+    last_object = obj
+    if obj.type != "MESH":
+        return
+    if morpher.obj == obj:
+        return
+
+    logger.debug("switching object to %s", obj.name)
+
+    new_morpher = get_morpher(obj)
+    if not new_morpher.has_morphs():
+        if new_morpher.char:
+            morpher = new_morpher
+        return
+
+    update_morpher(new_morpher)
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -485,6 +497,31 @@ def bad_object():
     except ReferenceError:
         logger.warning("Current morphing object is bad, resetting...")
         return True
+
+class OpResetChar(bpy.types.Operator):
+    bl_idname = "charmorph.reset_char"
+    bl_label = "Reset character"
+    bl_description = "Reset all unavailable character morphs"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and morpher.char
+
+    def execute(self, context):
+        obj = morpher.obj
+        obj.data["cm_morpher"] = "ext"
+        new_morpher = get_morpher(obj)
+        print(new_morpher)
+        if new_morpher.error or not new_morpher.has_morphs():
+            if new_morpher.error:
+                self.report({'ERROR'}, new_morpher.error)
+            else:
+                self.report({'ERROR'}, "Still no morphs found")
+            del obj.data["cm_morpher"]
+            return {"CANCELLED"}
+        update_morpher(new_morpher)
+        return {"FINISHED"}
 
 class UIProps:
     relative_meta: bpy.props.BoolProperty(
@@ -556,6 +593,13 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 col.label(text="Object is detected as")
                 col.label(text="valid CharMorph character,")
                 col.label(text="but the morphing data was removed")
+                if m.obj.data.get("cm_morpher") == "ext":
+                    return
+                col.separator()
+                col.label(text="You can reset the character")
+                col.label(text="to resume morphing")
+                col.separator()
+                col.operator('charmorph.reset_char')
             else:
                 self.layout.label(text="No morphing data found")
             return
@@ -607,4 +651,4 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 if ui.morph_filter.lower() in prop.lower():
                     col.prop(morphs, "prop_" + prop, slider=True)
 
-classes = [CHARMORPH_PT_Morphing]
+classes = [CHARMORPH_PT_Morphing, OpResetChar]

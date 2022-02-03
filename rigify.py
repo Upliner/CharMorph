@@ -118,7 +118,10 @@ def add_mixin(char, conf, rig):
 
 def do_rig(obj, conf, rigger):
     metarig = bpy.context.object
-    metarig.data.rigify_generate_mode = "new"
+    if hasattr(metarig.data, "rigify_generate_mode"):
+        metarig.data.rigify_generate_mode = "new"
+    if hasattr(metarig.data, "rigify_target_rig"):
+        metarig.data.rigify_target_rig = None
     t = utils.Timer()
     bpy.ops.pose.rigify_generate()
     t.time("rigify part")

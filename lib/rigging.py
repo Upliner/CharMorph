@@ -58,6 +58,12 @@ def selected_joints(context):
 def get_vg_data(char, new, accumulate, verts=None):
     if verts is None:
         verts = char.data.vertices
+
+    if isinstance(verts, numpy.ndarray):
+        get_co = lambda i: Vector(verts[i])
+    else:
+        get_co = lambda i: verts[i].co
+
     data = {}
     for v in char.data.vertices:
         for gw in v.groups:
@@ -68,7 +74,7 @@ def get_vg_data(char, new, accumulate, verts=None):
             if not data_item:
                 data_item = new()
                 data[vg.name] = data_item
-            accumulate(data_item, v, verts[v.index].co, gw)
+            accumulate(data_item, v, get_co(v.index), gw)
     return data
 
 def get_vg_avg(char, verts=None):
@@ -235,7 +241,7 @@ class Rigger:
             self.jdata[name] = item
             for i, weight in zip(idx, weights):
                 item[0] += weight
-                item[1] += verts[i].co*weight
+                item[1] += Vector(verts[i])*weight
 
     def set_opts(self, opts):
         if not opts:

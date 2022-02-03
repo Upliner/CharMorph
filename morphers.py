@@ -73,7 +73,7 @@ class ShapeKeysMorpher(morphing.Morpher):
         maxkey = ""
         maxval = 0
         for sk in self.obj.data.shape_keys.key_blocks:
-            if len(sk.name) < 4 or not sk.name.startswith("L1_"):
+            if not sk.name.startswith("L1_"):
                 continue
             name = sk.name[3:]
             if sk.value > maxval:
@@ -219,6 +219,7 @@ class NumpyMorpher(morphing.Morpher):
 
     def get_morphs_L2(self):
         self.morphs_l2.clear()
+        self.morphs_combo.clear()
         self._load_dir("morphs/L2")
         if self.L1:
             self._load_dir("morphs/L2/"+self.L1)
@@ -303,3 +304,8 @@ class NumpyMorpher(morphing.Morpher):
         if self.morphed is None:
             self._do_all_morphs()
         return self.morphed - self.full_basis
+
+    def get_final(self):
+        if self.morphed is None:
+            self._do_all_morphs()
+        return self.morphed
