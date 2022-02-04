@@ -639,7 +639,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.separator()
 
-        if len(m.categories) > 2:
+        if len(m.categories) > 0:
             self.layout.label(text="MORE MORPHS HERE:")
             self.layout.prop(ui, "morph_category")
             if ui.morph_category == "<None>":

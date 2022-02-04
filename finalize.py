@@ -246,16 +246,15 @@ def _cleanup_morphs(ui, fin_sk):
     keys = obj.data.shape_keys
     if not keys or not keys.key_blocks:
         return
-    keys = keys.key_blocks
 
-    for key in keys:
+    for key in keys.key_blocks:
         if key not in (keys.reference_key, fin_sk):
             if key.name.startswith("L1_") or key.name.startswith("L2_") or key.name.startswith("L4_"):
                 obj.shape_key_remove(key)
 
     if ui.fin_morph != "AL":
         return
-    if len(obj.shape_keys.key_blocks) > (2 if fin_sk else 1):
+    if len(keys.key_blocks) > (2 if fin_sk else 1):
         return
     if fin_sk:
         obj.shape_key_remove(fin_sk)
@@ -264,7 +263,7 @@ def _cleanup_morphs(ui, fin_sk):
 def apply_morphs(ui):
     fin_sk, verts, verts_alt = _get_sk_verts(ui)
     _cleanup_morphs(ui, fin_sk)
-    if ui.fin_csmooth and not ui.cs_morph:
+    if (ui.fin_csmooth and not ui.fin_cs_morphing) or ui.fin_morph == "AL":
         morphing.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     return verts, verts_alt
 
