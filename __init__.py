@@ -88,11 +88,6 @@ def on_select_object():
         else:
             ui.fitting_asset = obj
 
-        # Prevent morphing of rigged characters
-        arm = obj.find_armature()
-        if arm:
-            obj = arm
-
     if obj is morphing.last_object:
         return
 

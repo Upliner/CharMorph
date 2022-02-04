@@ -362,7 +362,7 @@ class OpFinalize(bpy.types.Operator):
         if self.vg_cleanup:
             _do_vg_cleanup()
 
-        morphing.del_charmorphs()
+        morphing.recreate_charmorphs()
 
         t.time("total finalize")
 
@@ -395,6 +395,8 @@ class OpUnrig(bpy.types.Operator):
 
         if "charmorph_rig_type" in obj.data:
             del obj.data["charmorph_rig_type"]
+
+        morphing.recreate_charmorphs()
 
         return {"FINISHED"}
 

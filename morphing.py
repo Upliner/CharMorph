@@ -132,6 +132,8 @@ class Morpher:
         self.L1 = self.get_L1()
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
         self.update_L1_idx()
+        if obj and obj.find_armature():
+            self.error = "Character is rigged.\nLive rig deform is not supported"
 
     def __bool__(self):
         return self.obj is not None
@@ -453,6 +455,11 @@ def update_morpher(m: Morpher):
     if not m.morphs_l2:
         m.create_charmorphs_L2()
 
+def recreate_charmorphs():
+    global morpher
+    morpher = get_morpher(morpher.obj)
+    morpher.create_charmorphs_L2()
+
 def create_charmorphs(obj):
     global last_object, morpher
     last_object = obj
@@ -460,8 +467,6 @@ def create_charmorphs(obj):
         return
     if morpher.obj == obj:
         return
-
-    logger.debug("switching object to %s", obj.name)
 
     new_morpher = get_morpher(obj)
     if not new_morpher.has_morphs():
@@ -584,7 +589,9 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         if m.error:
             self.layout.label(text="Morphing is impossible:")
-            self.layout.label(text=m.error)
+            col = self.layout.column()
+            for line in m.error.split("\n"):
+                col.label(text=line)
             return
 
         if not hasattr(context.window_manager, "charmorphs"):
