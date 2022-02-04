@@ -199,7 +199,7 @@ class ObjFitCalculator(ObjGeometry):
     def get_weights(self, asset):
         return self._calc_weights(asset)
 
-    def transfer_weights_iter_arrays(self, asset, vg_data):
+    def _transfer_weights_iter_arrays(self, asset, vg_data):
         if self.tmp_buf is None:
             self.tmp_buf = numpy.empty((len(self.verts)))
         positions, fit_idx, fit_weights = self.get_weights(asset)
@@ -210,7 +210,7 @@ class ObjFitCalculator(ObjGeometry):
             yield name, numpy.add.reduceat(self.tmp_buf[fit_idx] * fit_weights, positions)
 
     def transfer_weights_get(self, asset, vg_data, cutoff=1e-4):
-        for name, weights in self.transfer_weights_iter_arrays(asset, vg_data):
+        for name, weights in self._transfer_weights_iter_arrays(asset, vg_data):
             idx = (weights > cutoff).nonzero()[0]
             if len(idx) > 0:
                 yield name, idx, weights[idx]
@@ -423,16 +423,19 @@ class Fitter(MorpherFitCalculator):
             asset["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
         return asset["charmorph_fit_id"]
 
-    def get_weights(self, asset):
+    def get_obj_cache(self, asset):
         fit_id = self._get_fit_id(asset)
 
-        weights = self.weights_cache.get(fit_id)
-        if weights is not None:
-            return weights
+        result = self.weights_cache.get(fit_id)
+        if result is not None:
+            return result
 
-        weights = self._calc_weights(asset)
-        self.weights_cache[fit_id] = weights
-        return weights
+        result = (morphing.get_basis(asset), self._calc_weights(asset))
+        self.weights_cache[fit_id] = result
+        return result
+
+    def get_weights(self, asset):
+        return self.get_obj_cache(asset)[1]
 
     def _transfer_weights_orig(self, asset):
         self.transfer_weights(asset, rigging.char_weights_npz(self.obj, self.char))
@@ -523,10 +526,10 @@ class Fitter(MorpherFitCalculator):
         diff_arr = self.diff_array()
         for asset in assets:
             #logger.debug("fit: %s", asset.name)
-            positions, idx, weights = self.get_weights(asset)
+            basis, (positions, idx, weights) = self.get_obj_cache(asset)
 
-            verts = morphing.get_basis(asset)
-            verts += numpy.add.reduceat(diff_arr[idx] * weights, positions)
+            verts = numpy.add.reduceat(diff_arr[idx] * weights, positions)
+            verts += basis
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
 

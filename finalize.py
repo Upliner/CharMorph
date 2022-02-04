@@ -91,7 +91,7 @@ def add_rig(ui, verts, verts_alt):
                 joints = rigger.joints_from_file(fitting.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints), 1e-10), verts_alt)
             rigger.joints_from_file(joints, verts)
         else:
-            rigger.joints_from_char(obj, verts)
+            rigger.joints_from_char(obj, verts_alt)
         rigger.set_opts(conf.bones)
         joints = None
         if rig_type == "arp":
@@ -263,8 +263,9 @@ def _cleanup_morphs(ui, fin_sk):
 
 def apply_morphs(ui):
     fin_sk, verts, verts_alt = _get_sk_verts(ui)
-    morphing.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     _cleanup_morphs(ui, fin_sk)
+    if ui.fin_csmooth and not ui.cs_morph:
+        morphing.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     return verts, verts_alt
 
 def _add_modifiers(ui):
@@ -278,17 +279,17 @@ def _add_modifiers(ui):
         return mod
 
     def add_corrective_smooth(obj):
-        if ui.fin_csmooth == "NO":
+        if not ui.fin_csmooth:
             return
         mod = add_modifier(obj, "CORRECTIVE_SMOOTH", rigging.reposition_cs_modifier)
-        mod.smooth_type = ui.fin_csmooth[2:]
-        if ui.fin_csmooth[:1] == "L":
+        mod.smooth_type = "LENGTH_WEIGHTED" if ui.fin_cs_lenweight else "SIMPLE"
+        if ui.fin_cs_limit:
             if "corrective_smooth" in obj.vertex_groups:
                 mod.vertex_group = "corrective_smooth"
             elif "corrective_smooth_inv" in obj.vertex_groups:
                 mod.vertex_group = "corrective_smooth_inv"
                 mod.invert_vertex_group = True
-        elif ui.fin_csmooth == "U":
+        else:
             mod.vertex_group = ""
 
     def add_subsurf(obj):
@@ -447,17 +448,6 @@ class UIProps:
             ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
         ],
         description="Use subdivision surface for smoother look")
-    fin_csmooth: bpy.props.EnumProperty(
-        name="Corrective smooth",
-        default="L_SIMPLE",
-        items=[
-            ("NO", "None", "No corrective smooth"),
-            ("L_SIMPLE", "Limited Simple", ""),
-            ("L_LENGTH_WEIGHTED", "Limited Length weighted", ""),
-            ("U_SIMPLE", "Unlimited Simple", ""),
-            ("U_LENGTH_WEIGHTED", "Unimited Length weighted", ""),
-        ],
-        description="Use corrective smooth to fix armature deform artifacts")
     fin_csmooth_assets: bpy.props.EnumProperty(
         name="Corrective smooth for assets",
         default="NO",
@@ -469,10 +459,30 @@ class UIProps:
             ("NC", "No change", "Apply corrective smooth to assets but don't change its parameters"),
         ],
         )
+    fin_csmooth: bpy.props.BoolProperty(
+        name="Corrective smooth",
+        description="Use corrective smooth to fix deform artifacts",
+        default = True,
+    )
+    fin_cs_limit: bpy.props.BoolProperty(
+        name="Limit smooth",
+        description="Use rig-defined vertex group to limit corrective smooth where it causes undesirable effects",
+        default = True,
+    )
+    fin_cs_lenweight: bpy.props.BoolProperty(
+        name="Length weighted smooth",
+        description="Use length weighted smooth instead of simple",
+        default = False,
+    )
+    fin_cs_morphing: bpy.props.BoolProperty(
+        name="Smooth morphing",
+        description="Use corrective smooth to smooth morphing artifacts (requires shape keys to be enabled)",
+        default = False,
+    )
     fin_manual_sculpt: bpy.props.BoolProperty(
         name="Manual edit/sculpt",
         default=False,
-        description="Enable it if you modified the character outside CharMorph's morphing panel, i.e. modified character with Blender's edit or sculpt mode.")
+        description="Enable it if you want changes outside CharMorph's morphing panel (i.e. Blender's edit or sculpt mode) to affect character rig")
     fin_subdiv_assets: bpy.props.BoolProperty(
         name="Subdivide assets",
         default=False,
@@ -495,8 +505,17 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
+        ui = context.window_manager.charmorph_ui
+        ll = l
         for prop in UIProps.__annotations__: # pylint: disable=no-member
-            l.prop(context.window_manager.charmorph_ui, prop)
+            if prop.startswith("fin_cs_"):
+                if ll == l:
+                    ll = l.column()
+                    ll.enabled = ui.fin_csmooth
+            elif ll != l:
+                l.separator()
+                ll = l
+            ll.prop(ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")
 

@@ -85,7 +85,7 @@ def get_basis(data, use_morpher=True, use_char=True):
         return utils.verts_to_numpy(k.reference_key.data)
 
     if use_morpher and morpher and morpher.obj.data == data:
-        return morpher.get_basis_alt_topo().copy()
+        return morpher.get_basis_alt_topo()
 
     alt_topo = data.get("cm_alt_topo")
     if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
@@ -101,7 +101,7 @@ def get_basis(data, use_morpher=True, use_char=True):
             if basis is not None:
                 return basis.copy()
         elif isinstance(alt_topo, str):
-            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo, False)
+            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 
     return utils.verts_to_numpy(data.vertices)
 
@@ -386,8 +386,7 @@ class Morpher:
 
     def update_morph_categories(self):
         if not self.char.no_morph_categories:
-            self.categories = [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + [
-                (name, name, "") for name in sorted(set(morph_category_name(morph) for morph in self.morphs_l2))]
+            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph) for morph in self.morphs_l2))]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
@@ -448,6 +447,8 @@ def update_morpher(m: Morpher):
 
     if not m.L1 and m.char.default_type:
         m.set_L1(m.char.default_type)
+
+    ui.morph_category = "<None>"
 
     if not m.morphs_l2:
         m.create_charmorphs_L2()
@@ -558,7 +559,7 @@ class UIProps:
         options={"SKIP_SAVE"})
     morph_category: bpy.props.EnumProperty(
         name="Category",
-        items=lambda ui, _: morpher.categories,
+        items=lambda ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + morpher.categories,
         description="Select morphing categories to show")
     morph_preset: bpy.props.EnumProperty(
         name="Presets",

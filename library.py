@@ -96,7 +96,7 @@ class OpImport(bpy.types.Operator):
 
         obj.data["charmorph_template"] = ui.base_model
 
-        if ui.use_sk and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
+        if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
         morphing.create_charmorphs(obj)
