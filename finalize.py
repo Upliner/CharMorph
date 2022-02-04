@@ -183,6 +183,7 @@ def _get_fin_sk(obj):
         return None, False
     fin_sk = keys.key_blocks.get("charmorph_final")
     if not fin_sk:
+        # FIXME: what if L3 morphs are non-zero?
         return obj.shape_key_add(name="charmorph_final", from_mix=True), True
     return fin_sk, False
 
@@ -203,6 +204,7 @@ def _get_sk_verts(ui):
     if fin_sk_tmp:
         if ui.fin_morph == "NO":
             m.obj.shape_key_remove(fin_sk)
+            fin_sk = None
         else:
             fin_sk.value = 1
 
@@ -228,11 +230,9 @@ def _cleanup_morphs(ui, fin_sk):
     keys = keys.key_blocks
 
     for key in keys:
-        if key != keys.reference_key and key != fin_sk:
+        if key not in (keys.reference_key, fin_sk):
             if key.name.startswith("L1_") or key.name.startswith("L2_") or key.name.startswith("L4_"):
                 obj.shape_key_remove(key)
-            else:
-                key.value = 0
 
     if ui.fin_morph != "AL":
         return
@@ -323,10 +323,25 @@ class OpFinalize(bpy.types.Operator):
     bl_label = "Finalize"
     bl_description = "Finalize character (add rig, modifiers, cleanup)"
     bl_options = {"UNDO"}
+    vg_cleanup: bool
 
     @classmethod
     def poll(cls, _):
         return morphing.morpher
+
+    def _do_rig(self, ui, verts):
+        m = morphing.morpher
+        if ui.fin_rig == "-":
+            return True
+        try:
+            err = add_rig(m.obj, m.char, ui.fin_rig, verts)
+            if err is not None:
+                self.report({"ERROR"}, err)
+                self.vg_cleanup = False
+        except rigging.RigException as e:
+            self.report({"ERROR"}, str(e))
+            return False
+        return True
 
     def execute(self, context):
         t = utils.Timer()
@@ -334,32 +349,17 @@ class OpFinalize(bpy.types.Operator):
             self.report({'ERROR'}, "Bad context")
             return {"CANCELLED"}
 
-        m = morphing.morpher
         ui = context.window_manager.charmorph_ui
+        self.vg_cleanup = ui.fin_vg_cleanup
 
-        verts = apply_morphs(ui)
-
-        vg_cleanup = ui.fin_vg_cleanup
-        def do_rig():
-            nonlocal vg_cleanup
-            if ui.fin_rig == "-":
-                return True
-            try:
-                err = add_rig(m.obj, m.char, ui.fin_rig, verts)
-                if err is not None:
-                    self.report({"ERROR"}, err)
-                    vg_cleanup = False
-            except rigging.RigException as e:
-                self.report({"ERROR"}, str(e))
-                return False
-            return True
-
-        if not do_rig():
+        if not self._do_rig(ui, apply_morphs(ui)):
             return {"CANCELLED"}
+
+        # Show warning if fin_morph == "AL" and some shapekeys are present?
 
         _add_modifiers(ui)
 
-        if vg_cleanup:
+        if self.vg_cleanup:
             _do_vg_cleanup()
 
         morphing.del_charmorphs()
@@ -411,7 +411,7 @@ class UIProps:
         items=[
             ("NO", "Don't apply", "Keep all morphing shape keys"),
             ("SK", "Keep original basis", "Keep original basis shape key (recommended if you plan to fit more assets)"),
-            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys"),
+            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys (won't work when facial expression shapekeys or other additional morphs are present)"),
         ],
         description="Apply current shape key mix")
     fin_rig: bpy.props.EnumProperty(

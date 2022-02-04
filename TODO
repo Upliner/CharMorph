@@ -62,7 +62,7 @@ Rigging:
   - Force bone bending angle
   - Head pivot shift
   - Live regular rig deform
-  - Import MB-Lab expression shape keys alongside with Rigify
+  - Import MB-Lab and Antonia expression shape keys alongside with Rigify
   - Rigify morphing? Maybe even create an own Rigify-like rig system?
   - Blenrig?
 
