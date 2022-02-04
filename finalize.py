@@ -61,8 +61,11 @@ def delete_old_rig_with_assets(obj, rig):
     for asset in fitting.get_fitter(obj).get_assets():
         remove_armature_modifiers(asset)
 
-def add_rig(obj, char, rig_name, verts):
-    conf = char.armature.get(rig_name)
+def add_rig(ui, verts, verts_alt):
+    m = morphing.morpher
+    obj = m.obj
+    char = m.char
+    conf = char.armature.get(ui.fin_rig)
     if not conf:
         raise rigging.RigException("Rig is not found")
 
@@ -82,7 +85,14 @@ def add_rig(obj, char, rig_name, verts):
 
         rig.data.use_mirror_x = False
         rigger = rigging.Rigger(bpy.context)
-        rigger.configure(conf, obj, verts)
+        if conf.joints:
+            joints = conf.joints
+            if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
+                joints = rigger.joints_from_file(fitting.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints), 1e-10), verts_alt)
+            rigger.joints_from_file(joints, verts)
+        else:
+            rigger.joints_from_char(obj, verts)
+        rigger.set_opts(conf.bones)
         joints = None
         if rig_type == "arp":
             joints = rigging.layer_joints(bpy.context, conf.arp_reference_layer)
@@ -95,12 +105,15 @@ def add_rig(obj, char, rig_name, verts):
         if old_rig:
             clear_old_weights_with_assets(obj, char, old_rig)
 
-        new_vgs = rigging.import_vg(obj, conf.weights_npz, False)
+        if m.alt_topo:
+            fitting.get_fitter(m).transfer_weights(obj, conf.weights_npz)
+        else:
+            rigging.import_vg(obj, conf.weights_npz, False)
 
         attach = True
         if rig_type == "rigify":
             rigify.apply_metarig_parameters(rig)
-            metarig_only = bpy.context.window_manager.charmorph_ui.rigify_metarig_only
+            metarig_only = ui.rigify_metarig_only
             if metarig_only or (not hasattr(rig.data, "rigify_generate_mode") and not hasattr(rig.data, "rigify_target_rig")):
                 if not metarig_only:
                     err = "Rigify is not found! Generating metarig only"
@@ -120,8 +133,8 @@ def add_rig(obj, char, rig_name, verts):
                 err = "Auto-Rig Pro is not found! Can't match the rig"
 
         rig.data["charmorph_template"] = obj.data.get("charmorph_template", "")
-        rig.data["charmorph_rig_type"] = rig_name
-        obj.data["charmorph_rig_type"] = rig_name
+        rig.data["charmorph_rig_type"] = ui.fin_rig
+        obj.data["charmorph_rig_type"] = ui.fin_rig
 
         if old_rig:
             delete_old_rig_with_assets(obj, old_rig)
@@ -130,7 +143,8 @@ def add_rig(obj, char, rig_name, verts):
             attach_rig(obj, rig)
     except:
         try:
-            clear_vg_names(obj.vertex_groups, new_vgs)
+            if conf and conf.weights_npz:
+                clear_vg_names(set(rigging.vg_names(conf.weights_npz)), new_vgs)
             bpy.data.armatures.remove(rig.data)
         except:
             pass
@@ -191,15 +205,15 @@ def _get_sk_verts(ui):
     m = morphing.morpher
     fin_sk = None
     fin_sk_tmp = False
-    verts = None
+    verts, verts_alt = None, None
     if hasattr(m, "get_final") and not ui.fin_manual_sculpt:
         verts = m.get_final()
 
     if ui.fin_morph != "NO" or verts is None:
         fin_sk, fin_sk_tmp = _get_fin_sk(m.obj)
 
-    if verts is None:
-        verts = utils.verts_to_numpy(m.obj.data.vertices if fin_sk is None else fin_sk.data)
+    if verts is None or m.alt_topo:
+        verts_alt = utils.verts_to_numpy(m.obj.data.vertices if fin_sk is None else fin_sk.data)
 
     if fin_sk_tmp:
         if ui.fin_morph == "NO":
@@ -208,7 +222,12 @@ def _get_sk_verts(ui):
         else:
             fin_sk.value = 1
 
-    return fin_sk, verts
+    if verts is None:
+        verts = verts_alt
+    elif verts_alt is None:
+        verts_alt = verts
+
+    return fin_sk, verts, verts_alt
 
 def _cleanup_morphs(ui, fin_sk):
     if ui.fin_morph == "NO":
@@ -243,10 +262,10 @@ def _cleanup_morphs(ui, fin_sk):
     obj.shape_key_remove(keys.reference_key)
 
 def apply_morphs(ui):
-    fin_sk, verts = _get_sk_verts(ui)
+    fin_sk, verts, verts_alt = _get_sk_verts(ui)
+    morphing.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     _cleanup_morphs(ui, fin_sk)
-    morphing.morpher.obj.data.vertices.foreach_set("co", verts.reshape(-1))
-    return verts
+    return verts, verts_alt
 
 def _add_modifiers(ui):
     obj = morphing.morpher.obj
@@ -329,12 +348,11 @@ class OpFinalize(bpy.types.Operator):
     def poll(cls, _):
         return morphing.morpher
 
-    def _do_rig(self, ui, verts):
-        m = morphing.morpher
+    def _do_rig(self, ui, verts, verts_alt):
         if ui.fin_rig == "-":
             return True
         try:
-            err = add_rig(m.obj, m.char, ui.fin_rig, verts)
+            err = add_rig(ui, verts, verts_alt)
             if err is not None:
                 self.report({"ERROR"}, err)
                 self.vg_cleanup = False
@@ -352,7 +370,7 @@ class OpFinalize(bpy.types.Operator):
         ui = context.window_manager.charmorph_ui
         self.vg_cleanup = ui.fin_vg_cleanup
 
-        if not self._do_rig(ui, apply_morphs(ui)):
+        if not self._do_rig(ui, *apply_morphs(ui)):
             return {"CANCELLED"}
 
         # Show warning if fin_morph == "AL" and some shapekeys are present?

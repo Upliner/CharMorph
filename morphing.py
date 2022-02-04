@@ -77,27 +77,31 @@ def get_obj_char(context):
                 return obj, char
     return (None, None)
 
-def get_basis(data, use_morpher=True):
+def get_basis(data, use_morpher=True, use_char=True):
     if isinstance(data, bpy.types.Object):
         data = data.data
     k = data.shape_keys
     if k:
         return utils.verts_to_numpy(k.reference_key.data)
 
-    m = morpher
-    if use_morpher and m and m.obj.data == data:
-        return m.get_basis_alt_topo()
-
-    char = charlib.char_by_name(data.get("charmorph_template"))
+    if use_morpher and morpher and morpher.obj.data == data:
+        return morpher.get_basis_alt_topo().copy()
 
     alt_topo = data.get("cm_alt_topo")
     if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
-        return get_basis(alt_topo)
+        return get_basis(alt_topo, False, False)
+
+    char = None
+    if use_char:
+        char = charlib.char_by_name(data.get("charmorph_template"))
+
     if char:
         if not alt_topo:
-            return char.get_basis()
-        if isinstance(alt_topo, str):
-            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+            basis = char.np_basis
+            if basis is not None:
+                return basis.copy()
+        elif isinstance(alt_topo, str):
+            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo, False)
 
     return utils.verts_to_numpy(data.vertices)
 
@@ -155,7 +159,7 @@ class Morpher:
         pass
 
     def has_morphs(self):
-        return bool(self.char)
+        return False
 
     def update_L1_idx(self):
         try:
@@ -285,10 +289,7 @@ class Morpher:
         return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
     def _calc_meta_abs_val(self, prop):
-        result = 0
-        for k, val in self.meta_prev.items():
-            result += self._calc_meta_val(self.meta_dict()[k].get("morphs", {}).get(prop), val)
-        return result
+        return sum(self._calc_meta_val(self.meta_dict()[meta_prop].get("morphs", {}).get(prop), val) for meta_prop, val in self.meta_prev.items())
 
     def meta_get(self, name):
         return self.obj.data.get("cmorph_meta_" + name, 0.0)
@@ -307,39 +308,37 @@ class Morpher:
             value = new_value
             self.obj.data[pname] = value
 
-        def update(cm, context):
+        def update(_, context):
             prev_value = self.meta_prev.get(name, 0.0)
             if value == prev_value:
                 return
             self.meta_prev[name] = value
             ui = context.window_manager.charmorph_ui
 
-            self.lock()
-            try:
-                for k, coeffs in data.get("morphs", {}).items():
-                    propname = "prop_" + k
-                    if not hasattr(cm, propname):
-                        continue
+            self.version += 1
+            for prop, coeffs in data.get("morphs", {}).items():
+                if prop not in self.morphs_l2:
+                    continue
 
-                    if not ui.relative_meta:
-                        setattr(cm, propname, self._calc_meta_abs_val(k))
-                        continue
+                if not ui.relative_meta:
+                    self.prop_set_internal(prop, self._calc_meta_abs_val(prop))
+                    continue
 
-                    propval = getattr(cm, propname)
+                propval = self.prop_get(prop)
 
-                    val_prev = self._calc_meta_val(coeffs, prev_value)
-                    val_cur = self._calc_meta_val(coeffs, value)
+                val_prev = self._calc_meta_val(coeffs, prev_value)
+                val_cur = self._calc_meta_val(coeffs, value)
 
-                    # assign absolute prop value if current property value is out of range
-                    # or add a delta if it is within (-0.999 .. 0.999)
-                    sign = -1 if val_cur-val_prev < 0 else 1
-                    if propval*sign < -0.999 and val_prev*sign < -1:
-                        propval = self._calc_meta_abs_val(k)
-                    else:
-                        propval += val_cur-val_prev
-                    setattr(cm, propname, propval)
-            finally:
-                self.unlock()
+                # assign absolute prop value if current property value is out of range
+                # or add a delta if it is within (-0.999 .. 0.999)
+                sign = -1 if val_cur-val_prev < 0 else 1
+                if propval*sign < -0.999 and val_prev*sign < -1:
+                    propval = self._calc_meta_abs_val(prop)
+                else:
+                    propval += val_cur-val_prev
+                self.prop_set_internal(prop, propval)
+
+            self.update()
 
             if ui.meta_materials != "N":
                 for k, coeffs in data.get("materials", {}).items():
@@ -429,16 +428,14 @@ morpher = null_morpher
 from . import morphers
 
 def get_morpher(obj) -> Morpher:
-    logger.debug("switching object to %s", obj.name)
+    logger.debug("switching object to %s", obj.name if obj else "")
 
     materials.update_props(obj)
 
-    if obj.data.get("cm_morpher") == "ext":
+    if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
         return morphers.NumpyMorpher(obj)
-    elif not obj.data.get("cm_alt_topo"):
-        return morphers.ShapeKeysMorpher(obj)
     else:
-        return null_morpher
+        return morphers.ShapeKeysMorpher(obj)
 
 def update_morpher(m: Morpher):
     global morpher
@@ -513,7 +510,7 @@ class OpResetChar(bpy.types.Operator):
     def poll(cls, context):
         return context.mode == "OBJECT" and morpher.char
 
-    def execute(self, context):
+    def execute(self, _):
         obj = morpher.obj
         obj.data["cm_morpher"] = "ext"
         new_morpher = get_morpher(obj)

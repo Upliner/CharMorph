@@ -178,9 +178,14 @@ class Character:
     def path(self, file):
         return char_file(self.name, file)
 
-    def get_np(self, file):
+    def get_np(self, file, readonly=True):
         file = self.path(file)
-        return numpy.load(file) if os.path.isfile(file) else None
+        if not os.path.isfile(file):
+            return None
+        result = numpy.load(file)
+        if readonly and isinstance(result, numpy.ndarray):
+            result.flags.writeable = False
+        return result
 
     def get_yaml(self, file, default=_empty_dict):
         if default is _empty_dict:
@@ -208,7 +213,8 @@ class Character:
     def blend_file(self):
         return self.path(self.char_file)
 
-    def get_basis(self):
+    @utils.lazyprop
+    def np_basis(self):
         return self.get_np("morphs/L1/%s.npy" % self.basis)
 
     def _parse_armature(self, data):

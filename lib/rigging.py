@@ -111,19 +111,26 @@ def vg_names(file):
         file = numpy.load(file)
     return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
 
-def vg_read(z):
-    if z is None:
-        return
-    if isinstance(z, str):
-        z = numpy.load(z)
-    names = vg_names(z)
-    i = 0
+def vg_read_npz(z):
     idx = z["idx"]
     weights = z["weights"]
-    for name, cnt in zip(names, z["cnt"]):
+    i = 0
+    for name, cnt in zip(vg_names(z), z["cnt"]):
         i2 = i+cnt
         yield name, idx[i:i2], weights[i:i2]
         i = i2
+
+def vg_read(z):
+    if z is None:
+        return ()
+    if isinstance(z, str):
+        return vg_read_npz(numpy.load(z))
+    elif hasattr(z, "__dict__"):
+        return vg_read_npz(z)
+    elif hasattr(z, "__next__"):
+        return z
+    else:
+        raise Exception("Invalid type for vg_read: %s", z)
 
 def char_weights_npz(obj, char):
     rig_type = obj.data.get("charmorph_rig_type")
@@ -145,9 +152,7 @@ def char_rig_vg_names(char, rig):
     return []
 
 def import_vg(obj, file, overwrite):
-    names = set()
     for name, idx, weights in vg_read(file):
-        names.add(name)
         if name in obj.vertex_groups:
             if overwrite:
                 obj.vertex_groups.remove(obj.vertex_groups[name])
@@ -156,8 +161,6 @@ def import_vg(obj, file, overwrite):
         vg = obj.vertex_groups.new(name=name)
         for i, weight in zip(idx, weights):
             vg.add([int(i)], weight, 'REPLACE')
-
-    return names
 
 def bb_prev_roll(bone):
     if bone.use_endroll_as_inroll:
@@ -257,13 +260,6 @@ class Rigger:
             for b in g.get("bones",""):
                 self.opts[b] = g_opts.copy()
 
-    def configure(self, conf, obj, verts):
-        if conf.joints:
-            self.joints_from_file(conf.joints, verts)
-        else:
-            self.joints_from_char(obj, verts)
-        self.set_opts(conf.bones)
-
     def get_opt(self, bone, opt):
         if self.opts or self.default_opts:
             bo = self.opts.get(bone.name)
@@ -305,7 +301,7 @@ class Rigger:
             bone = bone.parent
             attr = "tail"
         item = self.jdata.get("joint_%s_%s" % (bone.name, attr))
-        if not item or item[0] < 0.1:
+        if not item or item[0] < 1e-10:
             return None
         pos = item[1]/item[0]
         offs = self.get_opt(bone, "offs_" + attr)

@@ -166,7 +166,7 @@ class NumpyMorpher(morphing.Morpher):
     def __init__(self, obj):
         super().__init__(obj)
         self.basis = None
-        self.full_basis = self._get_L1_data(self.char.basis)
+        self.full_basis = self.char.np_basis
         if self.full_basis is None:
             self.full_basis = super().get_basis()
         self.morphed = None
@@ -177,15 +177,23 @@ class NumpyMorpher(morphing.Morpher):
         else:
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):
-            self.error = "Vertex count mismatch"
+            self.error = "Vertex count mismatch %d != %d" % (len(self.alt_topo_basis), len(obj.data.vertices))
+
+    def has_morphs(self):
+        return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed
 
     def _get_L1_data(self, name):
         if not name:
             return None
+        if name == self.char.basis:
+            return self.char.np_basis
+
         file = self.morphs_l1.get(name, "")
         if not os.path.isfile(file):
             return None
-        return numpy.load(file).astype(dtype=numpy.float64, casting="same_kind")
+        result = numpy.load(file)
+        result.flags.writable = False
+        return None
 
     def update_L1(self):
         self.basis = self._get_L1_data(self.L1)
@@ -239,7 +247,7 @@ class NumpyMorpher(morphing.Morpher):
             item = (npz["idx"], npz["delta"].astype(dtype=numpy.float64, casting="same_kind"))
             data[idx] = item
         if self.morphed is None:
-            self.morphed = self.basis.copy()
+            self.morphed = self.basis.astype(dtype=numpy.float64, casting="same_kind")
         self.morphed[item[0]] += item[1] * value
 
     def _do_all_morphs(self):
@@ -308,6 +316,8 @@ class NumpyMorpher(morphing.Morpher):
         return self.morphed - self.full_basis
 
     def get_final(self):
+        if not self.has_morphs():
+            return None
         if self.morphed is None:
             self._do_all_morphs()
         return self.morphed
