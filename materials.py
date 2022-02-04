@@ -60,7 +60,7 @@ def load_materials(obj, char):
     if materials_to_load:
         materials_to_load = list(materials_to_load)
         with bpy.data.libraries.load(char.path(char.material_lib)) as (_, data_to):
-            data_to.materials = materials_to_load
+            data_to.materials = materials_to_load.copy()
         material_dict = {}
         for i, mtl in enumerate(data_to.materials):
             material_dict[materials_to_load[i]] = mtl
