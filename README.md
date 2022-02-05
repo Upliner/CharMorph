@@ -25,6 +25,7 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 * Hairstyles
 * Realtime asset fitting with combined masks
 * Rigify support with full face rig
+* Alternative topology feature allows to apply morphs to completely different topology
 * Characters are created at 3D cursor location, not always at world origin
 * Performance is noticably better
 

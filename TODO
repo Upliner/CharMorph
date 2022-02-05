@@ -1,6 +1,9 @@
 General:
   - Proper context handling (use bpy.context only if really necessary)
+
+Character management:
   - Unzipper for character/asset packages
+  - Dependency analyser so you can delete characters without affecting other ones (may be tricky for textures)
 
 Performance:
   - Fast YAML library
@@ -14,19 +17,20 @@ Char creation:
   - Alternative topologies from library
 
 Morphing:
-  - Allow to mix L1 shapes?
   - Manual sculpting mode
+  - Shape rig morphing
+  - Allow to mix L1 shapes?
 
 Finalize:
   - Choice between materials displacement and displacement modifier
 
 Materials:
+  - Texture sets (4K/8K for Reom, maybe different resultions for Antonia too)
+  - Skin coloring for Antonia
   - Lip color control?
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
   - Texture layers?
-  - Skin coloring for Antonia
-  - Texture sets (4K/8K for Reom, maybe different resultions for Antonia too)
 
 Reom:
   - More symmetry fixes
@@ -43,32 +47,36 @@ Fitting:
   - MakeHuman asset support ?
   - Bounding box transform?
   - More fitting settings? (Thresholds and so on)
-  - Asset baking
-  - Get fitting base from library
+  - Asset baking?
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
 
 Assets:
-  - Use default underwear assets instead of censors -- done for Antonia
   - Asset-defined heels and morphs
+  - Use default underwear assets instead of censors -- done for Antonia
+  - Image browser for clothes and hair
 
 Rigging:
+  - Fix Reom's eyelashes
+  - Sliding joint influence control
+  - Generate rig from metarig
+  - Force bone bending angle
+  - Import MB-Lab and Antonia expression shape keys alongside with Rigify
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia
-  - Deformation cage support?
-  - Sliding joint influence control
-  - Force bone bending angle
+  - Relative rigger instead of current absolute one?
   - Head pivot shift
   - Live regular rig deform
-  - Import MB-Lab and Antonia expression shape keys alongside with Rigify
+  - Deformation cage support? (it seems that better fitting algorighm is needed for it)
   - Rigify morphing? Maybe even create an own Rigify-like rig system?
   - Blenrig?
 
 Editing:
-  - Simple MB-Lab import/export tools
-  - Export L2__Body_Size_min back to MB-Lab
+  - Automatic material converter (It took quite a while to convert Reom's materials)
   - Refine for XL recalc
+  - MB-Lab import/export tools
+  - Export L2__Body_Size_min back to MB-Lab
 
 Pose:
   - Fix glitchy capture poses

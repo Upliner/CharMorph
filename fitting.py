@@ -72,6 +72,7 @@ def get_fitting_shapekey(obj):
 class Fitter(fit_calc.MorpherFitCalculator):
     children: list = None
     _lock_cm = False
+    transfer_calc: fit_calc.ObjFitCalculator = None
 
     def __init__(self, morpher, obj):
         super().__init__(morpher, obj)
@@ -216,8 +217,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if asset is self.obj:
             raise Exception("Tried to self-transfer weights")
         if self.alt_topo:
-            calcer = fit_calc.ObjFitCalculator(self.obj)
-            calcer.bvh_cache = self.bvh_cache
+            if self.transfer_calc is None:
+                self. transfer_calc = fit_calc.ObjFitCalculator(self.obj)
+                self. transfer_calc.bvh_cache = self.bvh_cache
+            calcer = self.transfer_calc
         else:
             calcer = self
         calcer.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
@@ -264,8 +267,8 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def transfer_new_armature(self):
         for asset in self.get_assets():
             self.transfer_armature(asset)
-        if self.tmp_buf is not None:
-            self.tmp_buf = None
+        self.tmp_buf = None
+        self.transfer_calc = None
 
     def get_morphed_shape_key(self):
         k = self.obj.data.shape_keys
