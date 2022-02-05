@@ -152,6 +152,9 @@ class Character:
         if self.material_lib is None:
             self.material_lib = self.char_file
 
+        if not self.default_type and self.basis:
+            self.default_type = self.basis
+
         self.armature = self._parse_armature(self.armature)
 
     def __bool__(self):

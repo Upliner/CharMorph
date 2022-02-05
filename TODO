@@ -11,7 +11,7 @@ Art:
 
 Char creation:
   - Asset list in creation panel
-  - Alternative topologies selection
+  - Alternative topologies from library
 
 Morphing:
   - Allow to mix L1 shapes?
@@ -29,7 +29,6 @@ Materials:
   - Texture sets (4K/8K for Reom, maybe different resultions for Antonia too)
 
 Reom:
-  - Apply HopeFixes morph to the basis
   - More symmetry fixes
 
 Randomize:

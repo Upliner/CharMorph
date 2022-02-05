@@ -437,8 +437,9 @@ def get_morpher(obj) -> Morpher:
         return morphers.ShapeKeysMorpher(obj)
 
 def update_morpher(m: Morpher):
-    global morpher
+    global last_object, morpher
     morpher = m
+    last_object = m.obj
 
     ui = bpy.context.window_manager.charmorph_ui
 
@@ -639,7 +640,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.separator()
 
-        if len(m.categories) > 0:
+        if m.categories:
             self.layout.label(text="MORE MORPHS HERE:")
             self.layout.prop(ui, "morph_category")
             if ui.morph_category == "<None>":

@@ -99,7 +99,10 @@ class OpImport(bpy.types.Operator):
         if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
-        morphing.create_charmorphs(obj)
+        m = morphing.get_morpher(obj)
+        morphing.update_morpher(m)
+        m.update()
+
         context.view_layer.objects.active = obj
         ui.fitting_char = obj
 

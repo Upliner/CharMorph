@@ -194,7 +194,8 @@ class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         arr = numpy.empty(len(data)*3, dtype=numpy.float64 if ui.morph_float_precicion == "64" else numpy.float32)
         data.foreach_get("co", arr)
-        numpy.save(self.filepath, arr)
+        numpy.save(self.filepath, arr.reshape(-1, 3))
+        return {"FINISHED"}
 
 class MorphExporter:
     def __init__(self, context):
