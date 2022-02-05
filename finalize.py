@@ -22,7 +22,7 @@ import numpy, logging, traceback
 import bpy # pylint: disable=import-error
 
 from .lib import rigging, utils
-from . import morphing, fitting, rigify
+from . import morphing, fit_calc, fitting, rigify
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def add_rig(ui, verts, verts_alt):
         if conf.joints:
             joints = conf.joints
             if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = rigger.joints_from_file(fitting.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints), 1e-10), verts_alt)
+                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)

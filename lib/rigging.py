@@ -83,13 +83,13 @@ def get_vg_avg(char, verts=None):
         data_item[1] += co*gw.weight
     return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
 
-def vg_weights_to_arrays(obj, filter):
+def vg_weights_to_arrays(obj, name_filter):
     m = {}
     names = []
     idx = []
     weights = []
     for vg in obj.vertex_groups:
-        if filter(vg.name):
+        if name_filter(vg.name):
             m[vg.index] = len(idx)
             names.append(vg.name)
             idx.append([])

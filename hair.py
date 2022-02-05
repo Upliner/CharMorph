@@ -19,10 +19,10 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random, numpy
-import bpy, mathutils, bmesh # pylint: disable=import-error
+import bpy, bmesh # pylint: disable=import-error
 
 from .lib import charlib, utils
-from . import morphing, fitting
+from . import morphing, fit_calc, fitting
 
 logger = logging.getLogger(__name__)
 
@@ -143,57 +143,6 @@ def create_default_hair(context, obj, char, scalp):
         hair.vertex_group_length = vg
     return s
 
-epsilon = utils.epsilon
-
-def calc_weights(char, arr):
-    t = utils.Timer()
-
-    char_verts = utils.get_basis_verts(char)
-    char_faces = char.data.polygons
-
-    # calculate weights based on n nearest vertices
-    kd_char = utils.kdtree_from_verts(char_verts)
-    weights = [{idx: 1/(max(dist, epsilon)**2) for _, idx, dist in kd_char.find_n(co, 32)} for co in arr]
-
-    t.time("hair_kdtree")
-
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
-    for i, co in enumerate(arr):
-        loc, norm, idx, fdist = bvh_char.find_nearest(co)
-
-        fdist = max(fdist, epsilon)
-
-        if not loc or ((co-loc).dot(norm) <= 0 and fdist > fitting.dist_thresh):
-            continue
-
-        arr = bvh_char.find_nearest_range(co, fdist * 1.125)
-        if len(arr) > 5:
-            continue
-        if len(arr) > 1:
-            verts = set(char_faces[arr[0][2]].vertices)
-            fdist = arr[0][3]
-            for _, _, idx2, fdist2 in arr[1:]:
-                verts.difference_update(char_faces[idx2].vertices)
-                fdist = min(fdist, fdist2)
-            fdist = max(fdist, epsilon)
-        else:
-            verts = char_faces[idx].vertices
-
-        d = weights[i]
-        for vi in verts:
-            d[vi] = max(d.get(vi, 0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
-
-    t.time("hair_bvh")
-
-    for i, d in enumerate(weights):
-        thresh = max(d.values())/16
-        d = {k:v for k, v in d.items() if v > thresh}
-        total = sum(w for w in d.values())
-        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(-1, 1)/total)
-    t.time("hair_normalize")
-
-    return weights
-
 def invalidate_cache():
     obj_cache.clear()
 
@@ -228,7 +177,7 @@ def get_data(char, psys, new):
         invalidate_cache()
         return None, None, None
 
-    weights = calc_weights(char, data)
+    weights = fitting.get_fitter(char).calc_weights_hair(data)
     obj_cache[fit_id] = (cnts, data, weights)
     return cnts, data, weights
 
@@ -271,8 +220,7 @@ def fit_hair(char, obj, psys, idx, diff_arr, new):
     # Calculate hair points
     morphed = numpy.empty((len(data)+1, 3))
     marr = morphed[1:]
-    for i, w in enumerate(weights):
-        marr[i] = (diff_arr[w[0]] * w[1]).sum(0)
+    marr[:] = fit_calc.calc_fit(diff_arr, weights)
     marr += data
     marr.dot(npy_matrix, marr)
     marr += npy_translate

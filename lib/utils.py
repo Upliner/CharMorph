@@ -25,8 +25,6 @@ from . import yaml
 
 logger = logging.getLogger(__name__)
 
-epsilon = 1e-30
-
 class Timer:
     def __init__(self):
         self.t = time.monotonic()

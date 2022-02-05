@@ -86,7 +86,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, context):
         r = re.compile(context.window_manager.cmedit_ui.vg_regex)
-        names, idx, weights, cnt = rigging.vg_weights_to_arrays(context.object, lambda name: r.search(name))
+        names, idx, weights = rigging.vg_weights_to_arrays(context.object, r.search)
         cnt = [len(i) for i in idx]
 
         numpy.savez_compressed(self.filepath,

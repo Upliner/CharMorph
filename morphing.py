@@ -433,8 +433,7 @@ def get_morpher(obj) -> Morpher:
 
     if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
         return morphers.NumpyMorpher(obj)
-    else:
-        return morphers.ShapeKeysMorpher(obj)
+    return morphers.ShapeKeysMorpher(obj)
 
 def update_morpher(m: Morpher):
     global last_object, morpher
