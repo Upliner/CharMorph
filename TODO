@@ -39,9 +39,10 @@ Randomize:
   - Randomize eye and skin colors
 
 Hair:
+  - Import scalp vertex groups only when necessary so VG cleanup on finalize won't be necessary anymore
+  - Lichtso hair engine
   - Move hair.blend to char.blend?
   - Hair refitting after edit
-  - Lichtso hair engine
 
 Fitting:
   - MakeHuman asset support ?
