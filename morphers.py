@@ -20,6 +20,8 @@
 
 import os, numpy
 
+import mathutils # pylint: disable=import-error
+
 from .lib import charlib
 from . import morphing
 
@@ -50,10 +52,6 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 class ShapeKeysMorpher(morphing.Morpher):
-    def __init__(self, obj):
-        super().__init__(obj)
-        self.basis = None
-
     def update_L1(self):
         for name, sk in self.morphs_l1.items():
             sk.value = 1 if name == self.L1 else 0
@@ -163,13 +161,13 @@ class ShapeKeysMorpher(morphing.Morpher):
         return self.basis
 
 class NumpyMorpher(morphing.Morpher):
+    basis = None
+    morphed = None
     def __init__(self, obj):
         super().__init__(obj)
-        self.basis = None
         self.full_basis = self.char.np_basis
         if self.full_basis is None:
             self.full_basis = super().get_basis()
-        self.morphed = None
         self.counter = 1
         if obj.data.get("cm_alt_topo"):
             self.alt_topo = True
@@ -309,6 +307,11 @@ class NumpyMorpher(morphing.Morpher):
 
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
+
+    def _get_co(self, i):
+        if self.morphed is None:
+            self._do_all_morphs()
+        return mathutils.Vector(self.morphed[i])
 
     def get_diff(self):
         if self.morphed is None:

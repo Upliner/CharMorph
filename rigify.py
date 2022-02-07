@@ -116,7 +116,8 @@ def add_mixin(char, conf, rig):
 
     return (bones, joints)
 
-def do_rig(obj, conf, rigger):
+def do_rig(m: morphing.Morpher, conf: charlib.Armature, rigger: rigging.Rigger):
+    obj = m.obj
     metarig = bpy.context.object
     if hasattr(metarig.data, "rigify_generate_mode"):
         metarig.data.rigify_generate_mode = "new"
@@ -126,6 +127,7 @@ def do_rig(obj, conf, rigger):
     bpy.ops.pose.rigify_generate()
     t.time("rigify part")
     rig = bpy.context.object
+    sliding_joints = []
     try:
         bpy.data.armatures.remove(metarig.data)
         rig.name = obj.name + "_rig"
@@ -133,13 +135,12 @@ def do_rig(obj, conf, rigger):
         rigging.rigify_finalize(rig, obj)
         apply_rig_parameters(rig, conf)
 
-        char = charlib.obj_char(obj)
-        new_bones, new_joints = add_mixin(char, conf, rig)
+        new_bones, new_joints = add_mixin(m.char, conf, rig)
 
-        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(char.path("."), conf.tweaks)
+        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(m.char.path("."), conf.tweaks)
         for tweak in pre_tweaks:
             rigging.apply_tweak(rig, tweak)
-        if len(editmode_tweaks) > 0 or new_joints:
+        if len(editmode_tweaks) > 0 or len(conf.sliding_joints) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
             if new_joints:
@@ -150,10 +151,19 @@ def do_rig(obj, conf, rigger):
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(bpy.context, tweak)
 
+            for name, upper_bone, lower_bone, side in rigging.iterate_sliding_joints(conf.sliding_joints):
+                influence = m.sliding_joints.get("_".join((conf.name, name)), 0)
+                if influence > 0.0001:
+                    rigging.sliding_joint_create(bpy.context, upper_bone, lower_bone, side)
+                    sliding_joints.append((upper_bone, lower_bone, side, influence))
+
             bpy.ops.object.mode_set(mode="OBJECT")
 
         for tweak in post_tweaks:
             rigging.apply_tweak(rig, tweak)
+
+        for data in sliding_joints:
+            rigging.sliding_joint_finalize(rig, *data)
 
         # adjust bone constraints for mixin
         if new_bones:
@@ -204,11 +214,34 @@ class UIProps:
         default=True,
     )
 
-class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
-    bl_label = "Rigify settings"
+class FinalizeSubpanel(bpy.types.Panel):
     bl_parent_id = "CHARMORPH_PT_Finalize"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
+
+class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
+    bl_label = "Sliding joints"
+    bl_order = 1
+
+    @classmethod
+    def poll(cls, context):
+        m = morphing.morpher
+        if not m or not hasattr(context.window_manager, "charmorphs"):
+            return False
+        return next(m.sliding_joints_by_rig(context.window_manager.charmorph_ui.fin_rig), False)
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.label(text="You can adjust these values")
+        col.label(text="if joint bending looks strange")
+        col = self.layout.column()
+        for name in morphing.morpher.sliding_joints_by_rig(context.window_manager.charmorph_ui.fin_rig):
+            col.prop(context.window_manager.charmorphs, "sj_" + name,
+                slider=True, text=name[name.index("_")+1:])
+
+class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
+    bl_label = "Rigify settings"
+    bl_order = 2
 
     @classmethod
     def poll(cls, context):
@@ -222,4 +255,4 @@ class CHARMORPH_PT_RigifySettings(bpy.types.Panel):
         for prop in UIProps.__annotations__: # pylint: disable=no-member
             self.layout.prop(context.window_manager.charmorph_ui, prop)
 
-classes = [CHARMORPH_PT_RigifySettings]
+classes = [CHARMORPH_PT_SlidingJoints, CHARMORPH_PT_RigifySettings]

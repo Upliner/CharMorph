@@ -33,6 +33,7 @@ class OpReloadLib(bpy.types.Operator):
 
     def execute(self, _context): # pylint: disable=no-self-use
         charlib.load_library()
+        morphing.recreate_charmorphs()
         return {"FINISHED"}
 
 class OpImport(bpy.types.Operator):

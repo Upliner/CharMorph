@@ -116,10 +116,10 @@ class ObjFitCalculator(ObjGeometry):
         return result
 
     # calculate weights based on distance from asset vertices to character faces
-    def _calc_weights_direct(self, weights, asset_verts, get_coord):
+    def _calc_weights_direct(self, weights, asset_verts, get_co):
         bvh = self.subset_bvh
         for i, v in enumerate(asset_verts):
-            loc, _, idx, fdist = bvh.find_nearest(get_coord(v), dist_thresh)
+            loc, _, idx, fdist = bvh.find_nearest(get_co(v), dist_thresh)
             if loc is None:
                 continue
             face = self.subset_faces[idx]

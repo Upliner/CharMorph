@@ -160,6 +160,28 @@ class Character:
     def __bool__(self):
         return bool(self.name)
 
+    def path(self, file):
+        return char_file(self.name, file)
+
+    def blend_file(self):
+        return self.path(self.char_file)
+
+    def get_np(self, file, readonly=True):
+        file = self.path(file)
+        if not os.path.isfile(file):
+            return None
+        result = numpy.load(file)
+        if readonly and isinstance(result, numpy.ndarray):
+            result.flags.writeable = False
+        return result
+
+    def get_yaml(self, file, default=_empty_dict):
+        if default is _empty_dict:
+            default = {}
+        if not self:
+            return default
+        return parse_file(self.path(file), load_yaml, default)
+
     @utils.lazyprop
     def morphs_meta(self):
         return self.get_yaml("morphs_meta.yaml")
@@ -178,25 +200,6 @@ class Character:
     def presets(self):
         return self.load_presets("presets")
 
-    def path(self, file):
-        return char_file(self.name, file)
-
-    def get_np(self, file, readonly=True):
-        file = self.path(file)
-        if not os.path.isfile(file):
-            return None
-        result = numpy.load(file)
-        if readonly and isinstance(result, numpy.ndarray):
-            result.flags.writeable = False
-        return result
-
-    def get_yaml(self, file, default=_empty_dict):
-        if default is _empty_dict:
-            default = {}
-        if not self:
-            return default
-        return parse_file(self.path(file), load_yaml, default)
-
     def load_presets(self, path):
         path = self.path(path)
         if not os.path.isdir(path):
@@ -213,12 +216,13 @@ class Character:
             logger.error(e)
         return result
 
-    def blend_file(self):
-        return self.path(self.char_file)
-
     @utils.lazyprop
     def np_basis(self):
         return self.get_np("morphs/L1/%s.npy" % self.basis)
+
+    @utils.lazyprop
+    def sliding_joints(self):
+        return {"_".join((rig.name, jname)): j for rig in self.armature.values() for jname, j in rig.sliding_joints.items()}
 
     def _parse_armature(self, data):
         if isinstance(data, list):
@@ -267,6 +271,7 @@ class Armature:
     type = "regular"
     tweaks = []
     ik_limits = {}
+    sliding_joints = {}
     mixin = ""
     weights: str = None
     arp_reference_layer = 17
@@ -285,6 +290,8 @@ class Armature:
         for item in ("weights", "joints"):
             value = getattr(self, item, None)
             setattr(self, item, char.path(value) if value else char.path(os.path.join(item, name + ".npz")))
+
+        self.name = name
 
         if "bones" not in self.__dict__:
             self.bones = char.bones # Legacy

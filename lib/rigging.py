@@ -553,7 +553,8 @@ def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
     edit_bones = context.object.data.edit_bones
     if t == "rigify_sliding_joint":
-        sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], tweak["side"])
+        logger.warning("Legacy sliding_joint tweak is used")
+        sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"])
     elif t == "assign_parents":
         for k, v in tweak["bones"].items():
             if v:
@@ -579,7 +580,8 @@ def apply_editmode_tweak(context, tweak):
 
 def apply_tweak(rig, tweak):
     if tweak.get("tweak") == "rigify_sliding_joint":
-        sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], tweak["side"], tweak["influence"])
+        logger.warning("Legacy sliding_joint tweak is used")
+        sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"], tweak["influence"])
         return
 
     select = tweak.get("select")
@@ -626,6 +628,19 @@ def apply_tweak(rig, tweak):
             continue
         setattr(obj, attr, val)
 
+def iterate_sliding_joints_item(item):
+    side = item.get("side", "")
+    if isinstance(side, list):
+        for s in side:
+            yield item["upper_bone"], item["lower_bone"], s
+    else:
+        yield item["upper_bone"], item["lower_bone"], side
+
+def iterate_sliding_joints(data):
+    for k, v in data.items():
+        for result in iterate_sliding_joints_item(v):
+            yield k, *result
+
 # My implementation of sliding joints on top of rigify
 # Thanks to DanPro for the idea!
 # https://www.youtube.com/watch?v=c7csuy-09k8
@@ -633,27 +648,27 @@ def apply_tweak(rig, tweak):
 def sliding_joint_create(context, upper_bone, lower_bone, side):
     bones = context.object.data.edit_bones
 
-    mch_name = "MCH-{}.{}".format(lower_bone, side)
+    mch_name = "MCH-{}{}".format(lower_bone, side)
 
     if mch_name in bones:
         raise Exception("Seems to already have sliding joint")
 
-    tweak_name = "{}_tweak.{}".format(lower_bone, side)
+    tweak_name = "{}_tweak{}".format(lower_bone, side)
 
     bone = bones["MCH-" + tweak_name]
-    bone.name = "MCH-{}_tweak.{}.002".format(upper_bone, side)
+    bone.name = "MCH-{}_tweak{}.002".format(upper_bone, side)
 
     mch_size = bone.bbone_x
     mch_layer = bone.layers
 
     bone = bones[tweak_name]
-    bone.name = "{}_tweak.{}.002".format(upper_bone, side)
+    bone.name = "{}_tweak{}.002".format(upper_bone, side)
     tweak_tail = bone.tail
     tweak_layer = bone.layers
     tweak_size = bone.bbone_x
 
     bone = bones.new(mch_name)
-    bone.parent = bones["ORG-{}.{}".format(lower_bone, side)]
+    bone.parent = bones["ORG-{}{}".format(lower_bone, side)]
     bone.use_connect = True
     bone.use_deform = False
     bone.tail = bone.parent.head
@@ -664,7 +679,7 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     bone.bbone_z = bone.parent.bbone_z
     mch_bone = bone
 
-    bone = bones.new("MCH-{}_tweak.{}".format(lower_bone, side))
+    bone = bones.new("MCH-{}_tweak{}".format(lower_bone, side))
     bone.parent = mch_bone
     bone.use_connect = True
     bone.tail = tweak_tail
@@ -683,19 +698,19 @@ def sliding_joint_create(context, upper_bone, lower_bone, side):
     bone.bbone_x = tweak_size
     bone.bbone_z = tweak_size
 
-    lower_bone = bones["DEF-{}.{}".format(lower_bone, side)]
+    lower_bone = bones["DEF-{}{}".format(lower_bone, side)]
     lower_bone.use_connect = False
 
-    bone = bones["DEF-{}.{}.001".format(upper_bone, side)]
+    bone = bones["DEF-{}{}.001".format(upper_bone, side)]
     bone.bbone_handle_type_end = "TANGENT"
     bone.bbone_custom_handle_end = lower_bone
 
 def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
     bones = rig.pose.bones
 
-    mch_name = "MCH-{}.{}".format(lower_bone, side)
-    tweak_name = "{}_tweak.{}".format(lower_bone, side)
-    old_tweak = "{}_tweak.{}.002".format(upper_bone, side)
+    mch_name = "MCH-{}{}".format(lower_bone, side)
+    tweak_name = "{}_tweak{}".format(lower_bone, side)
+    old_tweak = "{}_tweak{}.002".format(upper_bone, side)
 
     obone = bones[old_tweak]
     bone = bones[tweak_name]
@@ -712,14 +727,14 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
 
     c = mch_bone.constraints.new("COPY_ROTATION")
     c.target = rig
-    c.subtarget = "ORG-{}.{}".format(lower_bone, side)
+    c.subtarget = "ORG-{}{}".format(lower_bone, side)
     c.use_y = False
     c.use_z = False
     c.influence = influence
     c.owner_space = "LOCAL"
     c.target_space = "LOCAL"
 
-    c = bones["MCH-{}_tweak.{}".format(lower_bone, side)].constraints.new("COPY_SCALE")
+    c = bones["MCH-{}_tweak{}".format(lower_bone, side)].constraints.new("COPY_SCALE")
     c.target = rig
     c.subtarget = "root"
     c.use_make_uniform = True
@@ -729,10 +744,10 @@ def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
             if c.type == "COPY_TRANSFORMS" and c.target == rig and c.subtarget == old_tweak:
                 c.subtarget = tweak_name
 
-    replace_tweak(bones["DEF-{}.{}".format(lower_bone, side)])
+    replace_tweak(bones["DEF-{}{}".format(lower_bone, side)])
     replace_tweak(bones["MCH-{}.001".format(tweak_name)])
 
     c = mch_bone.constraints.new("LIMIT_ROTATION")
     c.owner_space = "LOCAL"
     c.use_limit_x = True
-    c.max_x = 90
+    c.max_x = math.pi/2

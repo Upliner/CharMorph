@@ -22,7 +22,7 @@ import logging, re
 import bpy # pylint: disable=import-error
 
 from . import materials, fitting
-from .lib import charlib, utils
+from .lib import charlib, utils, rigging
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,10 @@ class Morpher:
     version = 0
     error = None
     alt_topo = False
+    rig_name = ""
+    rig = None
     categories = []
+    sliding_joints = {}
     L1_idx = 0
 
     presets = {}
@@ -136,12 +139,16 @@ class Morpher:
         self.L1 = self.get_L1()
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
         self.update_L1_idx()
-        if obj and obj.find_armature():
+        if self.obj:
+            self.rig = obj.find_armature()
+        if self.rig:
+            self.rig_name = self.rig.data.get("charmorph_rig_type","")
             self.error = "Character is rigged.\nLive rig deform is not supported"
 
     def __bool__(self):
         return self.obj is not None
 
+    # these methods are overriden in subclass
     @staticmethod
     def get_L1():
         return ""
@@ -152,14 +159,17 @@ class Morpher:
     def get_morphs_L2():
         pass
     @staticmethod
-    def prop_get(name):
+    def prop_get(_name):
         return 0
     @staticmethod
-    def prop_set_internal(name, value):
+    def prop_set_internal(_name, _value):
         pass
-
-    def has_morphs(self):
+    @staticmethod
+    def has_morphs():
         return False
+
+    def _get_co(self, i):
+        return self.obj.data.vertices[i].co
 
     def update_L1_idx(self):
         try:
@@ -191,12 +201,14 @@ class Morpher:
 
     def do_update(self):
         fitting.get_fitter(self).refit_all()
+        self._recalc_sliding_joints()
 
     def update(self):
         if self.upd_lock:
             return
         self.do_update()
 
+    # TODO: Use lazy props
     def get_basis(self):
         return utils.get_basis_numpy(self.obj)
 
@@ -289,12 +301,13 @@ class Morpher:
         return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
     def _calc_meta_abs_val(self, prop):
-        return sum(self._calc_meta_val(self.meta_dict()[meta_prop].get("morphs", {}).get(prop), val) for meta_prop, val in self.meta_prev.items())
+        return sum(self._calc_meta_val(self.meta_dict()[meta_prop].get("morphs", {}).get(prop), val)
+            for meta_prop, val in self.meta_prev.items())
 
     def meta_get(self, name):
         return self.obj.data.get("cmorph_meta_" + name, 0.0)
 
-    def meta_dict(self):
+    def meta_dict(self) -> dict:
         return self.char.morphs_meta
 
     def meta_prop(self, name, data):
@@ -362,16 +375,13 @@ class Morpher:
         self.update()
 
     def morph_prop(self, name, morph):
-        def setter(_, value):
-            if self.clamp:
-                value = max(min(value, morph.max), morph.min)
-            self.prop_set(name, value)
         return bpy.props.FloatProperty(
             name=name,
             soft_min=morph.min, soft_max=morph.max,
             precision=3,
             get=lambda _: self.prop_get(name),
-            set=setter)
+            set=lambda _, value: self.prop_set(name, max(min(value, morph.max), morph.min) if self.clamp else value)
+        )
 
     def get_presets(self):
         if not self.char:
@@ -394,30 +404,103 @@ class Morpher:
         self.get_morphs_L2()
         self.update_morph_categories()
         self.update_presets()
-        if not self.morphs_l2:
-            return
-
+        self._init_sliding_joints()
         self.meta_prev.clear()
 
-        propGroup = type(
-            "CharMorpher_Dyn_PropGroup",
-            (bpy.types.PropertyGroup,),
-            {
-                "__annotations__":
-                dict(
-                    [prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items() if v is not None] +
-                    [prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.meta_dict().items()]
-                    )
-            }
-        )
+        props = {}
+        if self.morphs_l2:
+            props.update(prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items() if v is not None)
+            props.update(prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.meta_dict().items())
+        if self.sliding_joints:
+            props.update(prefixed_prop("sj_", self.sliding_prop(k)) for k in self.sliding_joints.keys())
+        if not props:
+            return
 
+        propGroup = type("CharMorpher_Dyn_PropGroup",(bpy.types.PropertyGroup,), {"__annotations__": props})
         bpy.utils.register_class(propGroup)
-
         bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
             type=propGroup, options={"SKIP_SAVE"})
 
     def set_clamp(self, clamp):
         self.clamp = clamp
+
+    # Sliding joint calculation
+    def _calc_avg_dists(self, vert_pairs):
+        if not vert_pairs:
+            return 1
+        return sum((self._get_co(a)-self._get_co(b)).length for a, b in vert_pairs)/len(vert_pairs)
+
+    def _calc_sliding_influence(self, data):
+        result = data.get("influence")
+        if result is not None:
+            return result
+        calc = data["calc"]
+        if not calc:
+            return 0
+
+        if isinstance(calc, str):
+            calc = compile(calc, "","eval")
+
+        vals = {}
+        for k, v in data.items():
+            if k.startswith("verts_"):
+                vals[k] = self._calc_avg_dists(v)
+        try:
+            return eval(calc, {"__builtins__": None}, vals)
+        except Exception as e:
+            logger.error("bad calc: %s" % e)
+            return 0
+
+    def _recalc_sliding_joints(self):
+        for k, v in self.char.sliding_joints.items():
+            if k in self.sliding_joints and "calc" in v:
+                self.sliding_joints[k] = self._calc_sliding_influence(v)
+
+    def _init_sliding_joints(self):
+        if self.rig:
+            self.sliding_joints = {name: self._get_sliding_influence(name)
+                for name in self.char.sliding_joints
+                if name.startswith(self.rig_name + "_")
+            }
+        else:
+            self.sliding_joints = {k: self._calc_sliding_influence(v) for k,v in self.char.sliding_joints.items()}
+
+    # Sliding joint handling
+    def _iterate_sliding_constraints(self, name):
+        item = self.char.sliding_joints.get(name)
+        if not item:
+            return
+        for _, lower_bone, side in rigging.iterate_sliding_joints_item(item):
+            bone = self.rig.pose.bones.get("MCH-{}{}".format(lower_bone, side))
+            if not bone:
+                continue
+            c = bone.constraints
+            if not c or c[0].type != "COPY_ROTATION":
+                continue
+            yield c[0]
+
+    def _get_sliding_influence(self, name):
+        for c in self._iterate_sliding_constraints(name):
+            return c.influence
+
+    def set_sliding_influence(self, name, value):
+        self.sliding_joints[name] = value
+        if self.rig:
+            for c in self._iterate_sliding_constraints(name):
+                c.influence = value
+
+    def sliding_joints_by_rig(self, rig):
+        return (name for name in self.sliding_joints
+            if name.startswith(rig + "_"))
+
+    def sliding_prop(self, name):
+        return bpy.props.FloatProperty(
+            name=name,
+            min=0, soft_max = 0.2, max=1.0,
+            precision=3,
+            get=lambda _: self.sliding_joints.get(name, 0),
+            set=lambda _, value: self.set_sliding_influence(name, value)
+        )
 
 null_morpher = Morpher(None)
 null_morpher.lock()
@@ -455,6 +538,8 @@ def update_morpher(m: Morpher):
 
 def recreate_charmorphs():
     global morpher
+    if not morpher:
+        return
     morpher = get_morpher(morpher.obj)
     morpher.create_charmorphs_L2()
 
@@ -466,13 +551,7 @@ def create_charmorphs(obj):
     if morpher.obj == obj:
         return
 
-    new_morpher = get_morpher(obj)
-    if not new_morpher.has_morphs():
-        if new_morpher.char:
-            morpher = new_morpher
-        return
-
-    update_morpher(new_morpher)
+    update_morpher(get_morpher(obj))
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -515,7 +594,6 @@ class OpResetChar(bpy.types.Operator):
         obj = morpher.obj
         obj.data["cm_morpher"] = "ext"
         new_morpher = get_morpher(obj)
-        print(new_morpher)
         if new_morpher.error or not new_morpher.has_morphs():
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
@@ -592,7 +670,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 col.label(text=line)
             return
 
-        if not hasattr(context.window_manager, "charmorphs"):
+        if not hasattr(context.window_manager, "charmorphs") or not m.has_morphs():
             if m.char:
                 col = self.layout.column(align=True)
                 col.label(text="Object is detected as")

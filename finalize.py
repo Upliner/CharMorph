@@ -61,7 +61,7 @@ def delete_old_rig_with_assets(obj, rig):
     for asset in fitting.get_fitter(obj).get_assets():
         remove_armature_modifiers(asset)
 
-def add_rig(ui, verts, verts_alt):
+def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
     m = morphing.morpher
     obj = m.obj
     char = m.char
@@ -120,7 +120,7 @@ def add_rig(ui, verts, verts_alt):
                 utils.copy_transforms(rig, obj)
                 attach = False
             else:
-                rig = rigify.do_rig(obj, conf, rigger)
+                rig = rigify.do_rig(m, conf, rigger)
 
         if rig_type == "arp":
             if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
