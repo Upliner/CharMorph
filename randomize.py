@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import re, random, math
-import bpy
+import bpy # pylint: disable=import-error
 
 from . import morphing
 

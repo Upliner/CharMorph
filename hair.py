@@ -148,7 +148,7 @@ def invalidate_cache():
 
 def get_data(char, psys, new):
     if not psys.is_edited:
-        return None, None, None
+        return None, None, ()
     fit_id = psys.settings.get("charmorph_fit_id")
     if fit_id:
         data = obj_cache.get(fit_id)
@@ -156,18 +156,17 @@ def get_data(char, psys, new):
             return data
     else:
         if not new:
-            return None, None, None
-        psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+            return None, None, ()
+        psys.settings["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
 
     char_conf = charlib.obj_char(char)
     style = psys.settings.get("charmorph_hairstyle")
     if not char_conf or not style:
-        return None, None, None
-    try:
-        arr = numpy.load(char_conf.path("hairstyles/%s.npz" % style))
-    except Exception as e:
-        logger.error(str(e))
-        return None, None, None
+        return None, None, ()
+    arr = char_conf.get_np(f"hairstyles/{style}.npz")
+    if arr is None:
+        logger.error("Hairstyle npz file is not found")
+        return None, None, ()
 
     cnts = arr["cnt"]
     data = arr["data"].astype(dtype=numpy.float64, casting="same_kind")
@@ -175,7 +174,7 @@ def get_data(char, psys, new):
     if len(cnts) != len(psys.particles):
         logger.error("Mismatch between current hairsyle and .npz!")
         invalidate_cache()
-        return None, None, None
+        return None, None, ()
 
     weights = fitting.get_fitter(char).calc_weights_hair(data)
     obj_cache[fit_id] = (cnts, data, weights)
@@ -271,7 +270,7 @@ def make_scalp(obj, name):
         bm.free()
 
 def is_obstructive_modifier(m):
-    return m.type == "SUBSURF" or m.type == "MASK"
+    return m.type in ("SUBSURF", "MASK")
 
 # Temporarily disable all modifiers that can make vertex mapping impossible
 def disable_modifiers(obj):

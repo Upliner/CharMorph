@@ -44,7 +44,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_order = 5
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return bool(morphing.morpher)
 
     def draw(self, context):
@@ -86,11 +86,11 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return bool(morphing.morpher)
 
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
+    def execute(self, _):
+        with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
         return {"FINISHED"}
 
@@ -104,11 +104,11 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return bool(morphing.morpher)
 
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
+    def execute(self, _):
+        with open(self.filepath, "w", encoding="utf-8") as f:
             yaml.dump(morphs_to_data(), f, Dumper=utils.MyDumper)
         return {"FINISHED"}
 

@@ -105,7 +105,7 @@ def joint_list_extended(context, xmirror):
                 if bone2.layers != bone.layers:
                     continue
                 attr = "head" if jid&1 == 0 else "tail"
-                name = "joint_{}_{}".format(bone.name, attr)
+                name = f"joint_{bone.name}_{attr}"
                 if name not in result:
                     result[name] = (co3, bone2, attr)
     return result
@@ -202,7 +202,7 @@ class OpRigifyTweaks(bpy.types.Operator):
 
     def execute(self, context): # pylint: disable=no-self-use
         file = context.window_manager.cmedit_ui.rig_tweaks_file
-        with open(file) as f:
+        with open(file, "r", encoding="utf-8") as f:
             tweaks = yaml.safe_load(f)
         pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
         old_mode = context.mode
@@ -307,7 +307,7 @@ class OpSymmetrizeVG(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "MESH" and context.object.vertex_groups.active
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         obj = context.object
         vg = obj.vertex_groups.active
         idx = vg.index

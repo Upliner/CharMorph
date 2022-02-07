@@ -167,7 +167,7 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             if len(bd) > 0:
                 result[b.name] = bd
 
-        with open(self.filepath, "w") as f:
+        with open(self.filepath, "w", encoding="utf-8") as f:
             yaml.dump(result, f, Dumper=utils.MyDumper)
 
         return {"FINISHED"}
@@ -329,11 +329,13 @@ class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             else:
                 lst.append({"morph": name, "min": sk.slider_min, "max": sk.slider_max})
 
-        with open(self.filepath, "w") as f:
+        with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(lst, f)
 
         return {"FINISHED"}
 
+# There seems to be bug in pylint with numpy's nonzero function
+# pylint: disable=no-member
 def sel_arr(items):
     return numpy.array([x.select for x in items], dtype=bool).nonzero()[0].astype(dtype=numpy.uint16)
 

@@ -71,7 +71,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
 
     rig_type = conf.type
     if rig_type not in ("arp", "rigify", "regular"):
-        raise rigging.RigException("Rig type {} is not supported".format(rig_type))
+        raise rigging.RigException(f"Rig type {rig_type} is not supported")
 
     rig = utils.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
     if not rig:

@@ -106,7 +106,7 @@ def get_basis(data, use_morpher=True, use_char=True):
     return utils.verts_to_numpy(data.vertices)
 
 class Morph:
-    __slots = "min", "max", "data"
+    __slots__ = "min", "max", "data"
     def __init__(self, data, minval=0, maxval=0):
         self.min = minval
         self.max = maxval
@@ -439,7 +439,7 @@ class Morpher:
             return 0
 
         if isinstance(calc, str):
-            calc = compile(calc, "","eval")
+            calc = compile(calc, "", "eval")
             data["calc"] = calc
 
         vals = {}
@@ -449,7 +449,7 @@ class Morpher:
         try:
             return eval(calc, {"__builtins__": None}, vals)
         except Exception as e:
-            logger.error("bad calc: %s" % e)
+            logger.error("bad calc: %s", e)
             return 0
 
     def _recalc_sliding_joints(self):
@@ -472,7 +472,7 @@ class Morpher:
         if not item:
             return
         for _, lower_bone, side in rigging.iterate_sliding_joints_item(item):
-            bone = self.rig.pose.bones.get("MCH-{}{}".format(lower_bone, side))
+            bone = self.rig.pose.bones.get(f"MCH-{lower_bone}{side}")
             if not bone:
                 continue
             c = bone.constraints
@@ -658,7 +658,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_order = 2
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return morpher
 
     def draw(self, context):

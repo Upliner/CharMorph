@@ -25,7 +25,7 @@
 
 import math
 import bpy          # pylint: disable=import-error
-import rna_prop_ui  # pylint: disable=import-error, no-name-in-module
+import rna_prop_ui  # pylint: disable=import-error
 
 from . import morphing
 from .lib import charlib, rigging, utils

@@ -188,7 +188,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
             l.label(text="Data dir is not found. Importing is not available.")
             return
         if not charlib.chars:
-            l.label(text="No characters found at {}. Nothing to import.".format(charlib.data_dir))
+            l.label(text=f"No characters found at {charlib.data_dir}. Nothing to import.")
             return
         l.prop(ui, "base_model")
         char = charlib.chars.get(ui.base_model)

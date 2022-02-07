@@ -115,21 +115,25 @@ class ObjFitCalculator(ObjGeometry):
             self.bvh_cache[key] = result
         return result
 
+    # These functions are performance-critical so disable pylint too-many-locals error for them
+
     # calculate weights based on distance from asset vertices to character faces
-    def _calc_weights_direct(self, weights, asset_verts, get_co):
+    def _calc_weights_direct(self, weights, asset_verts, get_co): # pylint: disable=too-many-locals
+        verts = self.verts
+        faces = self.subset_faces
         bvh = self.subset_bvh
         for i, v in enumerate(asset_verts):
             loc, _, idx, fdist = bvh.find_nearest(get_co(v), dist_thresh)
             if loc is None:
                 continue
-            face = self.subset_faces[idx]
+            face = faces[idx]
             d = weights[i]
             fdist = max(fdist ** 2, epsilon)
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(self.verts[face].tolist(), loc)):
+            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
                 d[vi] = max(d.get(vi, 0), bw/fdist)
 
     # calculate weights based on distance from character vertices to assset faces
-    def _calc_weights_reverse(self, weights, asset):
+    def _calc_weights_reverse(self, weights, asset): # pylint: disable=too-many-locals
         verts = asset.data.vertices
         faces = asset.data.polygons
         bvh = self.get_bvh(asset)

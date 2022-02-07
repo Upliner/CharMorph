@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, re
-import bpy
+import bpy # pylint: disable=import-error
 
 from mathutils import Matrix, Vector # pylint: disable=import-error
 
@@ -68,9 +68,9 @@ for side in ["L", "R"]:
     bone_map["hand_" + side] = ("hand_fk." + side, flip_x_z[side])
     for i in range(1, 4):
         is_master = "_master" if i == 1 else ""
-        bone_map["thumb0%d_%s" % (i, side)] = ("thumb.0%d%s.%s" % (i, is_master, side), m2)
+        bone_map[f"thumb0{i}_{side}"] = (f"thumb.0{i}{is_master}.{side}", m2)
         for finger in ["index", "middle", "ring", "pinky"]:
-            bone_map["%s0%d_%s" % (finger, i, side)] = ("f_%s.0%d%s.%s" % (finger, i, is_master, side), m2)
+            bone_map[f"{finger}0{i}_{side}"] = (f"f_{finger}.0{i}{is_master}.{side}", m2)
 
 # Different rigify versions use different parameters for IK2FK so we need to scan its modules
 
@@ -87,14 +87,14 @@ def scan_rigify_modules():
         rig_id = m.group(1)
         limbs = []
         s = s[m.end(0)+1:]
-        re_operator = re.compile(r"^( *)props = [0-9a-z_]*\.operator\('pose.rigify_limb_ik2fk_%s'" % rig_id, re.MULTILINE)
+        re_operator = re.compile(rf"^( *)props = [0-9a-z_]*\.operator\('pose.rigify_limb_ik2fk_{rig_id}'", re.MULTILINE)
 
         while True:
             m = re_operator.search(s)
             if not m:
                 break
             indent = m.group(1)
-            re_prop = re.compile(r"%sprops.([0-9a-z_]*) = '([^']*)'$" % indent)
+            re_prop = re.compile(rf"{indent}props.([0-9a-z_]*) = '([^']*)'$")
             props = {}
             while True:
                 s = s[m.end(0):]
@@ -125,7 +125,7 @@ def apply_pose(ui, context):
     rig.pose.bones["torso"]["head_follow"] = 1.0
     for side in ["L", "R"]:
         for limb in ["upper_arm", "thigh"]:
-            bone = rig.pose.bones["{}_parent.{}".format(limb, side)]
+            bone = rig.pose.bones[f"{limb}_parent.{side}"]
             bone["fk_limb_follow"] = 0.0
             ik_fk[bone.name] = bone.get("IK_FK", 1.0)
             bone["IK_FK"] = 1.0

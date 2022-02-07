@@ -36,7 +36,7 @@ def masking_enabled(asset):
     return utils.is_true(asset.data.get("charmorph_fit_mask", True))
 
 def mask_name(asset):
-    return "cm_mask_{}_{}".format(asset.name, asset.data.get("charmorph_fit_id", "xxx")[:3])
+    return f"cm_mask_{asset.name}_{asset.data.get('charmorph_fit_id', 'xxx')[:3]}"
 
 def update_bbox(bbox_min, bbox_max, obj):
     for v in obj.bound_box:
@@ -193,7 +193,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             return 0
         asset = asset.data
         if "charmorph_fit_id" not in asset:
-            asset["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+            asset["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
         return asset["charmorph_fit_id"]
 
     def get_obj_cache(self, asset):

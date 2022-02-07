@@ -98,14 +98,14 @@ def load_texmap(char):
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
     for k, v in char_texes.items():
-        result[k] = (v[0], "charmorph-{}-{}".format(char, k), v[1])
+        result[k] = (v[0], f"charmorph-{char}-{k}", v[1])
     return result
 
 def tex_try_names(char, names):
     for name in names:
         if name.startswith("tex_"):
             name = name[4:]
-        yield "charmorph-{}-{}".format(char, name)
+        yield f"charmorph-{char}-{name}"
         yield "charmorph--" + name
 
 def apply_tex_settings(img, settings):

@@ -30,7 +30,7 @@ def get_combo_item_value(arr_idx, values):
 
 def enum_combo_names(name):
     nameParts = name.split("_")
-    return (nameParts[0]+"_"+name for name in nameParts[1].split("-"))
+    return (f"{nameParts[0]}_{name}" for name in nameParts[1].split("-"))
 
 class ShapeKeysComboMorpher:
     def __init__(self, arr, dims):
@@ -60,7 +60,7 @@ class ShapeKeysMorpher(morphing.Morpher):
         if not self.obj.data.shape_keys:
             return
         for sk in self.obj.data.shape_keys.key_blocks:
-            if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith("L2_{}_".format(self.L1)):
+            if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith(f"L2_{self.L1}_"):
                 sk.value = 0
 
     # scan object shape keys and convert them to dictionary
@@ -105,7 +105,7 @@ class ShapeKeysMorpher(morphing.Morpher):
         load_shape_keys_by_prefix("L2__")
 
         if len(self.L1) > 0:
-            load_shape_keys_by_prefix("L2_%s_" % self.L1)
+            load_shape_keys_by_prefix(f"L2_{self.L1}_")
 
         for k, v in self.morphs_combo.items():
             names = list(enum_combo_names(k))
@@ -155,11 +155,6 @@ class ShapeKeysMorpher(morphing.Morpher):
         skmin, skmax = tuple(morph.data)
         return (0 if skmax is None else skmax.value) - (0 if skmin is None else skmin.value)
 
-    def get_basis(self):
-        if self.basis is None:
-            self.basis = super().get_basis()
-        return self.basis
-
 class NumpyMorpher(morphing.Morpher):
     basis = None
     morphed = None
@@ -175,7 +170,7 @@ class NumpyMorpher(morphing.Morpher):
         else:
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):
-            self.error = "Vertex count mismatch %d != %d" % (len(self.alt_topo_basis), len(obj.data.vertices))
+            self.error = f"Vertex count mismatch {len(self.alt_topo_basis)} != {len(obj.data.vertices)}"
 
     def has_morphs(self):
         return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed
@@ -218,7 +213,7 @@ class NumpyMorpher(morphing.Morpher):
         path = self.char.path(path)
         for morph in charlib.list_morph_dir(path):
             if morph.get("separator"):
-                self.morphs_l2["\0\0\0%d" % self.counter] = None
+                self.morphs_l2[f"\0\0\0{self.counter}"] = None
                 self.counter += 1
             else:
                 self.add_morph_l2(morph["morph"], os.path.join(path, morph["morph"] + ".npz"), morph.get("min", 0), morph.get("max", 1))

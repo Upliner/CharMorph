@@ -42,7 +42,7 @@ owner = object()
 
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CharMorph"
-    bl_label = "CharMorph {0}.{1}.{2}".format(bl_info["version"][0], bl_info["version"][1], bl_info["version"][2])
+    bl_label = "CharMorph " + ".".join(str(item) for item in bl_info["version"])
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"

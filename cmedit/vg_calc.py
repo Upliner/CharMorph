@@ -121,8 +121,6 @@ def calc_group_weights(groups, co):
             coords.append(co2)
     return list(zip(groups2, barycentric_weight_calc(coords, co)))
 
-# pylint doesn't understand lazy properties so disable these errors for class
-# pylint: disable=no-member
 class VGCalculator:
     def __init__(self, rig, char, ui):
         self.rig = rig
@@ -399,9 +397,9 @@ class VGCalculator:
 
         bone = self.cur_bone
         if self.cur_attr == "head":
-            groups = [get_head(bone.parent), vgroups.get("joint_%s_tail" % bone.name)]
+            groups = [get_head(bone.parent), vgroups.get(f"joint_{bone.name}_tail")]
         else:
-            groups = [get_head(bone)] + [vgroups.get("joint_%s_tail" % child.name) for child in bone.children]
+            groups = [get_head(bone)] + [vgroups.get(f"joint_{child.name}_tail") for child in bone.children]
 
         groups = (g for g in groups if g is not None)
         if self.ui.vg_calc == "NW":
@@ -440,10 +438,10 @@ class VGCalculator:
                 continue
             dist = (co-co2).length
             if dist < mindist and bone != self.cur_bone and dist < (bone.tail-bone.head).length/2:
-                new_a = vgroups.get("joint_%s_head" % bone.name)
+                new_a = vgroups.get(f"joint_{bone.name}_head")
                 if new_a is None and bone.parent is not None:
-                    new_a = vgroups.get("joint_%s_tail" % bone.parent.name)
-                new_b = vgroups.get("joint_%s_tail" % bone.name)
+                    new_a = vgroups.get(f"joint_{bone.parent.name}_tail")
+                new_b = vgroups.get(f"joint_{bone.name}_tail")
                 if new_a is not None and new_b is not None:
                     mindist = dist
                     a = new_a
