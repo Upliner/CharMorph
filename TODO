@@ -60,8 +60,9 @@ Assets:
 
 Rigging:
   - Fix Reom's eyelashes
-  - Generate rig from metarig
   - Force bone bending angle
+  - Generate rig from metarig
+  - Use VertexWeightProximity for folding knees, elbows and belly
   - Import MB-Lab and Antonia expression shape keys alongside with Rigify
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
