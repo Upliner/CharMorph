@@ -440,6 +440,7 @@ class Morpher:
 
         if isinstance(calc, str):
             calc = compile(calc, "","eval")
+            data["calc"] = calc
 
         vals = {}
         for k, v in data.items():
