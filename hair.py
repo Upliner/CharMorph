@@ -220,7 +220,7 @@ def fit_hair(char, obj, psys, idx, diff_arr, new):
     # Calculate hair points
     morphed = numpy.empty((len(data)+1, 3))
     marr = morphed[1:]
-    marr[:] = fit_calc.calc_fit(diff_arr, weights)
+    marr[:] = fit_calc.calc_fit(diff_arr, *weights)
     marr += data
     marr.dot(npy_matrix, marr)
     marr += npy_translate

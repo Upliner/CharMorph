@@ -1,5 +1,6 @@
 General:
   - Proper context handling (use bpy.context only if really necessary)
+  - Split finalize panel to apply and rig panels
 
 Character management:
   - Unzipper for character/asset packages
@@ -59,7 +60,6 @@ Assets:
 
 Rigging:
   - Fix Reom's eyelashes
-  - Sliding joint influence control
   - Generate rig from metarig
   - Force bone bending angle
   - Import MB-Lab and Antonia expression shape keys alongside with Rigify

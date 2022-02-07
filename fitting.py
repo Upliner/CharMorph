@@ -303,7 +303,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             #logger.debug("fit: %s", asset.name)
             basis, data = self.get_obj_cache(asset)
 
-            verts = fit_calc.calc_fit(diff_arr, data)
+            verts = fit_calc.calc_fit(diff_arr, *data)
             verts += basis
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()

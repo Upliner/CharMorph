@@ -49,7 +49,8 @@ def weights_convert(weights, cut=True):
 
 def weights_normalize(positions, wresult):
     cnt = numpy.empty((len(positions)), dtype=numpy.uint32)
-    cnt[:-1] = positions[1:]-positions[:-1]
+    cnt[:-1] = positions[1:]
+    cnt[:-1] -= positions[:-1]
     cnt[-1]=len(wresult)-positions[-1]
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
 
@@ -57,8 +58,7 @@ def weights_normalize(positions, wresult):
 def calc_weights_kd(kd, verts, get_co, _epsilon, n):
     return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(get_co(v), n)} for v in verts]
 
-def calc_fit(arr, data):
-    positions, idx, weights = data
+def calc_fit(arr, positions, idx, weights):
     return numpy.add.reduceat(arr[idx] * weights, positions)
 
 class ObjGeometry:
@@ -177,7 +177,7 @@ class ObjFitCalculator(ObjGeometry):
         for name, vg_idx, vg_weights in rigging.vg_read(vg_data):
             self.tmp_buf.fill(0)
             self.tmp_buf.put(vg_idx, vg_weights)
-            yield name, calc_fit(self.tmp_buf, (positions, fit_idx, fit_weights))
+            yield name, calc_fit(self.tmp_buf, positions, fit_idx, fit_weights)
 
     def transfer_weights_get(self, asset, vg_data, cutoff=1e-4):
         for name, weights in self._transfer_weights_iter_arrays(asset, vg_data):
