@@ -113,6 +113,16 @@ def apply_tex_settings(img, settings):
         return
     img.colorspace_settings.name = settings # Currently only colorspace settings are supported
 
+def texture_max_res():
+    prefs = utils.get_prefs()
+    if not prefs:
+        return 1024 * 1024
+
+    val = prefs.preferences.tex_res
+    if val == "UL":
+        return 1024 * 1024
+    return 1024 * int(val[0])
+
 def load_textures(obj, char):
     if not obj.data.materials:
         return
@@ -156,6 +166,11 @@ def load_textures(obj, char):
                     apply_tex_settings(img, img_tuple[2])
                     if not img.has_data:
                         img.reload()
+                    max_res = texture_max_res()
+                    width, height = img.size
+                    if width > max_res or height > max_res:
+                        logger.debug("resizing image %s", img_tuple[0])
+                        img.scale(min(width, max_res), min(height, max_res))
 
             if img is not None:
                 node.image = img

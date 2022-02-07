@@ -124,8 +124,11 @@ def is_true(value):
         return value > 0
     return False
 
+def get_prefs():
+    return bpy.context.preferences.addons.get("CharMorph")
+
 def is_adult_mode():
-    prefs = bpy.context.preferences.addons.get("CharMorph")
+    prefs = get_prefs()
     if not prefs:
         return False
     return prefs.preferences.adult_mode

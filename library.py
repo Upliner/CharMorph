@@ -201,6 +201,9 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
             c.alignment = "LEFT"
             c.label(text=char.author)
             c.label(text=char.license)
+        prefs = context.preferences.addons.get("CharMorph")
+        if prefs:
+            l.prop(prefs.preferences, "tex_res")
         l.prop(ui, "material_mode")
         l.prop(ui, "import_cursor_z")
         c = l.column()

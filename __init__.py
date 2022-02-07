@@ -58,9 +58,16 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
         name="Adult mode",
         description="No censors, enable adult assets (genitails, pubic hair)",
     )
+    tex_res: bpy.props.EnumProperty(
+        name="Texture res",
+        description="Limit texture resolution to avoid memory overflow",
+        default="4K",
+        items=[("1K", "1K", ""), ("2K", "2K", ""), ("4K", "4K", ""), ("UL", "Unlimited", "")]
+    )
 
     def draw(self, _):
         self.layout.prop(self, "adult_mode")
+        self.layout.prop(self, "tex_res")
 
 def on_select_object():
     if morphing.bad_object():

@@ -227,13 +227,17 @@ class Morpher:
 
     def add_morph_l2(self, name, data, minval = 0, maxval = 1):
         nameParts = name.split("_")
-        if len(nameParts) != 3 or ("min" not in nameParts[2] and "max" not in nameParts[2]):
+
+        signIdx = -1
+        if len(nameParts) == 3:
+            signArr = nameParts[2].split("-")
+            signIdx = convertSigns(signArr)
+
+        if signIdx < 0:
             self.morphs_l2[name] = Morph([data], minval, maxval)
             return
 
         names = nameParts[1].split("-")
-        signArr = nameParts[2].split("-")
-        signIdx = convertSigns(signArr)
 
         if len(names) == 0 or len(names) != len(signArr):
             logger.error("Invalid L2 morph name: %s, skipping", name)
@@ -396,7 +400,7 @@ class Morpher:
 
     def update_morph_categories(self):
         if not self.char.no_morph_categories:
-            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph) for morph in self.morphs_l2))]
+            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph) for morph, val in self.morphs_l2.items() if val is not None))]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
@@ -526,8 +530,11 @@ def update_morpher(m: Morpher):
 
     ui = bpy.context.window_manager.charmorph_ui
 
-    if m.char.default_armature and ui.fin_rig not in m.char.armature:
-        ui.fin_rig = m.char.default_armature
+    if ui.fin_rig not in m.char.armature:
+        if m.char.default_armature:
+            ui.fin_rig = m.char.default_armature
+        else:
+            ui.fin_rig = "-"
 
     if not m.L1 and m.char.default_type:
         m.set_L1(m.char.default_type)

@@ -420,9 +420,10 @@ class OpUnrig(bpy.types.Operator):
 
 def get_rigs(_, context):
     char = morphing.get_obj_char(context)[1]
-    if not char:
-        return []
-    return [("-", "<None>", "Don't generate rig")] + [(name, rig.title, "") for name, rig in char.armature.items()]
+    result = [("-", "<None>", "Don't generate rig")]
+    if char:
+        result.extend((name, rig.title, "") for name, rig in char.armature.items())
+    return result
 
 class UIProps:
     fin_morph: bpy.props.EnumProperty(
