@@ -63,8 +63,6 @@ def load_yaml(data):
 def load_data_dir(path, target_ext):
     result = {}
     if not os.path.isdir(path):
-        if path:
-            logger.debug("path is not found: %s", path)
         return result
     for file in os.listdir(path):
         name, ext = os.path.splitext(file)
@@ -75,8 +73,6 @@ def load_data_dir(path, target_ext):
 def load_json_dir(path):
     result = {}
     if not os.path.isdir(path):
-        if path:
-            logger.debug("path is not found: %s", path)
         return result
     for file in os.listdir(path):
         name, ext = os.path.splitext(file)
@@ -125,6 +121,7 @@ class Character:
     default_type = ""
     default_armature = ""
     default_hair_length = 0.1
+    default_tex_set = ""
     recurse_materials = False
     armature = {}
     armature_defaults = {}
@@ -135,19 +132,12 @@ class Character:
     default_assets = []
     underwear = []
     types = {}
-    assets = {}
-    poses = {}
-    alt_topos = {}
 
     def __init__(self, name):
         self.title = name
         self.name = name
         self.__dict__.update(self.get_yaml("config.yaml"))
         self.name = name
-        if name:
-            self.assets = load_data_dir(self.path("assets"), ".blend")
-            self.poses = load_json_dir(self.path("poses"))
-            self.alt_topos = load_data_dir(self.path("morphs/alt_topo"), ".npy")
 
         if self.material_lib is None:
             self.material_lib = self.char_file
@@ -195,6 +185,28 @@ class Character:
         npy = self.get_np("faces.npy")
         # Use regular python array instead of numpy for compatibility with BVHTree
         return None if npy is None else npy.tolist()
+
+    @utils.lazyprop
+    def assets(self):
+        return load_data_dir(self.path("assets"), ".blend")
+
+    @utils.lazyprop
+    def alt_topos(self):
+        return load_data_dir(self.path("morphs/alt_topo"), ".npy")
+
+    @utils.lazyprop
+    def poses(self):
+        return load_json_dir(self.path("poses"))
+
+    @utils.lazyprop
+    def texture_sets(self):
+        path = self.path("textures")
+        if os.path.isdir(path):
+            result = [item for item in os.listdir(path) if os.path.isdir(os.path.join(path, item))]
+            if result:
+                result.sort()
+                return result
+        return ["/"]
 
     @utils.lazyprop
     def presets(self):

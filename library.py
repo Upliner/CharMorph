@@ -126,10 +126,21 @@ class OpImport(bpy.types.Operator):
 
         return {"FINISHED"}
 
+def char_default_tex_set(char):
+    if not char:
+        return "/"
+    if not char.default_tex_set:
+        return char.texture_sets[0]
+    return char.default_tex_set
+
+def update_base_model(ui, _):
+    ui.tex_set = char_default_tex_set(charlib.chars.get(ui.base_model))
+
 class UIProps:
     base_model: bpy.props.EnumProperty(
         name="Base",
-        items=lambda ui, context: [(name, char.title, char.description) for name, char in charlib.chars.items()],
+        items=lambda _ui, _: [(name, char.title, char.description) for name, char in charlib.chars.items()],
+        update=update_base_model,
         description="Choose a base model")
     material_mode: bpy.props.EnumProperty(
         name="Materials",
@@ -140,12 +151,27 @@ class UIProps:
             ("TS", "Shared textures only", "Use same texture for all characters"),
             ("MS", "Shared", "Use same materials for all characters")]
     )
-    import_cursor_z: bpy.props.BoolProperty(
-        name="Use Z cursor rotation", default=True,
-        description="Take 3D cursor Z rotation into account when creating the character")
+    #TODO: copy materials from custom object
     material_local: bpy.props.BoolProperty(
         name="Use local materials", default=True,
         description="Use local copies of materials for faster loading")
+    tex_set: bpy.props.EnumProperty(
+        name="Texture set",
+        description="Select texture set for the character",
+        items=lambda ui, _:
+            [(name, "<Default>" if name == "/" else name, "")
+                for name in charlib.chars.get(ui.base_model, charlib.empty_char).texture_sets
+            ],
+    )
+    tex_downscale: bpy.props.EnumProperty(
+        name="Downscale textures",
+        description="Downscale large textures to avoid memory overflows",
+        default="UL",
+        items=[("1K", "1K", ""), ("2K", "2K", ""), ("4K", "4K", ""), ("UL", "No limit", "")]
+    )
+    import_cursor_z: bpy.props.BoolProperty(
+        name="Use Z cursor rotation", default=True,
+        description="Take 3D cursor Z rotation into account when creating the character")
     use_sk: bpy.props.BoolProperty(
         name="Use shape keys for morphing", default=False,
         description="Use shape keys during morphing (should be on if you plan to resume morphing later, maybe with other versions of CharMorph)")
@@ -195,16 +221,18 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if char:
             r = l.row()
             c = r.column()
+            c.alignment = "RIGHT"
+            c.ui_units_x=2.5
             c.label(text="Author:")
             c.label(text="License:")
             c = r.column()
-            c.alignment = "LEFT"
             c.label(text=char.author)
             c.label(text=char.license)
-        prefs = context.preferences.addons.get("CharMorph")
-        if prefs:
-            l.prop(prefs.preferences, "tex_res")
+
         l.prop(ui, "material_mode")
+        l.prop(ui, "material_local")
+        l.prop(ui, "tex_set")
+        l.prop(ui, "tex_downscale")
         l.prop(ui, "import_cursor_z")
         c = l.column()
         c.prop(ui, "use_sk")

@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 last_object = None
 
 sep_re = re.compile(r"[ _-]")
+eval_unsafe = re.compile(r"__|[:;,({'\"\[]")
 
 def morph_category_name(name):
     m = sep_re.search(name)
@@ -443,6 +444,10 @@ class Morpher:
             return 0
 
         if isinstance(calc, str):
+            # Check for eval safety. Attacks like 9**9**9 are still possible, but quite useless
+            if eval_unsafe.search(calc):
+                logger.error("bad calc: ", calc)
+                return 0
             calc = compile(calc, "", "eval")
             data["calc"] = calc
 

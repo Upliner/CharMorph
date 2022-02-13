@@ -73,10 +73,11 @@ def load_materials(obj, char):
                 obj.data.materials.pop(index=i)
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(path):
+def load_texdir(path, settings:dict={}):
     if not os.path.exists(path):
         return {}
-    settings = charlib.parse_file(os.path.join(path, "settings.yaml"), charlib.load_yaml, {})
+    settings = settings.copy()
+    settings.update(charlib.parse_file(os.path.join(path, "settings.yaml"), charlib.load_yaml, {}))
     default_setting = settings.get("*")
 
     result = {}
@@ -88,23 +89,32 @@ def load_texdir(path):
         if name in result:
             logger.error("different extensions for texture %s at %s", name, path)
         result[name] = (full_path, settings.get(name, default_setting))
-    return result
+
+    return result, settings
 
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
-def load_texmap(char):
+def load_texmap(char, tex_set):
     result = {}
-    char_texes = load_texdir(charlib.char_file(char, "textures"))
-    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures")).items():
+    char_texes, settings = load_texdir(charlib.char_file(char, "textures"))
+
+    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures"))[0].items():
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
+
     for k, v in char_texes.items():
         result[k] = (v[0], f"charmorph-{char}-{k}", v[1])
+
+    if tex_set and tex_set != "/":
+        for k, v in load_texdir(charlib.char_file(char, os.path.join("textures", tex_set)), settings)[0].items():
+            result[k] = (v[0], f"charmorph-{char}-{tex_set}-{k}", v[1])
     return result
 
-def tex_try_names(char, names):
+def tex_try_names(char, tex_set, names):
     for name in names:
         if name.startswith("tex_"):
             name = name[4:]
+        if tex_set and tex_set != "/":
+            yield f"charmorph-{char}-{tex_set}-{name}"
         yield f"charmorph-{char}-{name}"
         yield "charmorph--" + name
 
@@ -113,12 +123,8 @@ def apply_tex_settings(img, settings):
         return
     img.colorspace_settings.name = settings # Currently only colorspace settings are supported
 
-def texture_max_res():
-    prefs = utils.get_prefs()
-    if not prefs:
-        return 1024 * 1024
-
-    val = prefs.preferences.tex_res
+def texture_max_res(ui):
+    val = ui.tex_downscale
     if val == "UL":
         return 1024 * 1024
     return 1024 * int(val[0])
@@ -142,14 +148,14 @@ def load_textures(obj, char):
                 continue
             img = None
             if ui.material_local or ui.material_mode in ["MS", "TS"]:
-                for name in tex_try_names(char.name, [node.name, node.label]):
+                for name in tex_try_names(char.name, ui.tex_set, [node.name, node.label]):
                     img = bpy.data.images.get(name)
                     if img is not None:
                         break
 
             if img is None:
                 if texmap is None:
-                    texmap = load_texmap(char.name)
+                    texmap = load_texmap(char.name, ui.tex_set)
 
                 img_tuple = None
                 for name in [node.name, node.label]:
@@ -166,7 +172,7 @@ def load_textures(obj, char):
                     apply_tex_settings(img, img_tuple[2])
                     if not img.has_data:
                         img.reload()
-                    max_res = texture_max_res()
+                    max_res = texture_max_res(ui)
                     width, height = img.size
                     if width > max_res or height > max_res:
                         logger.debug("resizing image %s", img_tuple[0])
