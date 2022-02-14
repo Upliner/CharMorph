@@ -116,6 +116,7 @@ class Character:
     basis = ""
     no_morph_categories = False
     custom_morph_order = False
+    force_hair_scalp = False
     randomize_incl_regex = None
     randomize_excl_regex = None
     default_type = ""
@@ -132,6 +133,10 @@ class Character:
     default_assets = []
     underwear = []
     types = {}
+    hair_library = None
+    hair_obj = None
+    hair_shrinkwrap = False
+    hair_shrinkwrap_offset = 0.0002
 
     def __init__(self, name):
         self.title = name

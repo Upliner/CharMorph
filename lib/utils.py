@@ -133,6 +133,15 @@ def is_adult_mode():
         return False
     return prefs.preferences.adult_mode
 
+def reposition_modifier(obj, i):
+    override = {"object": obj}
+    pos = len(obj.modifiers)-1
+    name = obj.modifiers[pos].name
+
+    for _ in range(pos-i):
+        if bpy.ops.object.modifier_move_up.poll(override):
+            bpy.ops.object.modifier_move_up(override, modifier=name)
+
 def import_obj(file, obj, typ="MESH", link=True):
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:

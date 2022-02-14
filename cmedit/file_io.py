@@ -46,6 +46,22 @@ def np_particles_data(particles):
         i += len(t2)
     return {"cnt":cnt, "data":data}
 
+def export_hair(obj, psys_idx, filepath):
+    pss = obj.particle_systems
+    old_psys_idx = pss.active_index
+    pss.active_index = psys_idx
+
+    psys = pss[psys_idx]
+    is_global = psys.is_global_hair
+    override = {"object": obj}
+    if not is_global:
+        bpy.ops.particle.disconnect_hair(override)
+    numpy.savez_compressed(filepath, **np_particles_data(psys.particles))
+    if not is_global:
+        bpy.ops.particle.connect_hair(override)
+
+    pss.active_index = old_psys_idx
+
 class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.hair_export"
     bl_label = "Export hair"
@@ -59,14 +75,35 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         return context.object and context.object.particle_systems.active
 
     def execute(self, context):
-        psys = context.object.particle_systems.active
-        is_global = psys.is_global_hair
-        override = context.copy()
-        if not is_global:
-            bpy.ops.particle.disconnect_hair(override)
-        numpy.savez_compressed(self.filepath, **np_particles_data(psys.particles))
-        if not is_global:
-            bpy.ops.particle.connect_hair(override)
+        export_hair(context.object, context.object.particle_systems.active_index, self.filepath)
+        return {"FINISHED"}
+
+class DirExport(bpy.types.Operator):
+    directory: bpy.props.StringProperty(
+        name="Directory",
+        description="Directory for exporting morphs",
+        maxlen=1024,
+        subtype='DIR_PATH',
+    )
+
+    def invoke(self, context, _event):
+        if not self.directory:
+            self.directory = os.path.dirname(context.blend_data.filepath)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+class OpAllHairExport(DirExport):
+    bl_idname = "cmedit.all_hair_export"
+    bl_label = "Export all hair"
+    bl_description = "Export all hairstyles to .npz files"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object
+
+    def execute(self, context):
+        for i, psys in enumerate(context.object.particle_systems):
+            export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"))
         return {"FINISHED"}
 
 def float_dtype(context):
@@ -256,17 +293,10 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         MorphExporter(context).do_export(context.object.active_shape_key, self.filepath)
         return {"FINISHED"}
 
-class OpMorphsExport(bpy.types.Operator):
+class OpMorphsExport(DirExport):
     bl_idname = "cmedit.morphs_export"
     bl_label = "Export morphs"
     bl_description = "Export specified morphs from shape keys to a specified directory"
-
-    directory: bpy.props.StringProperty(
-        name="Directory",
-        description="Directory for exporting morphs",
-        maxlen=1024,
-        subtype='DIR_PATH',
-    )
 
     @classmethod
     def poll(cls, context):
@@ -298,12 +328,6 @@ class OpMorphsExport(bpy.types.Operator):
             me.do_export(sk, os.path.join(self.directory, name))
 
         return {"FINISHED"}
-
-    def invoke(self, context, _event):
-        if not self.directory:
-            self.directory = os.path.dirname(context.blend_data.filepath)
-        context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
 
 class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.morphlist_export"
@@ -412,6 +436,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         ui = context.window_manager.cmedit_ui
         l = self.layout
         l.operator("cmedit.hair_export")
+        l.operator("cmedit.all_hair_export")
         l.operator("cmedit.face_export")
         l.operator("cmedit.selset_export")
         l.separator()
@@ -432,4 +457,4 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpVgExport, OpVgImport, OpBoneExport, OpFaceExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpAllHairExport, OpVgExport, OpVgImport, OpBoneExport, OpFaceExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]

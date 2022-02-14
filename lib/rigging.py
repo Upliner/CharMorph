@@ -435,26 +435,17 @@ def rigify_finalize(rig, char):
 
     # Set ease in/out for pose bones or not?
 
-def reposition_modifier(obj, i):
-    override = {"object": obj}
-    pos = len(obj.modifiers)-1
-    name = obj.modifiers[pos].name
-
-    for _ in range(pos-i):
-        if bpy.ops.object.modifier_move_up.poll(override):
-            bpy.ops.object.modifier_move_up(override, modifier=name)
-
 def reposition_armature_modifier(char):
     for i, mod in enumerate(char.modifiers):
         if mod.type != "ARMATURE":
-            reposition_modifier(char, i)
+            utils.reposition_modifier(char, i)
             return
 
 def reposition_cs_modifier(char):
     i = len(char.modifiers)-1
     while i>=0:
         if char.modifiers[i].type == "ARMATURE":
-            reposition_modifier(char, i+1)
+            utils.reposition_modifier(char, i+1)
             return
         i -= 1
 
@@ -462,7 +453,7 @@ def reposition_subsurf_modifier(char):
     i = len(char.modifiers)-1
     while i>=0:
         if char.modifiers[i].type in ["ARMATURE", "CORRECTIVE_SMOOTH", "MASK"]:
-            reposition_modifier(char, i+1)
+            utils.reposition_modifier(char, i+1)
             return
         i -= 1
 

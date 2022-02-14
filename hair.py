@@ -229,6 +229,7 @@ def fit_hair(char, obj, psys, idx, diff_arr, new):
     obj.particle_systems.active_index = idx
     have_mismatch = False
     # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
+    restore_modifiers = disable_modifiers(obj, lambda m: m.type=="SHRINKWRAP")
     bpy.ops.particle.disconnect_hair(override)
     t.time("disconnect")
     try:
@@ -249,6 +250,8 @@ def fit_hair(char, obj, psys, idx, diff_arr, new):
     finally:
         t.time("hfit")
         bpy.ops.particle.connect_hair(override)
+        for m in restore_modifiers:
+            m.show_viewport = True
         t.time("connect")
     return True
 
@@ -257,7 +260,7 @@ def make_scalp(obj, name):
     if not vg:
         vg = obj.vertex_groups.get("scalp")
     if not vg:
-        logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
+        #logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
         return
     vgi = vg.index
     bm = bmesh.new()
@@ -273,10 +276,10 @@ def is_obstructive_modifier(m):
     return m.type in ("SUBSURF", "MASK")
 
 # Temporarily disable all modifiers that can make vertex mapping impossible
-def disable_modifiers(obj):
+def disable_modifiers(obj, predicate=is_obstructive_modifier):
     lst = []
     for m in obj.modifiers:
-        if is_obstructive_modifier(m) and m.show_viewport:
+        if predicate(m) and m.show_viewport:
             m.show_viewport = False
             lst.append(m)
     return lst
@@ -352,16 +355,15 @@ class OpCreateHair(bpy.types.Operator):
         if style == "default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj_name = char_conf.hair_obj
-        if not obj_name:
-            self.report({"ERROR"}, "Hairstyle is not found")
-            return {"CANCELLED"}
         lib = char_conf.hair_library
         if not lib:
             self.report({"ERROR"}, "Hair library is not found")
             return {"CANCELLED"}
 
-        obj = utils.import_obj(char_conf.path(lib), obj_name, link=ui.hair_scalp)
+        do_scalp = ui.hair_scalp or char_conf.force_hair_scalp
+        do_shrinkwrap = ui.hair_shrinkwrap and char_conf.hair_shrinkwrap
+
+        obj = utils.import_obj(char_conf.path(lib), char_conf.hair_obj, link=do_scalp)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
@@ -376,11 +378,11 @@ class OpCreateHair(bpy.types.Operator):
             return {"CANCELLED"}
 
         restore_modifiers = []
-        if ui.hair_scalp:
+        if do_scalp:
             obj.particle_systems.active_index = idx
             bpy.ops.particle.disconnect_hair(override)
             make_scalp(obj, style)
-            dst_obj = bpy.data.objects.new("hair_" + style, obj.data)
+            dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
             attach_scalp(char, dst_obj)
         else:
             restore_modifiers = disable_modifiers(char)
@@ -404,6 +406,14 @@ class OpCreateHair(bpy.types.Operator):
         s["charmorph_hairstyle"] = style
         s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
         fit_hair(char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
+
+        if do_shrinkwrap and dst_obj is not char:
+            mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
+            mod.wrap_method="TARGET_PROJECT"
+            mod.target = char
+            mod.wrap_mode = "OUTSIDE_SURFACE"
+            mod.offset = char_conf.hair_shrinkwrap_offset
+            utils.reposition_modifier(dst_obj, 0)
 
         override["object"] = char
         cnt = len(char.modifiers)
@@ -455,6 +465,10 @@ class UIProps:
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
+    hair_shrinkwrap: bpy.props.BoolProperty(
+        name="Use shrinkwrap",
+        description="Use shrinkwrap modifier for scalp mesh",
+        default=True)
     hair_deform: bpy.props.BoolProperty(
         name="Live deform",
         description="Refit hair in real time (slower than clothing)")
@@ -477,8 +491,14 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
+        _, char = morphing.get_obj_char(context)
+        if not char:
+            char = charlib.empty_char
         l = self.layout
         for prop in UIProps.__annotations__: # pylint: disable=no-member
+            if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (
+                prop == "hair_scalp" and char.force_hair_scalp):
+                continue
             l.prop(ui, prop)
         l.operator("charmorph.hair_create")
         l.operator("charmorph.hair_refit")
