@@ -39,10 +39,25 @@ def load_materials(obj, char):
         logger.error("Material count mismatch in %s: %d != %d", char, len(obj.data.materials), len(mtllist))
         return
 
+    settings_tree = None
+    def copy_material(mtl):
+        mtl = mtl.copy()
+        if not mtl.node_tree:
+            return mtl
+
+        nonlocal settings_tree
+        for node in mtl.node_tree.nodes:
+            if node.type == "GROUP" and node.name == "charmorph_settings" and node.node_tree:
+                if not settings_tree:
+                    settings_tree = node.node_tree.copy()
+                node.node_tree = settings_tree
+        return mtl
+
     ui = bpy.context.window_manager.charmorph_ui
     materials_to_load = set()
     load_ids = []
     adult_mode = utils.is_adult_mode()
+
     for i, mtl_name in enumerate(mtllist):
         if not mtl_name:
             continue
@@ -51,7 +66,7 @@ def load_materials(obj, char):
             mtl = bpy.data.materials.get(mtl_name)
         if mtl:
             if ui.material_mode != "MS":
-                mtl = mtl.copy()
+                mtl = copy_material(mtl)
             obj.data.materials[i] = mtl
         elif not "_censor" in mtl_name or not adult_mode:
             materials_to_load.add(mtl_name)
