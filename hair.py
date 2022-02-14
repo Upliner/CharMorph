@@ -292,7 +292,7 @@ def diff_array(context, char):
     echar = char.evaluated_get(context.evaluated_depsgraph_get())
     try:
         deformed = echar.to_mesh()
-        basis = morphing.get_basis(char)
+        basis = morphing.get_basis(char, False)
         if len(deformed.vertices) != len(basis):
             logger.error("Can't fit hair: vertex count mismatch")
             return None
@@ -389,6 +389,7 @@ class OpCreateHair(bpy.types.Operator):
             dst_obj = char
             fitting.get_fitter(char).do_fit([obj])
             obj.parent = char
+        restore_modifiers.extend(disable_modifiers(dst_obj, lambda _: True))
         override["selected_editable_objects"] = [dst_obj]
         override["particle_system"] = src_psys
         bpy.ops.particle.copy_particle_systems(override, use_active=True)
@@ -405,6 +406,23 @@ class OpCreateHair(bpy.types.Operator):
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
         s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
+
+        override["object"] = dst_obj
+        cnt = len(dst_obj.modifiers)
+        for m in list(dst_obj.modifiers):
+            cnt -= 1
+            if is_obstructive_modifier(m):
+                for _ in range(cnt):
+                    if bpy.ops.object.modifier_move_down.poll(override):
+                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
+                cnt += 1
+
+        if do_scalp:
+            bpy.ops.particle.connect_hair(override)
+
+        for m in restore_modifiers:
+            m.show_viewport = True
+
         fit_hair(char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
 
         if do_shrinkwrap and dst_obj is not char:
@@ -414,19 +432,6 @@ class OpCreateHair(bpy.types.Operator):
             mod.wrap_mode = "OUTSIDE_SURFACE"
             mod.offset = char_conf.hair_shrinkwrap_offset
             utils.reposition_modifier(dst_obj, 0)
-
-        override["object"] = char
-        cnt = len(char.modifiers)
-        for m in list(char.modifiers):
-            cnt -= 1
-            if is_obstructive_modifier(m):
-                for _ in range(cnt):
-                    if bpy.ops.object.modifier_move_down.poll(override):
-                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
-                cnt += 1
-
-        for m in restore_modifiers:
-            m.show_viewport = True
 
         return {"FINISHED"}
 
