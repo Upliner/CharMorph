@@ -211,7 +211,7 @@ class Morpher:
 
     # TODO: Use lazy props
     def get_basis(self):
-        return utils.get_basis_numpy(self.obj)
+        return get_basis(self.obj, False)
 
     def get_basis_alt_topo(self):
         return self.get_basis()

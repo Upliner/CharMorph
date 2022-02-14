@@ -192,7 +192,8 @@ class UIProps:
     alt_topo_obj: bpy.props.PointerProperty(
         name="Custom alt topo",
         type=bpy.types.Object,
-        description="Select custom object to use as alternative topology")
+        description="Select custom object to use as alternative topology",
+        poll=utils.visible_mesh_poll)
 
 class CHARMORPH_PT_Library(bpy.types.Panel):
     bl_label = "Character library"

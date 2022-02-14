@@ -567,8 +567,9 @@ rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 class CMEditUIProps(bpy.types.PropertyGroup, file_io.UIProps, vg_calc.UIProps):
     rig_char: bpy.props.PointerProperty(
         name="Char",
+        description="Character mesh for rigging",
         type=bpy.types.Object,
-        description="Character mesh for rigging"
+        poll=utils.visible_mesh_poll,
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",

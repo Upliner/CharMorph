@@ -407,11 +407,13 @@ class UIProps:
     fitting_char: bpy.props.PointerProperty(
         name="Char",
         description="Character for fitting",
-        type=bpy.types.Object)
+        type=bpy.types.Object,
+        poll=lambda ui, obj: utils.visible_mesh_poll(ui, obj) and ("charmorph_fit_id" not in obj.data or 'cm_alt_topo' in obj.data))
     fitting_asset: bpy.props.PointerProperty(
         name="Local asset",
         description="Asset for fitting",
-        type=bpy.types.Object)
+        type=bpy.types.Object,
+        poll=lambda ui, obj: utils.visible_mesh_poll(ui, obj) and ("charmorph_template" not in obj.data))
     fitting_mask: bpy.props.EnumProperty(
         name="Mask",
         default="COMB",
@@ -590,7 +592,7 @@ class OpUnfit(bpy.types.Operator):
 
     def execute(self, context): # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
-        asset = ui.fitting_asset
+        asset = get_asset(context)
 
         del asset.data['charmorph_fit_id']
         mask = mask_name(asset)
@@ -607,6 +609,8 @@ class OpUnfit(bpy.types.Operator):
                 f.recalc_comb_mask()
         if asset.parent:
             asset.parent = asset.parent.parent
+            if asset.parent and asset.parent.type == "ARMATURE":
+                asset.parent = asset.parent.parent
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
 

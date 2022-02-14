@@ -127,6 +127,9 @@ def is_true(value):
 def get_prefs():
     return bpy.context.preferences.addons.get("CharMorph")
 
+def visible_mesh_poll(_, obj):
+    return obj.type == "MESH" and obj.visible_get()
+
 def is_adult_mode():
     prefs = get_prefs()
     if not prefs:
