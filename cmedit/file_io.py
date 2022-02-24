@@ -109,6 +109,9 @@ class OpAllHairExport(DirExport):
 def float_dtype(context):
     return numpy.float64 if context.window_manager.cmedit_ui.morph_float_precicion == "64" else numpy.float32
 
+def flatten(arr, dtype):
+    return numpy.block([numpy.array(item, dtype=dtype) for item in arr])
+
 class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.vg_export"
     bl_label = "Export VGs"
@@ -129,8 +132,8 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         numpy.savez_compressed(self.filepath,
             names=b'\0'.join(name.encode("utf-8") for name in names),
             cnt=numpy.array(cnt, dtype=numpy.uint16 if max(cnt) > 255 else numpy.uint8),
-            idx=numpy.array(idx, dtype=numpy.uint16),
-            weights=numpy.array(weights, dtype = float_dtype(context))
+            idx=flatten(idx, numpy.uint16),
+            weights=flatten(weights, float_dtype(context))
         )
 
         return {"FINISHED"}

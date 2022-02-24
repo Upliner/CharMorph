@@ -361,12 +361,16 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                 continue
             v2 = counterpart_vertex(mesh.vertices, kd, v)
             if v2 is None:
+                print("no counterpart", v.index)
                 continue
             gdict = {obj.vertex_groups[g.group].name: g for g in v2.groups}
 
             wgt2 = 0
             #cleanup groups without counterparts before normalizing
             for g in v.groups:
+                if g.group > len(obj.vertex_groups) or g.group < 0:
+                    print("bad vg id", v.index, g.group)
+                    continue
                 vg = obj.vertex_groups[g.group]
                 g2e = gdict.get(swap_l_r(vg.name))
                 if g2e:
@@ -400,8 +404,8 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                     return {"FINISHED"}
 
                 if abs(g1e.weight-g2w) >= 0.00001:
-                    if not is_deform(g2name):
-                        print("Normalizing non-deform", v.index, v2.index, g2name)
+                    #if not is_deform(g2name):
+                    #    print("Normalizing non-deform", v.index, v2.index, g2name)
                     #print("Normalizing", v.index, v2.index, g1e.weight, g2w, wgt2, g2name)
                     if v2.select:
                         wgt = (g1e.weight+g2w)/2

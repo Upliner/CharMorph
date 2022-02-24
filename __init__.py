@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 2, 9),
+    "version": (0, 3, 0),
     "blender": (2, 83, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing, cloth fitting and rigging tools",
