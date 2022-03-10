@@ -122,7 +122,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, "chartype") and morphing.morpher
+        return bool(morphing.morpher)
 
     def execute(self, _):
         data = load_morph_data(self.filepath)
