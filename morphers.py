@@ -185,8 +185,8 @@ class NumpyMorpher(morphing.Morpher):
         if not os.path.isfile(file):
             return None
         result = numpy.load(file)
-        result.flags.writable = False
-        return None
+        result.flags.writeable = False
+        return result
 
     def update_L1(self):
         self.basis = self._get_L1_data(self.L1)

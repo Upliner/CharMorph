@@ -446,7 +446,7 @@ class Morpher:
         if isinstance(calc, str):
             # Check for eval safety. Attacks like 9**9**9 are still possible, but quite useless
             if eval_unsafe.search(calc):
-                logger.error("bad calc: ", calc)
+                logger.error("bad calc: %s", calc)
                 return 0
             calc = compile(calc, "", "eval")
             data["calc"] = calc
