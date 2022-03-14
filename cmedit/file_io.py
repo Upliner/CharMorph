@@ -24,44 +24,6 @@ import idprop          # pylint: disable=import-error
 
 from ..lib import yaml, rigging, utils
 
-def np_particles_data(particles):
-    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
-    total = 0
-    mx = 1
-    for i, p in enumerate(particles):
-        c = len(p.hair_keys)-1
-        cnt[i] = c
-        total += c
-        if c > mx:
-            mx = c
-
-    data = numpy.empty((total, 3), dtype=numpy.float32)
-    tmp = numpy.empty(mx*3+3, dtype=numpy.float32)
-    i = 0
-    for p in particles:
-        t2 = tmp[:len(p.hair_keys)*3]
-        p.hair_keys.foreach_get("co_local", t2)
-        t2 = t2[3:].reshape((-1, 3))
-        data[i:i+len(t2)] = t2
-        i += len(t2)
-    return {"cnt":cnt, "data":data}
-
-def export_hair(obj, psys_idx, filepath):
-    pss = obj.particle_systems
-    old_psys_idx = pss.active_index
-    pss.active_index = psys_idx
-
-    psys = pss[psys_idx]
-    is_global = psys.is_global_hair
-    override = {"object": obj}
-    if not is_global:
-        bpy.ops.particle.disconnect_hair(override)
-    numpy.savez_compressed(filepath, **np_particles_data(psys.particles))
-    if not is_global:
-        bpy.ops.particle.connect_hair(override)
-
-    pss.active_index = old_psys_idx
-
 class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.hair_export"
     bl_label = "Export hair"
@@ -75,7 +37,24 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         return context.object and context.object.particle_systems.active
 
     def execute(self, context):
-        export_hair(context.object, context.object.particle_systems.active_index, self.filepath)
+        utils.export_hair(context.object, context.object.particle_systems.active_index, self.filepath)
+        return {"FINISHED"}
+
+class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    bl_idname = "cmedit.hair_import"
+    bl_label = "Import hair"
+    bl_description = "Load saved hairstyle from .npz file (will only work if particle and key counts are unchanged)"
+    bl_options = {"UNDO"}
+
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.object and context.object.particle_systems.active
+
+    def execute(self, context):
+        z = numpy.load(self.filepath)
+        utils.set_hair_points(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
         return {"FINISHED"}
 
 class DirExport(bpy.types.Operator):
@@ -103,7 +82,7 @@ class OpAllHairExport(DirExport):
 
     def execute(self, context):
         for i, psys in enumerate(context.object.particle_systems):
-            export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"))
+            utils.export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"))
         return {"FINISHED"}
 
 def float_dtype(context):
@@ -440,6 +419,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l = self.layout
         l.operator("cmedit.hair_export")
         l.operator("cmedit.all_hair_export")
+        l.operator("cmedit.hair_import")
         l.operator("cmedit.face_export")
         l.operator("cmedit.selset_export")
         l.separator()
@@ -460,4 +440,4 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
 
-classes = [OpHairExport, OpAllHairExport, OpVgExport, OpVgImport, OpBoneExport, OpFaceExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]
+classes = [OpHairExport, OpAllHairExport, OpHairImport, OpVgExport, OpVgImport, OpBoneExport, OpFaceExport, OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpSelSetExport, CHARMORPH_PT_FileIO]

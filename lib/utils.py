@@ -161,3 +161,76 @@ def import_obj(file, obj, typ="MESH", link=True):
     if link:
         bpy.context.collection.objects.link(obj)
     return obj
+
+def np_mat_transform(arr, mat):
+    arr.dot(numpy.array(mat.to_3x3().transposed()), arr)
+    arr += numpy.array(mat.translation)
+
+def np_particles_data(obj, particles):
+    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
+    total = 0
+    mx = 1
+    for i, p in enumerate(particles):
+        c = len(p.hair_keys)-1
+        cnt[i] = c
+        total += c
+        if c > mx:
+            mx = c
+
+    data = numpy.empty((total, 3), dtype=numpy.float32)
+    tmp = numpy.empty(mx*3+3, dtype=numpy.float32)
+    i = 0
+    for p in particles:
+        t2 = tmp[:len(p.hair_keys)*3]
+        p.hair_keys.foreach_get("co_local", t2)
+        t2 = t2[3:].reshape((-1, 3))
+        data[i:i+len(t2)] = t2
+        i += len(t2)
+
+    np_mat_transform(data, obj.matrix_world.inverted())
+    return {"cnt":cnt, "data":data}
+
+def export_hair(obj, psys_idx, filepath):
+    pss = obj.particle_systems
+    old_psys_idx = pss.active_index
+    pss.active_index = psys_idx
+
+    psys = pss[psys_idx]
+    is_global = psys.is_global_hair
+    override = {"object": obj}
+    if not is_global:
+        bpy.ops.particle.disconnect_hair(override)
+    numpy.savez_compressed(filepath, **np_particles_data(obj, psys.particles))
+    if not is_global:
+        bpy.ops.particle.connect_hair(override)
+
+    pss.active_index = old_psys_idx
+
+def set_hair_points(obj, cnts, morphed):
+    t = Timer()
+    np_mat_transform(morphed[1:], obj.matrix_world)
+    psys = obj.particle_systems.active
+    have_mismatch = False
+    t.time("hcalc")
+
+    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
+    override = {"object": obj}
+    bpy.ops.particle.disconnect_hair(override)
+    t.time("disconnect")
+    try:
+        pos = 0
+        for p, cnt in zip(psys.particles, cnts):
+            if len(p.hair_keys) != cnt+1:
+                if not have_mismatch:
+                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
+                    have_mismatch = True
+                continue
+            marr = morphed[pos:pos+cnt+1]
+            marr[0] = p.hair_keys[0].co_local
+            pos += cnt
+            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
+    finally:
+        t.time("hair_set")
+        bpy.ops.particle.connect_hair(override)
+        t.time("connect")
+    return True

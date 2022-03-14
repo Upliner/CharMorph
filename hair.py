@@ -163,13 +163,13 @@ def get_data(char, psys, new):
     style = psys.settings.get("charmorph_hairstyle")
     if not char_conf or not style:
         return None, None, ()
-    arr = char_conf.get_np(f"hairstyles/{style}.npz")
-    if arr is None:
+    z = char_conf.get_np(f"hairstyles/{style}.npz")
+    if z is None:
         logger.error("Hairstyle npz file is not found")
         return None, None, ()
 
-    cnts = arr["cnt"]
-    data = arr["data"].astype(dtype=numpy.float64, casting="same_kind")
+    cnts = z["cnt"]
+    data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
 
     if len(cnts) != len(psys.particles):
         logger.error("Mismatch between current hairsyle and .npz!")
@@ -210,49 +210,27 @@ def fit_hair(char, obj, psys, idx, diff_arr, new):
     cnts, data, weights = get_data(char, psys, new)
     if cnts is None or data is None or not weights:
         return False
-    t.time("prepare")
 
-    mat = obj.matrix_world
-    npy_matrix = numpy.array(mat.to_3x3().transposed())
-    npy_translate = numpy.array(mat.translation)
-
-    # Calculate hair points
     morphed = numpy.empty((len(data)+1, 3))
-    marr = morphed[1:]
-    marr[:] = fit_calc.calc_fit(diff_arr, *weights)
-    marr += data
-    marr.dot(npy_matrix, marr)
-    marr += npy_translate
-    t.time("calc")
+    morphed[1:] = fit_calc.calc_fit(diff_arr, *weights)
+    morphed[1:] += data
 
-    override = {"object": obj}
     obj.particle_systems.active_index = idx
-    have_mismatch = False
-    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
+
+    t.time("hair_fit_calc")
+
     restore_modifiers = disable_modifiers(obj, lambda m: m.type=="SHRINKWRAP")
-    bpy.ops.particle.disconnect_hair(override)
-    t.time("disconnect")
     try:
-        pos = 0
-        for p, cnt in zip(psys.particles, cnts):
-            if len(p.hair_keys) != cnt+1:
-                if not have_mismatch:
-                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
-                    have_mismatch = True
-                continue
-            marr = morphed[pos:pos+cnt+1]
-            marr[0] = p.hair_keys[0].co_local
-            pos += cnt
-            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
+        utils.set_hair_points(obj, cnts, morphed)
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()
     finally:
-        t.time("hfit")
-        bpy.ops.particle.connect_hair(override)
         for m in restore_modifiers:
             m.show_viewport = True
-        t.time("connect")
+
+    t.time("hair_fit_set")
+
     return True
 
 def make_scalp(obj, name):
@@ -392,8 +370,8 @@ class OpCreateHair(bpy.types.Operator):
         restore_modifiers.extend(disable_modifiers(dst_obj, lambda _: True))
         override["selected_editable_objects"] = [dst_obj]
         override["particle_system"] = src_psys
-        bpy.ops.particle.copy_particle_systems(override, use_active=True)
-        dst_psys = dst_obj.particle_systems[len(char.particle_systems)-1]
+        bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
+        dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems)-1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
                 continue
