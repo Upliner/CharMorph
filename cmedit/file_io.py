@@ -24,6 +24,46 @@ import idprop          # pylint: disable=import-error
 
 from ..lib import yaml, rigging, utils
 
+def np_particles_data(obj, particles):
+    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
+    total = 0
+    mx = 1
+    for i, p in enumerate(particles):
+        c = len(p.hair_keys)-1
+        cnt[i] = c
+        total += c
+        if c > mx:
+            mx = c
+
+    data = numpy.empty((total, 3), dtype=numpy.float32)
+    tmp = numpy.empty(mx*3+3, dtype=numpy.float32)
+    i = 0
+    for p in particles:
+        t2 = tmp[:len(p.hair_keys)*3]
+        p.hair_keys.foreach_get("co_local", t2)
+        t2 = t2[3:].reshape((-1, 3))
+        data[i:i+len(t2)] = t2
+        i += len(t2)
+
+    utils.np_matrix_transform(data, obj.matrix_world.inverted())
+    return {"cnt":cnt, "data":data}
+
+def export_hair(obj, psys_idx, filepath):
+    pss = obj.particle_systems
+    old_psys_idx = pss.active_index
+    pss.active_index = psys_idx
+
+    psys = pss[psys_idx]
+    is_global = psys.is_global_hair
+    override = {"object": obj}
+    if not is_global:
+        bpy.ops.particle.disconnect_hair(override)
+    numpy.savez_compressed(filepath, **np_particles_data(obj, psys.particles))
+    if not is_global:
+        bpy.ops.particle.connect_hair(override)
+
+    pss.active_index = old_psys_idx
+
 class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.hair_export"
     bl_label = "Export hair"
@@ -37,7 +77,7 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         return context.object and context.object.particle_systems.active
 
     def execute(self, context):
-        utils.export_hair(context.object, context.object.particle_systems.active_index, self.filepath)
+        export_hair(context.object, context.object.particle_systems.active_index, self.filepath)
         return {"FINISHED"}
 
 class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -82,7 +122,7 @@ class OpAllHairExport(DirExport):
 
     def execute(self, context):
         for i, psys in enumerate(context.object.particle_systems):
-            utils.export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"))
+            export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"))
         return {"FINISHED"}
 
 def float_dtype(context):
