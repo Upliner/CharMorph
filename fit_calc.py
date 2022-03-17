@@ -100,6 +100,7 @@ class ObjFitCalculator(ObjGeometry):
 
     def __init__(self, obj):
         super().__init__(obj)
+        self.get_basis = morphing.get_basis
         self.verts_cache = {}
         self.bvh_cache = {}
 
@@ -117,7 +118,7 @@ class ObjFitCalculator(ObjGeometry):
         return result
 
     def get_verts(self, data):
-        return self._get_cached(self.verts_cache, data, lambda: self.verts, lambda mesh: morphing.get_basis(mesh))
+        return self._get_cached(self.verts_cache, data, lambda: self.verts, lambda mesh: self.get_basis(mesh))
 
     def get_bvh(self, data):
         return self._get_cached(self.bvh_cache, data, lambda: self.bvh, lambda mesh:
@@ -277,8 +278,11 @@ class RiggerFitCalculator(MorpherFitCalculator):
         return result
 
 class ReverseFitCalculator(ObjFitCalculator):
+    alt_topo = True
+
     def __init__(self, morpher):
         super().__init__(morpher.obj)
+        self.get_basis = utils.get_basis_numpy
         self.morpher = morpher
         self.char = morpher.char
 
