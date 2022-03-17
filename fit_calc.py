@@ -265,3 +265,17 @@ class RiggerFitCalculator(MorpherFitCalculator):
         result = weights_convert(weights, False)
         t.time("rigger calc time")
         return result
+
+class ReverseFitCalculator(ObjFitCalculator):
+    def __init__(self, morpher):
+        super().__init__(morpher.obj)
+        self.morpher = morpher
+        self.char = morpher.char
+
+    @utils.lazyprop
+    def verts(self):
+        return self.morpher.get_final()
+
+    @utils.lazyprop
+    def faces(self):
+        return self.char.faces

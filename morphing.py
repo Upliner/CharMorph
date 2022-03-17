@@ -21,7 +21,7 @@
 import logging, re
 import bpy # pylint: disable=import-error
 
-from . import materials, fitting
+from . import materials, fitting, fit_calc
 from .lib import charlib, utils, rigging
 
 logger = logging.getLogger(__name__)
@@ -119,6 +119,7 @@ class Morpher:
     version = 0
     error = None
     alt_topo = False
+    alt_topo_buildable = False
     rig_name = ""
     rig = None
     categories = []
@@ -617,6 +618,50 @@ class OpResetChar(bpy.types.Operator):
         update_morpher(new_morpher)
         return {"FINISHED"}
 
+class OpBuildAltTopo(bpy.types.Operator):
+    bl_idname = "charmorph.build_alt_topo"
+    bl_label = "Build alt topo"
+    bl_description = "Build alt topo from modified character mesh"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return morpher and morpher.alt_topo_buildable and morpher.has_morphs()
+
+    def execute(self, context):
+        ui = context.window_manager.charmorph_ui
+        obj = morpher.obj
+        btype = ui.alt_topo_build_type
+        sk = obj.data.shape_keys
+        has_sk = bool(sk and sk.key_blocks)
+        if btype == "K" and has_sk:
+            obj.data["cm_alt_topo"] = "sk"
+            update_morpher(get_morpher(obj))
+            return {"FINISHED"}
+        weights = fit_calc.ReverseFitCalculator(morpher).get_weights(obj)
+        result = fit_calc.calc_fit(morpher.full_basis - morpher.get_final(), *weights)
+        result += utils.get_morphed_numpy(obj)
+        result = result.reshape(-1)
+        if btype == "K":
+            basis = obj.shape_key_add(name="Basis", from_mix=False)
+            final = obj.shape_key_add(name="charmorph_final", from_mix=False)
+            basis.data.foreach_set("co", result)
+            obj.data["cm_alt_topo"] = "sk"
+            final.value = 1
+        else:
+            mesh = obj.data.copy()
+            obj.data["cm_alt_topo"] = mesh
+            if has_sk:
+                old_mesh = obj.data
+                obj.data = mesh
+                while mesh.shape_keys and mesh.shape_keys.key_blocks:
+                    obj.shape_key_remove(mesh.shape_keys.key_blocks[0])
+                obj.data = old_mesh
+            mesh.vertices.foreach_set("co", result)
+
+        update_morpher(get_morpher(obj))
+        return {"FINISHED"}
+
 class UIProps:
     relative_meta: bpy.props.BoolProperty(
         name="Relative meta props",
@@ -661,6 +706,14 @@ class UIProps:
         name="Mix with current",
         description="Mix selected preset with current morphs",
         default=False)
+    alt_topo_build_type: bpy.props.EnumProperty(
+        name="Alt topo type",
+        description="Type of alt topo to build",
+        default="P",
+        items=[
+            ("K", "Shapekey", "Store alt topo basis in shapekey"),
+            ("P", "Separate mesh", "Store alt topo basis in separate mesh")])
+
 
 class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_label = "Morphing"
@@ -675,12 +728,21 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     def draw(self, context):
         m = morpher
+        ui = context.window_manager.charmorph_ui
 
         if m.error:
             self.layout.label(text="Morphing is impossible:")
             col = self.layout.column()
             for line in m.error.split("\n"):
                 col.label(text=line)
+            if m.alt_topo_buildable:
+                col = self.layout.column()
+                col.label(text="It seems you've changed object's topology")
+                col.label(text="You can try to build alt topo")
+                col.label(text="to continue morphing")
+                self.layout.operator("charmorph.build_alt_topo")
+                self.layout.prop(ui, "alt_topo_build_type")
+
             return
 
         if not hasattr(context.window_manager, "charmorphs") or not m.has_morphs():
@@ -699,8 +761,6 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             else:
                 self.layout.label(text="No morphing data found")
             return
-
-        ui = context.window_manager.charmorph_ui
 
         self.layout.label(text="Character type")
         col = self.layout.column(align=True)
@@ -747,4 +807,4 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 if ui.morph_filter.lower() in prop.lower():
                     col.prop(morphs, "prop_" + prop, slider=True)
 
-classes = [CHARMORPH_PT_Morphing, OpResetChar]
+classes = [CHARMORPH_PT_Morphing, OpResetChar, OpBuildAltTopo]

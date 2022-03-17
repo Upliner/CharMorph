@@ -270,25 +270,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.tmp_buf = None
         self.transfer_calc = None
 
-    def get_morphed_shape_key(self):
-        k = self.obj.data.shape_keys
-        if k and k.key_blocks:
-            result = k.key_blocks.get("charmorph_final")
-            if result:
-                return result, False
-
-        # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
-        return self.obj.shape_key_add(from_mix=True), True
-
     def diff_array(self):
         if hasattr(self.morpher, "get_diff"):
             return self.morpher.get_diff()
-        morphed_shapekey, temporary = self.get_morphed_shape_key()
-        morphed = numpy.empty(len(morphed_shapekey.data)*3)
-        morphed_shapekey.data.foreach_get("co", morphed)
-        if temporary:
-            self.obj.shape_key_remove(morphed_shapekey)
-        morphed = morphed.reshape(-1, 3)
+        morphed = utils.get_morphed_numpy(self.obj)
         morphed -= self.verts
         return morphed
 

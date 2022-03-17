@@ -171,6 +171,8 @@ class NumpyMorpher(morphing.Morpher):
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):
             self.error = f"Vertex count mismatch {len(self.alt_topo_basis)} != {len(obj.data.vertices)}"
+            if not self.alt_topo:
+                self.alt_topo_buildable = True
 
     def has_morphs(self):
         return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed

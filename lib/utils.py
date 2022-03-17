@@ -115,6 +115,26 @@ def verts_to_numpy(data):
 def get_basis_numpy(data):
     return verts_to_numpy(get_basis_verts(data))
 
+def get_morphed_shape_key(obj):
+    k = obj.data.shape_keys
+    if k and k.key_blocks:
+        result = k.key_blocks.get("charmorph_final")
+        if result:
+            return result, False
+
+    # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
+    return obj.shape_key_add(from_mix=True), True
+
+def get_morphed_numpy(obj):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        return get_basis_numpy(obj)
+    morphed_shapekey, temporary = get_morphed_shape_key(obj)
+    try:
+        return verts_to_numpy(morphed_shapekey.data)
+    finally:
+        if temporary:
+            obj.shape_key_remove(morphed_shapekey)
+
 def is_true(value):
     if isinstance(value, str):
         return value.lower() in {'true', '1', 'y', 'yes'}
