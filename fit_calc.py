@@ -55,8 +55,8 @@ def weights_normalize(positions, wresult):
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
 
 # calculate weights based on nearest vertices
-def calc_weights_kd(kd, verts, get_co, _epsilon, n):
-    return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(get_co(v), n)} for v in verts]
+def calc_weights_kd(kd, verts, _epsilon, n):
+    return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(v, n)} for v in verts]
 
 def calc_fit(arr, positions, idx, weights):
     return numpy.add.reduceat(arr[idx] * weights, positions)
@@ -100,30 +100,38 @@ class ObjFitCalculator(ObjGeometry):
 
     def __init__(self, obj):
         super().__init__(obj)
+        self.verts_cache = {}
         self.bvh_cache = {}
 
-    def get_bvh(self, data):
+    def _get_cached(self, cache, data, func_self, func_calc):
         if isinstance(data, bpy.types.Object):
             data = data.data
         key = 0 if data is self.obj.data else data.get("charmorph_fit_id", data.name)
-        result = self.bvh_cache.get(data.name)
-        if not result:
+        result = cache.get(key)
+        if result is None:
             if key == 0 and not self.alt_topo:
-                result = self.bvh
+                result = func_self()
             else:
-                result = mathutils.bvhtree.BVHTree.FromPolygons(morphing.get_basis(data), [f.vertices for f in data.polygons])
-            self.bvh_cache[key] = result
+                result = func_calc(data)
+            cache[key] = result
         return result
+
+    def get_verts(self, data):
+        return self._get_cached(self.verts_cache, data, lambda: self.verts, lambda mesh: morphing.get_basis(mesh))
+
+    def get_bvh(self, data):
+        return self._get_cached(self.bvh_cache, data, lambda: self.bvh, lambda mesh:
+            mathutils.bvhtree.BVHTree.FromPolygons(self.get_verts(mesh), [f.vertices for f in mesh.polygons]))
 
     # These functions are performance-critical so disable pylint too-many-locals error for them
 
     # calculate weights based on distance from asset vertices to character faces
-    def _calc_weights_direct(self, weights, asset_verts, get_co): # pylint: disable=too-many-locals
+    def _calc_weights_direct(self, weights, asset_verts): # pylint: disable=too-many-locals
         verts = self.verts
         faces = self.subset_faces
         bvh = self.subset_bvh
         for i, v in enumerate(asset_verts):
-            loc, _, idx, fdist = bvh.find_nearest(get_co(v), dist_thresh)
+            loc, _, idx, fdist = bvh.find_nearest(v, dist_thresh)
             if loc is None:
                 continue
             face = faces[idx]
@@ -134,7 +142,7 @@ class ObjFitCalculator(ObjGeometry):
 
     # calculate weights based on distance from character vertices to assset faces
     def _calc_weights_reverse(self, weights, asset): # pylint: disable=too-many-locals
-        verts = asset.data.vertices
+        verts = self.get_verts(asset)
         faces = asset.data.polygons
         bvh = self.get_bvh(asset)
         for i, cvert in self.subset_verts_enum():
@@ -143,15 +151,15 @@ class ObjFitCalculator(ObjGeometry):
                 continue
             face = faces[idx].vertices
             fdist = max(fdist ** 2, epsilon)
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i].co for i in face], loc)):
+            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
                 d = weights[vi]
                 d[i] = max(d.get(i, 0), bw/fdist)
 
-    def _calc_weights_internal(self, verts, get_co, stage3=None):
+    def _calc_weights_internal(self, verts, stage3=None):
         t = utils.Timer()
-        weights = calc_weights_kd(self.subset_kd, verts, get_co, epsilon, 16)
+        weights = calc_weights_kd(self.subset_kd, verts, epsilon, 16)
         t.time("kdtree")
-        self._calc_weights_direct(weights, verts, get_co)
+        self._calc_weights_direct(weights, verts)
         t.time("bvh direct")
         if stage3:
             stage3(weights, t)
@@ -165,10 +173,10 @@ class ObjFitCalculator(ObjGeometry):
         def stage3(weights, t):
             self._calc_weights_reverse(weights, asset)
             t.time("bvh reverse")
-        return self._calc_weights_internal(asset.data.vertices, lambda v: v.co, stage3)
+        return self._calc_weights_internal(self.get_verts(asset), stage3)
 
     def calc_weights_hair(self, arr):
-        return self._calc_weights_internal(arr, lambda v: v)
+        return self._calc_weights_internal(arr)
 
     def get_weights(self, asset):
         return self._calc_weights(asset)
@@ -237,6 +245,7 @@ class RiggerFitCalculator(MorpherFitCalculator):
     # when transferring joints to another geometry, we need to make sure
     # that every original vertex will be mapped to new topology
     def _calc_weights_reverse(self, weights, asset):
+        verts = self.get_verts(asset)
         bvh = self.get_bvh(asset)
         for i, cvert in enumerate(self.verts):
             loc, _, idx, fdist = bvh.find_nearest(cvert)
@@ -244,12 +253,12 @@ class RiggerFitCalculator(MorpherFitCalculator):
                 continue
             face = asset.data.polygons[idx].vertices
             fdist = max(fdist ** 2, repsilon)
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([asset.data.vertices[i].co for i in face], loc)):
+            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + bw/fdist
 
-    def _calc_weights_kd_reverse(self, weights, asset):
-        kd = utils.kdtree_from_verts(asset.data.vertices)
+    def _calc_weights_kd_reverse(self, weights, verts):
+        kd = utils.kdtree_from_verts(verts)
         for i, vert in enumerate(self.verts):
             for _, vi, dist in kd.find_n(vert, 4):
                 d = weights[vi]
@@ -257,10 +266,11 @@ class RiggerFitCalculator(MorpherFitCalculator):
 
     def _calc_weights(self, asset):
         t = utils.Timer()
+        verts = self.get_verts(asset)
         # calculate weights based on nearest vertices
         weights = calc_weights_kd(utils.kdtree_from_verts_enum(((idx, vert) for idx, vert in enumerate(self.verts)), len(self.verts)),
-             asset.data.vertices, lambda v: v.co, repsilon, 16)
-        self._calc_weights_kd_reverse(weights, asset)
+             verts, repsilon, 16)
+        self._calc_weights_kd_reverse(weights, verts)
         self._calc_weights_reverse(weights, asset)
         result = weights_convert(weights, False)
         t.time("rigger calc time")

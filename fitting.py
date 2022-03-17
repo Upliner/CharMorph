@@ -196,19 +196,16 @@ class Fitter(fit_calc.MorpherFitCalculator):
             asset["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
         return asset["charmorph_fit_id"]
 
-    def get_obj_cache(self, asset):
+    def get_weights(self, asset):
         fit_id = self._get_fit_id(asset)
 
         result = self.weights_cache.get(fit_id)
         if result is not None:
             return result
 
-        result = (morphing.get_basis(asset), self._calc_weights(asset))
+        result = self._calc_weights(asset)
         self.weights_cache[fit_id] = result
         return result
-
-    def get_weights(self, asset):
-        return self.get_obj_cache(asset)[1]
 
     def _transfer_weights_orig(self, asset):
         self.transfer_weights(asset, rigging.char_weights_npz(self.obj, self.char))
@@ -285,11 +282,8 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         diff_arr = self.diff_array()
         for asset in assets:
-            #logger.debug("fit: %s", asset.name)
-            basis, data = self.get_obj_cache(asset)
-
-            verts = fit_calc.calc_fit(diff_arr, *data)
-            verts += basis
+            verts = fit_calc.calc_fit(diff_arr, *self.get_weights(asset))
+            verts += self.get_verts(asset)
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
 
