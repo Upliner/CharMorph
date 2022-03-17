@@ -151,7 +151,7 @@ class ObjFitCalculator(ObjGeometry):
             if idx is None:
                 continue
             face = faces[idx].vertices
-            fdist = max(fdist ** 2, epsilon)
+            fdist = max(fdist ** 2, 1e-15) # using lower epsilon to avoid some artifacts
             for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
                 d = weights[vi]
                 d[i] = max(d.get(i, 0), bw/fdist)
