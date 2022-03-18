@@ -146,9 +146,10 @@ def create_default_hair(context, obj, char, scalp):
 def invalidate_cache():
     obj_cache.clear()
 
+no_result = None, None, (None, None, None)
 def get_data(char, psys, new):
     if not psys.is_edited:
-        return None, None, ()
+        return no_result
     fit_id = psys.settings.get("charmorph_fit_id")
     if fit_id:
         data = obj_cache.get(fit_id)
@@ -156,17 +157,17 @@ def get_data(char, psys, new):
             return data
     else:
         if not new:
-            return None, None, ()
+            return no_result
         psys.settings["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
 
     char_conf = charlib.obj_char(char)
     style = psys.settings.get("charmorph_hairstyle")
     if not char_conf or not style:
-        return None, None, ()
+        return no_result
     z = char_conf.get_np(f"hairstyles/{style}.npz")
     if z is None:
         logger.error("Hairstyle npz file is not found")
-        return None, None, ()
+        return no_result
 
     cnts = z["cnt"]
     data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
@@ -174,9 +175,9 @@ def get_data(char, psys, new):
     if len(cnts) != len(psys.particles):
         logger.error("Mismatch between current hairsyle and .npz!")
         invalidate_cache()
-        return None, None, ()
+        return no_result
 
-    weights = fitting.get_fitter(char).calc_weights_hair(data)
+    weights = fitting.get_fitter(char).calc.calc_weights_hair(data)
     obj_cache[fit_id] = (cnts, data, weights)
     return cnts, data, weights
 

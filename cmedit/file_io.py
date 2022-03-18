@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2021-2022 Michael Vigovsky
 
-import os, re, numpy, json
+import os, re, json, numpy
 import bpy, bpy_extras # pylint: disable=import-error
 import idprop          # pylint: disable=import-error
 

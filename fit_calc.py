@@ -22,8 +22,7 @@ import numpy
 
 import bpy, mathutils # pylint: disable=import-error
 
-from . import morphing
-from .lib import charlib, rigging, utils
+from .lib import rigging, utils
 
 dist_thresh = 0.1
 epsilon = 1e-30
@@ -61,21 +60,24 @@ def calc_weights_kd(kd, verts, _epsilon, n):
 def calc_fit(arr, positions, idx, weights):
     return numpy.add.reduceat(arr[idx] * weights, positions)
 
-class ObjGeometry:
-    def __init__(self, obj):
+class FitCalculator:
+    verts: numpy.ndarray
+    faces: list
+    subset_faces: list
+    subset_bvh: mathutils.bvhtree.BVHTree
+
+    tmp_buf: numpy.ndarray = None
+    alt_topo = False
+
+    def __init__(self, obj, get_basis, parent=None):
         self.obj = obj
-
-    @utils.lazyprop
-    def verts(self):
-        return morphing.get_basis(self.obj)
-
-    @utils.lazyprop
-    def faces(self):
-        return [f.vertices for f in self.obj.data.polygons]
-
-    @utils.lazyprop
-    def bvh(self):
-        return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.faces)
+        self.get_basis = get_basis
+        if parent is not None:
+            self.verts_cache = parent.verts_cache
+            self.bvh_cache = parent.bvh_cache
+        else:
+            self.verts_cache = {}
+            self.bvh_cache = {}
 
     def subset_verts_cnt(self):
         return len(self.verts)
@@ -83,26 +85,12 @@ class ObjGeometry:
         return enumerate(self.verts)
 
     @utils.lazyprop
-    def subset_faces(self):
-        return self.faces
-
-    @utils.lazyprop
-    def subset_bvh(self):
-        return self.bvh
-
-    @utils.lazyprop
     def subset_kd(self):
         return utils.kdtree_from_verts_enum(self.subset_verts_enum(), self.subset_verts_cnt())
 
-class ObjFitCalculator(ObjGeometry):
-    tmp_buf: numpy.ndarray = None
-    alt_topo = False
-
-    def __init__(self, obj):
-        super().__init__(obj)
-        self.get_basis = morphing.get_basis
-        self.verts_cache = {}
-        self.bvh_cache = {}
+    @utils.lazyprop
+    def bvh(self):
+        return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.faces)
 
     def _get_cached(self, cache, data, func_self, func_calc):
         if isinstance(data, bpy.types.Object):
@@ -118,7 +106,7 @@ class ObjFitCalculator(ObjGeometry):
         return result
 
     def get_verts(self, data):
-        return self._get_cached(self.verts_cache, data, lambda: self.verts, lambda mesh: self.get_basis(mesh))
+        return self._get_cached(self.verts_cache, data, lambda: self.verts, self.get_basis)
 
     def get_bvh(self, data):
         return self._get_cached(self.bvh_cache, data, lambda: self.bvh, lambda mesh:
@@ -170,7 +158,7 @@ class ObjFitCalculator(ObjGeometry):
         t.time("normalize")
         return positions, idx, wresult.reshape(-1,1)
 
-    def _calc_weights(self, asset):
+    def get_weights(self, asset):
         def stage3(weights, t):
             self._calc_weights_reverse(weights, asset)
             t.time("bvh reverse")
@@ -178,9 +166,6 @@ class ObjFitCalculator(ObjGeometry):
 
     def calc_weights_hair(self, arr):
         return self._calc_weights_internal(arr)
-
-    def get_weights(self, asset):
-        return self._calc_weights(asset)
 
     def _transfer_weights_iter_arrays(self, asset, vg_data):
         if self.tmp_buf is None:
@@ -202,21 +187,41 @@ class ObjFitCalculator(ObjGeometry):
         rigging.import_vg(asset, self.transfer_weights_get(asset, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
-class MorpherFitCalculator(ObjFitCalculator):
-    def __init__(self, morpher, obj):
-        super().__init__(obj)
-        self.morpher = morpher
-        self.char = charlib.obj_char(obj)
-        self.subset = self.char.fitting_subset
-        self.alt_topo = bool(self.morpher) and self.morpher.alt_topo
+def obj_faces(obj):
+    return [f.vertices for f in obj.data.polygons]
 
+class ObjFitCalculator(FitCalculator):
     @utils.lazyprop
     def verts(self):
-        return self.morpher.get_basis() if self.morpher else super().verts
+        return self.get_basis(self.obj)
 
     @utils.lazyprop
     def faces(self):
-        return self.char.faces if self.char.faces is not None else super().faces
+        return obj_faces(self.obj)
+
+    @utils.lazyprop
+    def subset_faces(self):
+        return self.faces
+
+    @utils.lazyprop
+    def subset_bvh(self):
+        return self.bvh
+
+class MorpherFitCalculator(FitCalculator):
+    def __init__(self, morpher, get_basis):
+        super().__init__(morpher.obj, get_basis)
+        self.morpher = morpher
+        self.char = morpher.char
+        self.subset = self.char.fitting_subset
+        self.alt_topo = self.morpher.alt_topo
+
+    @utils.lazyprop
+    def verts(self):
+        return self.morpher.get_basis()
+
+    @utils.lazyprop
+    def faces(self):
+        return self.char.faces if self.char.faces is not None else obj_faces(self.obj)
 
     def subset_verts_cnt(self):
         return len(self.verts) if self.subset is None else len(self.subset["verts"])
@@ -239,8 +244,8 @@ class MorpherFitCalculator(ObjFitCalculator):
 repsilon = 1e-5
 
 class RiggerFitCalculator(MorpherFitCalculator):
-    def __init__(self, morpher):
-        super().__init__(morpher, morpher.obj)
+    def __init__(self, morpher, get_basis):
+        super().__init__(morpher, get_basis)
         self.subset = None
 
     # when transferring joints to another geometry, we need to make sure
@@ -265,7 +270,7 @@ class RiggerFitCalculator(MorpherFitCalculator):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1/max(dist**2, repsilon)
 
-    def _calc_weights(self, asset):
+    def get_weights(self, asset):
         t = utils.Timer()
         verts = self.get_verts(asset)
         # calculate weights based on nearest vertices
@@ -277,19 +282,12 @@ class RiggerFitCalculator(MorpherFitCalculator):
         t.time("rigger calc time")
         return result
 
-class ReverseFitCalculator(ObjFitCalculator):
+class ReverseFitCalculator(MorpherFitCalculator):
     alt_topo = True
 
     def __init__(self, morpher):
-        super().__init__(morpher.obj)
-        self.get_basis = utils.get_basis_numpy
-        self.morpher = morpher
-        self.char = morpher.char
+        super().__init__(morpher.obj, utils.get_basis_numpy)
 
     @utils.lazyprop
     def verts(self):
         return self.morpher.get_final()
-
-    @utils.lazyprop
-    def faces(self):
-        return self.char.faces

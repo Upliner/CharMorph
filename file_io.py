@@ -121,7 +121,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.yaml;*.json", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return bool(morphing.morpher)
 
     def execute(self, _):
