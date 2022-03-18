@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 
 class Timer:
     def __init__(self):
-        self.t = time.monotonic()
+        self.t = time.perf_counter()
     def time(self, name):
-        t2 = time.monotonic()
+        t2 = time.perf_counter()
         logger.debug("%s: %s", name, t2-self.t)
         self.t = t2
 
