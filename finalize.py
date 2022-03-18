@@ -22,8 +22,8 @@ import logging, traceback, numpy
 
 import bpy # pylint: disable=import-error
 
-from .lib import rigging, utils
-from . import morphing, fit_calc, fitting, rigify
+from .lib import fit_calc, rigging, utils
+from . import morphing, fitting, rigify
 
 logger = logging.getLogger(__name__)
 

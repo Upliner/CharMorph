@@ -21,8 +21,8 @@
 import logging, random, numpy
 import bpy, bmesh # pylint: disable=import-error
 
-from .lib import charlib, utils
-from . import morphing, fit_calc, fitting
+from .lib import charlib, fit_calc, utils
+from . import morphing, fitting
 
 logger = logging.getLogger(__name__)
 

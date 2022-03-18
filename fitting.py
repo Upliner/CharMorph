@@ -23,8 +23,8 @@ import os, random, logging
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from .lib import charlib, rigging, utils
-from . import morphing, fit_calc, hair
+from .lib import charlib, fit_calc, rigging, utils
+from . import morphing, hair
 
 logger = logging.getLogger(__name__)
 

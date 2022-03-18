@@ -21,8 +21,8 @@
 import logging, re
 import bpy # pylint: disable=import-error
 
-from . import materials, fitting, fit_calc
-from .lib import charlib, utils, rigging
+from . import materials, fitting
+from .lib import charlib, fit_calc, utils, rigging
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,7 @@ import numpy
 
 import bpy, mathutils # pylint: disable=import-error
 
-from .lib import rigging, utils
+from . import rigging, utils
 
 dist_thresh = 0.1
 epsilon = 1e-30
