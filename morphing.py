@@ -724,9 +724,11 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
+        global last_object, morpher
         if context.mode != "OBJECT":
             if morpher:
-                del_charmorphs()
+                last_object = None
+                morpher = null_morpher
             return False
         return morpher
 
