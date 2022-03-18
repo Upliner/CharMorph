@@ -723,7 +723,11 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
     bl_order = 2
 
     @classmethod
-    def poll(cls, _):
+    def poll(cls, context):
+        if context.mode != "OBJECT":
+            if morpher:
+                del_charmorphs()
+            return False
         return morpher
 
     def draw(self, context):

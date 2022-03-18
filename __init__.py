@@ -65,6 +65,8 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
 def on_select_object():
     if morphing.bad_object():
         morphing.del_charmorphs()
+    if bpy.context.mode != "OBJECT":
+        return
     obj = bpy.context.object
     if obj is None:
         return

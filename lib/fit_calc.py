@@ -283,10 +283,9 @@ class RiggerFitCalculator(MorpherFitCalculator):
         return result
 
 class ReverseFitCalculator(MorpherFitCalculator):
-    alt_topo = True
-
     def __init__(self, morpher):
-        super().__init__(morpher.obj, utils.get_basis_numpy)
+        super().__init__(morpher, utils.get_basis_numpy)
+        self.alt_topo = True
 
     @utils.lazyprop
     def verts(self):
