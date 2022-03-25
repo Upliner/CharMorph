@@ -44,7 +44,7 @@ class named_lazyprop:
         setattr(instance, self.name, value)
         return value
 
-class lazyprop(named_lazyprop):
+class lazyproperty(named_lazyprop):
     __slots__ = ()
     def __init__(self, fn):
         super().__init__(fn.__name__, fn)

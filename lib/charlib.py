@@ -177,33 +177,33 @@ class Character:
             return default
         return parse_file(self.path(file), load_yaml, default)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def morphs_meta(self):
         return self.get_yaml("morphs_meta.yaml")
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def fitting_subset(self):
         return self.get_np("fitting_subset.npz")
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def faces(self):
         npy = self.get_np("faces.npy")
         # Use regular python array instead of numpy for compatibility with BVHTree
         return None if npy is None else npy.tolist()
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def assets(self):
         return load_data_dir(self.path("assets"), ".blend")
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def alt_topos(self):
         return load_data_dir(self.path("morphs/alt_topo"), ".npy")
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def poses(self):
         return load_json_dir(self.path("poses"))
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def texture_sets(self):
         path = self.path("textures")
         if os.path.isdir(path):
@@ -213,7 +213,7 @@ class Character:
                 return result
         return ["/"]
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def presets(self):
         return self.load_presets("presets")
 
@@ -233,11 +233,11 @@ class Character:
             logger.error(e)
         return result
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def np_basis(self):
         return self.get_np("morphs/L1/%s.npy" % self.basis)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def sliding_joints(self):
         return {"_".join((rig.name, jname)): j for rig in self.armature.values() for jname, j in rig.sliding_joints.items()}
 
@@ -313,7 +313,7 @@ class Armature:
         if "bones" not in self.__dict__:
             self.bones = char.bones # Legacy
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def weights_npz(self):
         return self.char.get_np(self.weights)
 

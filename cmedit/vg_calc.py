@@ -134,23 +134,23 @@ class VGCalculator:
 
         self.kdj_groups = None
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def vg_full(self):
         return rigging.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def vg_avg(self):
         return rigging.get_vg_avg(self.char)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def kd_verts(self):
         return utils.kdtree_from_verts(self.char.data.vertices)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def bvh(self):
         return mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in self.char.data.vertices], [f.vertices for f in self.char.data.polygons])
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def emap(self):
         result = {}
         for edge in self.char.data.edges:
@@ -162,7 +162,7 @@ class VGCalculator:
                 item.append(edge.index)
         return result
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def kd_joints(self):
         all_groups = self.vg_full
         kd = mathutils.kdtree.KDTree(len(all_groups))

@@ -84,11 +84,11 @@ class FitCalculator:
     def subset_verts_enum(self):
         return enumerate(self.verts)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def subset_kd(self):
         return utils.kdtree_from_verts_enum(self.subset_verts_enum(), self.subset_verts_cnt())
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def bvh(self):
         return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.faces)
 
@@ -191,19 +191,19 @@ def obj_faces(obj):
     return [f.vertices for f in obj.data.polygons]
 
 class ObjFitCalculator(FitCalculator):
-    @utils.lazyprop
+    @utils.lazyproperty
     def verts(self):
         return self.get_basis(self.obj)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def faces(self):
         return obj_faces(self.obj)
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def subset_faces(self):
         return self.faces
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def subset_bvh(self):
         return self.bvh
 
@@ -215,11 +215,11 @@ class MorpherFitCalculator(FitCalculator):
         self.subset = self.char.fitting_subset
         self.alt_topo = self.morpher.alt_topo
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def verts(self):
         return self.morpher.get_basis()
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def faces(self):
         return self.char.faces if self.char.faces is not None else obj_faces(self.obj)
 
@@ -228,14 +228,14 @@ class MorpherFitCalculator(FitCalculator):
     def subset_verts_enum(self):
         return enumerate(self.verts) if self.subset is None else ((i, self.verts[i]) for i in self.subset["verts"])
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def subset_faces(self):
         if self.subset is None:
             return self.faces
         faces = self.faces
         return [faces[i] for i in self.subset["faces"]]
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def subset_bvh(self):
         if self.subset is None:
             return self.bvh
@@ -287,6 +287,6 @@ class ReverseFitCalculator(MorpherFitCalculator):
         super().__init__(morpher, utils.get_basis_numpy)
         self.alt_topo = True
 
-    @utils.lazyprop
+    @utils.lazyproperty
     def verts(self):
         return self.morpher.get_final()
