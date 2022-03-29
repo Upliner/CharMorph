@@ -1,12 +1,12 @@
 # CharMorph
 
 CharMorph is a character creation tool for Blender.
+It uses base meshes and morphs from ManuelbastioniLAB/MB-Lab while being designed for easy creation of new models and modification of existing ones.
 
-It uses base meshes and morphs from ManuelbastioniLAB/MB-Lab but it's designed for easy creation of new models and easy modification of existing ones.
+This addon reimplements most of MB-Lab's features, but it currently does not contain any MB-Lab code.
+It uses a different database format and other internal differences, as well as less hard coded features.   
 
-This addon includes from-scratch reimplementaion of most of MB-Lab features but it currently doesn't contain any MB-Lab code.
-It uses different database format and has more internal differences.
-It uses much less hard coded features. It is planned that CharMorph won't be limited to humanoids. Animals and other creatures are welcome at CharMorph too.
+It is planned that CharMorph won't be limited to humanoids. Animals and other creatures are welcome at CharMorph too.
 
 ## Options:
 
@@ -14,45 +14,46 @@ It uses much less hard coded features. It is planned that CharMorph won't be lim
 
   Make a copy of local materials instead of importing them every time.
 
-  It is safe if you're creating scene from scratch, but it is recommended to disable this option if you already have MB-Lab/older Charmorph characters on the scene.
+  It is safe to use this if you're creating a scene from scratch, but it is recommended to disable this option if you already have MB-Lab/older Charmorph characters in your scene.
 
 ## Differences from MB-Lab:
 
+* Noticeably improved performance
 * Direct setting of skin and eyes color
 * Material displacement instead of displacement modifier.
-  No real displacement in EEVEE, but nice live preview with bumps is available.
-  In Cycles skin material is set to "Displacement and bump" by default.
+  This means there will be no real displacement in EEVEE, but a nice live preview with bumps is available.  
+  In Cycles, the skin material is set to "Displacement and bump" by default.
 * Hairstyles
 * Realtime asset fitting with combined masks
 * Rigify support with full face rig
-* Alternative topology feature allows to apply morphs to completely different topology
-* Characters are created at 3D cursor location, not always at world origin
-* Performance is noticably better
+* Alternative topology feature for applying morphs to models with different topology
+* Characters are created at the 3D cursor's location, not always at world origin
 
 ## Downsides
 
 * Rig is added only at finalization, because it takes quite a long time for Rigify to generate a rig and I have no idea if it's possible to morph such rig in real time.
-* Still lacking some features (Automodelling, measures) just because I don't use them in my projects. Maybe they'll come later.
+* Still lacking some features (Automodelling, measures) just because I don't use them in my projects. Maybe they'll be implemented later.
 
 ## Development notes
 
-This project uses git submodules so you to use git clone --recursive when cloning this repository. If you forgot it, you can do this:
-
-* git clone https://github.com/Upliner/CharMorph
-* cd CharMorph
-* git submodule init
-* git submodule update
-* cd data
-* git submodule init
-* git submodule update
+This project uses git submodules, so you need to use `git clone --recursive` when cloning this repository. If you forgot to do so, you can execute the following commands individually after cloning:
+```
+cd CharMorph
+git submodule init
+git submodule update
+cd data
+git submodule init
+git submodule update
+``` 
 
 ## Installation manual
 
-* Download zip package from releases. Not GitHub source code but release package. If zip file size is less than 10MB then it contains addon only without character library.
-* In Blender go to Edit->Preferences->Addons, click "Install..." button and point to select downloaded zip package
-* If character library is missing, then you can download it separately to CharMorph data directory. It is located at http://github.com/Upliner/CharMorph-db/ . Usual library location on Windows is C:\Users\<UserName>\AppData\Roaming\Blender Foundation\Blender\<VersionNumber>\scripts\addons\CharMorph\data.
+* Download the latest `charmorph.zip` package from the [releases page](https://github.com/Upliner/CharMorph/releases/latest) (not the source code file but the release package).   
+* In Blender go to Edit->Preferences->Addons, click "Install..." and select the downloaded zip package.
+
+**NOTE:** If the zip file is smaller than 10MB, it means the file contains the addon only, without the character library. If that's the case, you can download it from [here](http://github.com/Upliner/CharMorph-db/) and extract it to the CharMorph data directory, which should be located in `%appdata%\Blender Foundation\Blender\<VersionNumber>\scripts\addons\CharMorph\data` on Windows
 
 ## Links
 
-* You can see examples of these features at [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
+* Features showcase on this [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
 * Discord server: https://discord.gg/bMsvxN3jPY
