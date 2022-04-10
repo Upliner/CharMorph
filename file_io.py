@@ -19,9 +19,11 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import json
-import bpy, bpy_extras
+import bpy, bpy_extras # pylint: disable=import-error
 
-from . import yaml, library, morphing, materials
+from .lib import yaml, utils
+from .lib.charlib import charmorph_to_mblab, load_morph_data
+from . import morphing, materials
 
 class UIProps:
     export_format: bpy.props.EnumProperty(
@@ -29,8 +31,8 @@ class UIProps:
         description="Export format",
         default="yaml",
         items=[
-            ("yaml","CharMorph (yaml)",""),
-            ("json","MB-Lab (json)","")
+            ("yaml", "CharMorph (yaml)", ""),
+            ("json", "MB-Lab (json)", "")
         ])
 
 class CHARMORPH_PT_ImportExport(bpy.types.Panel):
@@ -42,65 +44,38 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_order = 5
 
     @classmethod
-    def poll(cls, context):
-        return hasattr(context.window_manager,'charmorphs')
+    def poll(cls, _):
+        return bool(morphing.morpher)
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
 
-        self.layout.label(text = "Export format:")
+        self.layout.label(text="Export format:")
         self.layout.prop(ui, "export_format", expand=True)
         self.layout.separator()
         col = self.layout.column(align=True)
-        if ui.export_format=="json":
+        if ui.export_format == "json":
             col.operator("charmorph.export_json")
-        elif ui.export_format=="yaml":
+        elif ui.export_format == "yaml":
             col.operator("charmorph.export_yaml")
         col.operator("charmorph.import")
 
-def morphs_to_data(context):
+def morphs_to_data():
     m = morphing.morpher
-    cm = context.window_manager.charmorphs
-    morphs={}
-    meta={}
     typ = []
 
     if m.L1:
         typ.append(m.L1)
-        alt_name = m.char.types.get(m.L1).get("title")
+        alt_name = m.char.types.get(m.L1, {}).get("title")
         if alt_name:
             typ.append(alt_name)
 
-    for prop in dir(cm):
-        if prop.startswith("prop_"):
-            morphs[prop[5:]] = getattr(cm, prop)
-        elif prop.startswith("meta_"):
-            meta[prop[5:]] = getattr(cm, prop)
-    return {"type":typ, "morphs":morphs, "meta": meta, "materials": materials.prop_values()}
-
-def mblab_to_charmorph(data):
     return {
-        "morphs": { k:v*2-1 for k,v in data.get("structural",{}).items() },
-        "materials": data.get("materialproperties",{}),
-        "meta": { (k[10:] if k.startswith("character_") else k):v for k,v in data.get("metaproperties",{}).items() if not k.startswith("last_character_")},
-        "type": data.get("type",[]),
+        "type":   typ,
+        "morphs": {k: m.prop_get(k) for k, v in m.morphs_l2.items() if v is not None},
+        "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
+        "materials": materials.prop_values()
     }
-
-def charmorph_to_mblab(data):
-    return {
-        "structural": { k:(v+1)/2 for k,v in data.get("morphs",{}).items() },
-        "metaproperties": { k:v for sublist, v in (([("character_"+k),("last_character_"+k)],v) for k,v in data.get("meta",{}).items()) for k in sublist },
-        "materialproperties": data.get("materials"),
-        "type": data.get("type",[]),
-    }
-
-def load_morph_data(fn):
-    with open(fn, "r") as f:
-        if fn[-5:] == ".yaml":
-            return yaml.safe_load(f)
-        elif fn[-5:] == ".json":
-            return  mblab_to_charmorph(json.load(f))
-    return None
 
 class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_json"
@@ -111,20 +86,14 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
+    def poll(cls, _):
+        return bool(morphing.morpher)
 
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
-            json.dump(charmorph_to_mblab(morphs_to_data(context)),f, indent=4, sort_keys=True)
+    def execute(self, _):
+        with open(self.filepath, "w", encoding="utf-8") as f:
+            json.dump(charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
         return {"FINISHED"}
 
-
-# set some yaml styles
-class MyDumper(yaml.Dumper):
-    pass
-MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style = True) )
-MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value,5)) )
 
 class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_yaml"
@@ -135,12 +104,12 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     filter_glob: bpy.props.StringProperty(default="*.yaml", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
+    def poll(cls, _):
+        return bool(morphing.morpher)
 
-    def execute(self, context):
-        with open(self.filepath, "w") as f:
-            yaml.dump(morphs_to_data(context),f, Dumper=MyDumper)
+    def execute(self, _):
+        with open(self.filepath, "w", encoding="utf-8") as f:
+            yaml.dump(morphs_to_data(), f, Dumper=utils.MyDumper)
         return {"FINISHED"}
 
 class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -152,10 +121,10 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.yaml;*.json", options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and hasattr(context.window_manager, "chartype") and morphing.morpher
+    def poll(cls, _):
+        return bool(morphing.morpher)
 
-    def execute(self, context):
+    def execute(self, _):
         data = load_morph_data(self.filepath)
         if data is None:
             self.report({'ERROR'}, "Can't recognize format")
@@ -166,15 +135,19 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             typenames = [typenames]
 
         m = morphing.morpher
-        typemap = { v["title"]:k for k,v in m.char.types.items() if "title" in v }
+        typemap = {v["title"]:k for k, v in m.char.types.items() if "title" in v}
         m.lock()
-        for name in (name for sublist in ([name,typemap.get(name)] for name in typenames) for name in sublist):
-            if not name:
-                continue
-            if m.set_L1(name):
-                break
+        try:
+            for name in (name for sublist in ([name, typemap.get(name)] for name in typenames) for name in sublist):
+                if not name:
+                    continue
+                if m.set_L1(name):
+                    break
 
-        m.apply_morph_data(context.window_manager.charmorphs, data, False)
+            m.apply_morph_data(data, False)
+        except:
+            m.unlock()
+            raise
         return {"FINISHED"}
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]

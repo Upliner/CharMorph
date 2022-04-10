@@ -18,26 +18,21 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging
-import bpy
+import logging
+import bpy # pylint: disable=import-error
 
-rootLogger = logging.getLogger(None)
-if not rootLogger.hasHandlers():
-    # While CharMorph is in alpha stage, use debug logging level
-    rootLogger.setLevel(10)
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(name)s - %(funcName)s - %(lineno)s - %(message)s'))
-    rootLogger.addHandler(ch)
+from . import library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose, cmedit
+from .lib import charlib
 
 logger = logging.getLogger(__name__)
 
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 2, 0),
-    "blender": (2, 83, 0),
+    "version": (0, 3, 0),
+    "blender": (2, 93, 0),
     "location": "View3D > Tools > CharMorph",
-    "description": "Character creation and morphing (MB-Lab based)",
+    "description": "Character creation and morphing, cloth fitting and rigging tools",
     'wiki_url': "",
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
@@ -47,7 +42,7 @@ owner = object()
 
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CharMorph"
-    bl_label = "CharMorph {0}.{1}.{2}".format(bl_info["version"][0], bl_info["version"][1], bl_info["version"][2])
+    bl_label = "CharMorph " + ".".join(str(item) for item in bl_info["version"])
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
@@ -57,21 +52,21 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
         pass
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = "CharMorph"
 
     adult_mode: bpy.props.BoolProperty(
         name="Adult mode",
         description="No censors, enable adult assets (genitails, pubic hair)",
     )
 
-    def draw(self, context):
-        self.layout.prop(self,"adult_mode")
-
-from . import library, morphing
+    def draw(self, _):
+        self.layout.prop(self, "adult_mode")
 
 def on_select_object():
     if morphing.bad_object():
         morphing.del_charmorphs()
+    if bpy.context.mode != "OBJECT":
+        return
     obj = bpy.context.object
     if obj is None:
         return
@@ -87,40 +82,33 @@ def on_select_object():
                 "charmorph_template" not in obj.data):
             asset = obj
             obj = obj.parent
-        try:
-            if asset:
-                ui.fitting_char = obj.name
-                ui.fitting_asset = asset.name
-            elif library.obj_char(obj).name:
-                ui.fitting_char = obj.name
-            else:
-                ui.fitting_asset = obj.name
-        except:
-            pass
+        if asset:
+            ui.fitting_char = obj
+            ui.fitting_asset = asset
+        elif charlib.obj_char(obj).name:
+            ui.fitting_char = obj
+        else:
+            ui.fitting_asset = obj
 
-        # Prevent morphing of rigged characters
-        arm = obj.find_armature()
-        if arm:
-            obj = arm
+    if obj is morphing.last_object:
+        return
 
     morphing.create_charmorphs(obj)
 
 @bpy.app.handlers.persistent
-def load_handler(dummy):
+def load_handler(_):
     morphing.del_charmorphs()
     on_select_object()
 
 @bpy.app.handlers.persistent
-def select_handler(dummy):
+def select_handler(_):
     on_select_object()
 
 classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-from . import randomize, file_io, materials, fitting, hair, finalize, pose, editing
-
-for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, pose]:
+for module in [library, morphing, randomize, file_io, materials, fitting, hair, finalize, rigify, pose]:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)
@@ -132,34 +120,34 @@ classes[0] = CharMorphUIProps
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 def register():
-    print("Charmorph register")
-    library.load_library()
+    logger.debug("Charmorph register")
+    charlib.load_library()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
     bpy.types.ParticleSettings.charmorph_hair_data = bpy.props.StringProperty(subtype="BYTE_STRING", options={"HIDDEN"})
 
     bpy.msgbus.subscribe_rna(
         owner=owner,
-        key = (bpy.types.LayerObjects, "active"),
+        key=(bpy.types.LayerObjects, "active"),
         args=(),
-        notify = on_select_object)
+        notify=on_select_object)
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)
     bpy.app.handlers.redo_post.append(select_handler)
     bpy.app.handlers.depsgraph_update_post.append(select_handler)
 
-    editing.register()
+    cmedit.register()
 
 def unregister():
-    print("Charmorph unregister")
-    editing.unregister()
+    logger.debug("Charmorph unregister")
+    cmedit.unregister()
 
     for hlist in bpy.app.handlers:
         if not isinstance(hlist, list):
             continue
         for handler in hlist:
-            if handler == load_handler or handler == select_handler:
+            if handler in (load_handler, select_handler):
                 hlist.remove(handler)
                 break
 

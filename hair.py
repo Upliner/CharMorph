@@ -19,37 +19,37 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random, numpy, struct
-import bpy, mathutils, bmesh
+import bpy, bmesh # pylint: disable=import-error
 
-from . import library, fitting
-from .materials import parse_color
+from .lib import charlib, fit_calc, utils
+from . import morphing, fitting
 
 logger = logging.getLogger(__name__)
 
 obj_cache = {}
 
-def create_hair_material(context, name):
+def create_hair_material(name, hair_color):
     mat = bpy.data.materials.new(name)
-    apply_hair_color(context, mat)
+    apply_hair_color(mat, hair_color)
     return mat
 
-def apply_hair_color(context, mat):
+def apply_hair_color(mat, hair_color):
     if not mat:
         return
-    mat.use_nodes=True
+    mat.use_nodes = True
     tree = mat.node_tree
     tree.nodes.clear()
     output_node = tree.nodes.new("ShaderNodeOutputMaterial")
     hair_node = tree.nodes.new("ShaderNodeBsdfHairPrincipled")
-    tree.links.new(hair_node.outputs[0],output_node.inputs[0])
-    settings = library.hair_colors.get(context.window_manager.charmorph_ui.hair_color)
+    tree.links.new(hair_node.outputs[0], output_node.inputs[0])
+    settings = charlib.hair_colors.get(hair_color)
     if settings and settings["type"] == "ShaderNodeBsdfHairPrincipled":
         hair_node.parametrization = settings.get("parametrization", "MELANIN")
-        hair_node.inputs[0].default_value = parse_color(settings.get("color", [0,0,0]))
+        hair_node.inputs[0].default_value = utils.parse_color(settings.get("color", [0, 0, 0]))
         hair_node.inputs[1].default_value = settings.get("melanin", 0)
         hair_node.inputs[2].default_value = settings.get("melanin_redness", 0)
-        hair_node.inputs[3].default_value = parse_color(settings.get("tint", [1,1,1]))
-        hair_node.inputs[4].default_value = settings.get("absorption_coeff", [0,0,0])
+        hair_node.inputs[3].default_value = utils.parse_color(settings.get("tint", [1, 1, 1]))
+        hair_node.inputs[4].default_value = settings.get("absorption_coeff", [0, 0, 0])
         hair_node.inputs[5].default_value = settings.get("roughness", 0)
         hair_node.inputs[6].default_value = settings.get("radial_roughness", 0)
         hair_node.inputs[7].default_value = settings.get("coat", 0)
@@ -57,16 +57,16 @@ def apply_hair_color(context, mat):
         hair_node.inputs[9].default_value = settings.get("offset", 0)
         hair_node.inputs[10].default_value = settings.get("random_color", 0)
         hair_node.inputs[11].default_value = settings.get("random_roughness", 0)
-        mat.diffuse_color = parse_color(settings.get("viewport_color", [0.01,0.01,0.01]))
+        mat.diffuse_color = utils.parse_color(settings.get("viewport_color", [0.01, 0.01, 0.01]))
     else:
-        mat.diffuse_color = (0.01,0.01,0.01,1)
+        mat.diffuse_color = (0.01, 0.01, 0.01, 1)
 
-def get_material_slot(context, obj, name):
+def get_material_slot(obj, name, hair_color):
     mats = obj.data.materials
     for i, mtl in enumerate(mats):
         if mtl.name == name or mtl.name.startswith(name+"."):
             return i + 1
-    mats.append(create_hair_material(context, name))
+    mats.append(create_hair_material(name, hair_color))
     return len(mats)
 
 def attach_scalp(char, obj):
@@ -82,16 +82,16 @@ def attach_scalp(char, obj):
     else:
         for c in collections:
             c.objects.link(obj)
-    fitting.fit_new(char, obj)
+    fitting.get_fitter(char).fit_new(obj)
 
 def create_scalp(name, char, vgi):
     vmap = {}
     verts = []
-    for v in char.data.vertices:
-        for g in v.groups:
+    for mv, bv in zip(char.data.vertices, morphing.get_basis(char)):
+        for g in mv.groups:
             if g.group == vgi:
-                vmap[v.index] = len(verts)
-                verts.append(v.co)
+                vmap[mv.index] = len(verts)
+                verts.append(bv)
     edges = [(v1, v2) for v1, v2 in ((vmap.get(e.vertices[0]), vmap.get(e.vertices[1])) for e in char.data.edges) if v1 is not None and v2 is not None]
     faces = []
     for f in char.data.polygons:
@@ -105,15 +105,16 @@ def create_scalp(name, char, vgi):
             faces.append(face)
 
     m = bpy.data.meshes.new(name)
-    m.from_pydata(verts,edges,faces)
+    m.from_pydata(verts, edges, faces)
     obj = bpy.data.objects.new(name, m)
     attach_scalp(char, obj)
     return obj
 
 def create_default_hair(context, obj, char, scalp):
     l1 = ""
-    if hasattr(context.window_manager, "chartype"):
-        l1 = context.window_manager.chartype
+    wm = context.window_manager
+    if hasattr(wm, "chartype"):
+        l1 = wm.chartype
     vg = None
     if "hair_" + l1 in obj.vertex_groups:
         vg = "hair_" + l1
@@ -128,8 +129,6 @@ def create_default_hair(context, obj, char, scalp):
     if scalp and vg:
         obj = create_scalp("hair_default", obj, obj.vertex_groups[vg].index)
 
-    override = context.copy()
-    override["object"] = obj
     hair = obj.modifiers.new("hair_default", 'PARTICLE_SYSTEM').particle_system
 
     s = hair.settings
@@ -138,117 +137,55 @@ def create_default_hair(context, obj, char, scalp):
     s.child_type = 'INTERPOLATED'
     s.create_long_hair_children = True
     s.root_radius = 0.01
-    s.material = get_material_slot(context, obj, "hair_default")
+    s.material = get_material_slot(obj, "hair_default", wm.charmorph_ui.hair_color)
     if vg:
         hair.vertex_group_density = vg
         hair.vertex_group_length = vg
     return s
 
-
-def calc_weights(char, arr):
-    t = fitting.Timer()
-
-    char_verts = char.data.vertices
-    char_faces = char.data.polygons
-
-    # calculate weights based on n nearest vertices
-    kd_char = fitting.kdtree_from_verts(char_verts)
-    weights = [{ idx: dist**2 for loc, idx, dist in kd_char.find_n(co, 32) } for co in arr]
-
-    t.time("hair_kdtree")
-
-    bvh_char = mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in char_verts], [f.vertices for f in char_faces])
-    for i, co in enumerate(arr):
-        loc, norm, idx, fdist = bvh_char.find_nearest(co)
-
-        fdist = max(fdist, fitting.epsilon)
-
-        if not loc or ((co-loc).dot(norm)<=0 and fdist > fitting.dist_thresh):
-            continue
-
-        d = weights[i]
-        for vi in char_faces[idx].vertices:
-            d[vi] = max(d.get(vi,0), 1/max(((mathutils.Vector(co)-char_verts[vi].co).length * fdist), fitting.epsilon))
-
-    t.time("hair_bvh")
-
-    for i, d in enumerate(weights):
-        thresh = max(d.values())/16
-        d = { k:v for k,v in d.items() if v > thresh }
-        total = sum(w for w in d.values())
-        weights[i] = (numpy.array(list(d.keys()), numpy.uint), numpy.array(list(d.values())).reshape(-1,1)/total)
-    t.time("hair_normalize")
-
-    return weights
-
 def invalidate_cache():
     obj_cache.clear()
-
-def np_particles_data(obj, particles):
-    cnt = numpy.empty(len(particles), dtype=numpy.uint8)
-    total = 0
-    mx = 1
-    for i, p in enumerate(particles):
-        c = len(p.hair_keys)-1
-        cnt[i] = c
-        total += c
-        if c>mx:
-            mx = c
-
-    data = numpy.empty((total, 3))
-    tmp = numpy.empty(mx*3+3)
-    i = 0
-    for p in particles:
-        t2 = tmp[:len(p.hair_keys)*3]
-        p.hair_keys.foreach_get("co_local", t2)
-        t2 = t2[3:].reshape((-1,3))
-        data[i:i+len(t2)] = t2
-        i += len(t2)
-
-    mat = obj.matrix_world.inverted()
-
-    data.dot(numpy.array(mat.to_3x3().transposed()), data)
-    data += numpy.array(mat.translation)
-
-    return cnt, data.astype(dtype=">f", casting="same_kind")
 
 def serialize_data(obj, psys):
     is_global = psys.is_global_hair
     override = {"object": obj,"particle_system": psys}
     if not is_global:
         bpy.ops.particle.disconnect_hair(override)
-    cnt, data = np_particles_data(obj, psys.particles)
+    hairdict = utils.np_particles_data(obj, psys.particles)
+    cnt = hairdict["cnt"]
+    data = hairdict["data"].astype(dtype="<f", casting="same_kind")
     if not is_global:
         bpy.ops.particle.connect_hair(override)
-    return b"CMH1" + struct.pack(">II",len(cnt),len(data)) + cnt.tobytes() + data.tobytes()
+    return b"CMH0" + struct.pack("<II",len(cnt),len(data)) + cnt.tobytes() + data.tobytes()
 
 def load_data(psys):
     data = psys.settings.charmorph_hair_data
-    if not data.startswith(b"CMH1"):
+    if not data.startswith(b"CMH0"):
         print("hair.load_data() error!!!")
         return None, None
 
-    lcnt, ldata = struct.unpack(">II",data[4:12])
+    lcnt, ldata = struct.unpack("<II",data[4:12])
 
     d2 = 12+lcnt
 
     cnt = numpy.frombuffer(data[12:d2], dtype=numpy.uint8)
-    data = numpy.frombuffer(data[d2:], dtype=">f").reshape(ldata,3)
+    data = numpy.frombuffer(data[d2:], dtype="<f").reshape(ldata,3)
 
     return cnt, data
 
+no_result = None, None, (None, None, None)
 def get_data(char, obj, psys, new):
     if not psys.is_edited:
-        return None, None, None
-    id = psys.settings.get("charmorph_fit_id")
-    if id:
-        data = obj_cache.get(id)
+        return no_result
+    fit_id = psys.settings.get("charmorph_fit_id")
+    if fit_id:
+        data = obj_cache.get(fit_id)
         if data:
             return data
     else:
         if not new:
-            return None, None, None
-        psys.settings["charmorph_fit_id"] = "{:016x}".format(random.getrandbits(64))
+            return no_result
+        psys.settings["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
 
     if new:
         eobj = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
@@ -258,32 +195,32 @@ def get_data(char, obj, psys, new):
 
     if cnts is None or data is None:
         logger.error("No fitting data was found")
-        return None, None, None
+        return no_result
 
 
     if len(cnts) != len(psys.particles):
         logger.error("Mismatch between current hairsyle and stored data!")
         invalidate_cache()
-        return None, None, None
+        return no_result
 
-    weights = calc_weights(char, data)
-    obj_cache[id] = (cnts, data, weights)
+    weights = fitting.get_fitter(char).calc.calc_weights_hair(data)
+    obj_cache[fit_id] = (cnts, data, weights)
     return cnts, data, weights
 
-def fit_hair_asset(context, char, asset, diff_arr):
+def fit_hair_asset(char, asset, diff_arr):
     has_fit = False
     for i, psys in enumerate(asset.particle_systems):
-        has_fit |= fit_hair(context, char, asset, psys, i, diff_arr, False)
+        has_fit |= fit_hair(char, asset, psys, i, diff_arr, False)
     return has_fit
 
-def fit_all_hair(context, char, diff_arr):
-    t = fitting.Timer()
+def fit_all_hair(char, diff_arr):
+    t = utils.Timer()
     has_fit = False
     for i, psys in enumerate(char.particle_systems):
-        has_fit |= fit_hair(context, char, char, psys, i, diff_arr, False)
+        has_fit |= fit_hair(char, char, psys, i, diff_arr, False)
 
-    for asset in fitting.get_assets(char):
-        has_fit |= fit_hair_asset(context, char, asset, diff_arr)
+    for asset in fitting.get_fitter(char).get_assets():
+        has_fit |= fit_hair_asset(char, asset, diff_arr)
 
     t.time("hair_fit")
     return has_fit
@@ -292,57 +229,35 @@ def has_hair(char):
     for psys in char.particle_systems:
         cnts, data, weights = get_data(char, char, psys, False)
         if cnts is not None and data is not None and weights:
-           return True
+            return True
     return False
 
-def fit_hair(context, char, obj, psys, idx, diff_arr, new):
-    t = fitting.Timer()
+def fit_hair(char, obj, psys, idx, diff_arr, new):
+    t = utils.Timer()
     cnts, data, weights = get_data(char, obj, psys, new)
     if cnts is None or data is None or not weights:
         return False
-    t.time("prepare")
 
-    mat = obj.matrix_world
-    npy_matrix = numpy.array(mat.to_3x3().transposed())
-    npy_translate = numpy.array(mat.translation)
+    morphed = numpy.empty((len(data)+1, 3))
+    morphed[1:] = fit_calc.calc_fit(diff_arr, *weights)
+    morphed[1:] += data
 
-    # Calculate hair points
-    morphed = numpy.empty((len(data)+1,3))
-    marr = morphed[1:]
-    for i, w in enumerate(weights):
-        marr[i] = (diff_arr[w[0]] * w[1]).sum(0)
-    marr += data
-    marr.dot(npy_matrix, marr)
-    marr += npy_translate
-    t.time("calc")
-
-    override = context.copy()
-    override["object"] = obj
-    override["particle_system"] = psys
     obj.particle_systems.active_index = idx
-    have_mismatch = False
-    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
-    bpy.ops.particle.disconnect_hair(override)
-    t.time("disconnect")
+
+    t.time("hair_fit_calc")
+
+    restore_modifiers = disable_modifiers(obj, lambda m: m.type=="SHRINKWRAP")
     try:
-        pos = 0
-        for p, cnt in zip(psys.particles, cnts):
-            if len(p.hair_keys) != cnt+1:
-                if not have_mismatch:
-                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
-                    have_mismatch = True
-                continue
-            marr = morphed[pos:pos+cnt+1]
-            marr[0] = p.hair_keys[0].co_local
-            pos += cnt
-            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
+        utils.set_hair_points(obj, cnts, morphed)
     except Exception as e:
         logger.error(str(e))
         invalidate_cache()
     finally:
-        t.time("hfit")
-        bpy.ops.particle.connect_hair(override)
-        t.time("connect")
+        for m in restore_modifiers:
+            m.show_viewport = True
+
+    t.time("hair_fit_set")
+
     return True
 
 def make_scalp(obj, name):
@@ -350,7 +265,7 @@ def make_scalp(obj, name):
     if not vg:
         vg = obj.vertex_groups.get("scalp")
     if not vg:
-        logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
+        #logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
         return
     vgi = vg.index
     bm = bmesh.new()
@@ -363,33 +278,34 @@ def make_scalp(obj, name):
         bm.free()
 
 def is_obstructive_modifier(m):
-    return m.type == "SUBSURF" or m.type == "MASK"
+    return m.type in ("SUBSURF", "MASK")
 
 # Temporarily disable all modifiers that can make vertex mapping impossible
-def disable_modifiers(obj):
+def disable_modifiers(obj, predicate=is_obstructive_modifier):
     lst = []
     for m in obj.modifiers:
-        if is_obstructive_modifier(m) and m.show_viewport:
+        if predicate(m) and m.show_viewport:
             m.show_viewport = False
             lst.append(m)
     return lst
 
 def diff_array(context, char):
     if not char.find_armature():
-        return fitting.diff_array(char)
+        return fitting.get_fitter(char).diff_array()
 
-    echar = char.evaluated_get(context.evaluated_depsgraph_get())
     restore_modifiers = disable_modifiers(char)
+    echar = char.evaluated_get(context.evaluated_depsgraph_get())
     try:
         deformed = echar.to_mesh()
-        verts = char.data.vertices
-        l = len(verts)*3
-        result = numpy.empty(l)
-        basis = numpy.empty(l)
-        deformed.vertices.foreach_get("co",result)
-        verts.foreach_get("co",basis)
+        basis = morphing.get_basis(char, False)
+        if len(deformed.vertices) != len(basis):
+            logger.error("Can't fit hair: vertex count mismatch")
+            return None
+        result = numpy.empty(len(basis) * 3)
+        deformed.vertices.foreach_get("co", result)
+        result = result.reshape(-1, 3)
         result -= basis
-        return result.reshape(-1,3)
+        return result
     finally:
         echar.to_mesh_clear()
         for m in restore_modifiers:
@@ -419,9 +335,9 @@ class OpRefitHair(bpy.types.Operator):
         if "charmorph_fit_id" in char.data and char.parent and char.parent.type == "MESH":
             obj = char
             char = char.parent
-            has_fit = fit_hair_asset(context, char, obj, diff_array(context, char))
+            has_fit = fit_hair_asset(char, obj, diff_array(context, char))
         else:
-            has_fit = fit_all_hair(context, char, diff_array(context, char))
+            has_fit = fit_all_hair(char, diff_array(context, char))
         if not has_fit:
             self.report({"ERROR"}, "No hair fitting data found")
             return {"CANCELLED"}
@@ -440,25 +356,25 @@ class OpCreateHair(bpy.types.Operator):
         ui = context.window_manager.charmorph_ui
         style = ui.hair_style
         char = context.object
-        char_conf = library.obj_char(char)
-        if style=="default":
+        char_conf = charlib.obj_char(char)
+        if style == "default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
-        obj_name = char_conf.hair_obj
-        if not obj_name:
-            self.report({"ERROR"}, "Hairstyle is not found")
-            return {"CANCELLED"}
         lib = char_conf.hair_library
         if not lib:
             self.report({"ERROR"}, "Hair library is not found")
             return {"CANCELLED"}
 
-        obj = library.import_obj(char_conf.path(lib), obj_name, link=ui.hair_scalp)
+        do_scalp = ui.hair_scalp or char_conf.force_hair_scalp
+        do_shrinkwrap = ui.hair_shrinkwrap and char_conf.hair_shrinkwrap
+
+        obj = utils.import_obj(char_conf.path(lib), char_conf.hair_obj, link=do_scalp)
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
-        override = context.copy()
-        override["object"] = obj
+        override = {"object": obj}
+        idx = -1
+        src_psys = None
         for idx, src_psys in enumerate(obj.particle_systems):
             if src_psys.name == style:
                 break
@@ -466,22 +382,23 @@ class OpCreateHair(bpy.types.Operator):
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
 
-        override["particle_system"] = src_psys
         restore_modifiers = []
-        if ui.hair_scalp:
+        if do_scalp:
             obj.particle_systems.active_index = idx
             bpy.ops.particle.disconnect_hair(override)
             make_scalp(obj, style)
-            dst_obj = bpy.data.objects.new("hair_" + style, obj.data)
+            dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
             attach_scalp(char, dst_obj)
         else:
             restore_modifiers = disable_modifiers(char)
             dst_obj = char
-            fitting.do_fit(char, [obj])
-            obj.parent=char
+            fitting.get_fitter(char).do_fit([obj])
+            obj.parent = char
+        restore_modifiers.extend(disable_modifiers(dst_obj, lambda _: True))
         override["selected_editable_objects"] = [dst_obj]
-        bpy.ops.particle.copy_particle_systems(override, use_active=True)
-        dst_psys = dst_obj.particle_systems[len(char.particle_systems)-1]
+        override["particle_system"] = src_psys
+        bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
+        dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems)-1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
                 continue
@@ -493,23 +410,33 @@ class OpCreateHair(bpy.types.Operator):
         bpy.data.objects.remove(obj)
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
-        s.material = get_material_slot(context, dst_obj, "hair_" + style)
-        fit_hair(context, char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
-
-        context.view_layer.objects.active = dst_obj
+        s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
 
         override["object"] = dst_obj
         cnt = len(dst_obj.modifiers)
         for m in list(dst_obj.modifiers):
             cnt -= 1
             if is_obstructive_modifier(m):
-                for j in range(cnt):
+                for _ in range(cnt):
                     if bpy.ops.object.modifier_move_down.poll(override):
-                       bpy.ops.object.modifier_move_down(override, modifier=m.name)
+                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
                 cnt += 1
+
+        if do_scalp:
+            bpy.ops.particle.connect_hair(override)
 
         for m in restore_modifiers:
             m.show_viewport = True
+
+        fit_hair(char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
+
+        if do_shrinkwrap and dst_obj is not char:
+            mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
+            mod.wrap_method="TARGET_PROJECT"
+            mod.target = char
+            mod.wrap_mode = "OUTSIDE_SURFACE"
+            mod.offset = char_conf.hair_shrinkwrap_offset
+            utils.reposition_modifier(dst_obj, 0)
 
         return {"FINISHED"}
 
@@ -522,22 +449,23 @@ class OpRecolorHair(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         return context.object and context.object.particle_systems.active
-    def execute(self, context):
+
+    def execute(self, context): # pylint: disable=no-self-use
         obj = context.object
         s = obj.particle_systems.active.settings
         slot = s.material
-        if slot >= 0 and slot <= len(obj.data.materials):
-            apply_hair_color(context, obj.data.materials[slot-1])
+        if 0 <= slot <= len(obj.data.materials):
+            apply_hair_color(obj.data.materials[slot-1], context.window_manager.charmorph_ui.hair_color)
         else:
             s.material = get_material_slot(context, obj, "hair")
         return {"FINISHED"}
 
-def get_hair_colors(ui, context):
-    return [ (k,k,"") for k in library.hair_colors.keys() ]
+def get_hair_colors(_ui, _context):
+    return [(k, k, "") for k in charlib.hair_colors.keys()]
 
-def get_hairstyles(ui, context):
-    char = library.obj_char(context.active_object)
-    result = [("default","Default hair","")]
+def get_hairstyles(_, context):
+    char = charlib.obj_char(context.object)
+    result = [("default", "Default hair", "")]
     if not char.name:
         return result
     result.extend([(name, name, "") for name in char.hairstyles])
@@ -547,17 +475,21 @@ class UIProps:
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
+    hair_shrinkwrap: bpy.props.BoolProperty(
+        name="Use shrinkwrap",
+        description="Use shrinkwrap modifier for scalp mesh",
+        default=True)
     hair_deform: bpy.props.BoolProperty(
         name="Live deform",
         description="Refit hair in real time (slower than clothing)")
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
-        items = get_hair_colors)
+        items=get_hair_colors)
     hair_style: bpy.props.EnumProperty(
         name="Hairstyle",
         description="Hairstyle",
-        items = get_hairstyles)
+        items=get_hairstyles)
 
 class CHARMORPH_PT_Hair(bpy.types.Panel):
     bl_label = "Hair"
@@ -569,12 +501,17 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        self.layout.prop(ui, "hair_scalp")
-        self.layout.prop(ui, "hair_deform")
-        self.layout.prop(ui, "hair_color")
-        self.layout.prop(ui, "hair_style")
-        self.layout.operator("charmorph.hair_create")
-        self.layout.operator("charmorph.hair_refit")
-        self.layout.operator("charmorph.hair_recolor")
+        _, char = morphing.get_obj_char(context)
+        if not char:
+            char = charlib.empty_char
+        l = self.layout
+        for prop in UIProps.__annotations__: # pylint: disable=no-member
+            if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (
+                prop == "hair_scalp" and char.force_hair_scalp):
+                continue
+            l.prop(ui, prop)
+        l.operator("charmorph.hair_create")
+        l.operator("charmorph.hair_refit")
+        l.operator("charmorph.hair_recolor")
 
 classes = [OpCreateHair, OpRefitHair, OpRecolorHair, CHARMORPH_PT_Hair]
