@@ -125,12 +125,11 @@ def vg_read(z):
         return ()
     if isinstance(z, str):
         return vg_read_npz(numpy.load(z))
-    elif hasattr(z, "__dict__"):
+    if hasattr(z, "__dict__"):
         return vg_read_npz(z)
-    elif hasattr(z, "__next__"):
+    if hasattr(z, "__next__"):
         return z
-    else:
-        raise Exception("Invalid type for vg_read: %s", z)
+    raise Exception("Invalid type for vg_read: " + z)
 
 def char_weights_npz(obj, char):
     rig_type = obj.data.get("charmorph_rig_type")
@@ -170,17 +169,17 @@ def bb_prev_roll(bone):
     return 0
 
 def bb_rollin_axis(bone, base_axis):
-    axis = getattr(bone, "%s_axis" % base_axis)
+    axis = getattr(bone, f"{base_axis}_axis")
     axis.rotate(Quaternion(bone.y_axis, bone.bbone_rollin + bb_prev_roll(bone)))
     return axis
 
 def bb_rollout_axis(bone, base_axis):
     p = bone.bbone_custom_handle_end
     if p:
-        axis = getattr(p, "%s_axis" % base_axis)
+        axis = getattr(p, f"{base_axis}_axis")
         y_axis = p.y_axis
     else:
-        axis = getattr(bone, "%s_axis" % base_axis)
+        axis = getattr(bone, f"{base_axis}_axis")
         y_axis = bone.y_axis
     axis.rotate(Quaternion(y_axis, bone.bbone_rollout))
     return axis
@@ -300,7 +299,7 @@ class Rigger:
         if attr == "head" and utils.is_true(self.get_opt(bone, "connected")) and bone.parent:
             bone = bone.parent
             attr = "tail"
-        item = self.jdata.get("joint_%s_%s" % (bone.name, attr))
+        item = self.jdata.get(f"joint_{bone.name}_{attr}")
         if not item or item[0] < 1e-10:
             return None
         pos = item[1]/item[0]
@@ -325,7 +324,7 @@ class Rigger:
 
     def get_roll(self, bone, prefix):
         for axis in ("z", "x"):
-            value = self.get_opt(bone, prefix + "axis_" + axis)
+            value = self.get_opt(bone, f"{prefix}axis_{axis}")
             if value and len(value) == 3:
                 return Vector(value), axis
         return None, None
@@ -372,7 +371,7 @@ class Rigger:
         def walk(bone_tree):
             for bone, children in bone_tree.items():
                 for inout in ("in", "out"):
-                    bb_align_roll(bone, *self.get_roll(bone, "bb_%s_" % inout), inout)
+                    bb_align_roll(bone, *self.get_roll(bone, f"bb_{inout}_"), inout)
                 walk(children)
         walk(bbones)
 
@@ -475,7 +474,7 @@ def unpack_tweaks(path, tweaks, stages=None, depth=0):
     for tweak in tweaks:
         if isinstance(tweak, str):
             newpath = os.path.join(path, tweak)
-            with open(newpath) as f:
+            with open(newpath, "r", encoding="utf-8") as f:
                 unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), stages, depth+1)
         elif tweak.get("stage") == "pre":
             stages[0].append(tweak)

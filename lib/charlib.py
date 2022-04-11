@@ -51,7 +51,7 @@ def parse_file(path, parse_func, default):
     if not os.path.isfile(path):
         return default
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return parse_func(f)
     except Exception as e:
         logger.error(e)
@@ -88,7 +88,7 @@ def mblab_to_charmorph(data):
         "morphs": {k:v*2-1 for k, v in data.get("structural", {}).items()},
         "materials": data.get("materialproperties", {}),
         "meta": {(k[10:] if k.startswith("character_") else k):v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
-        "type": data.get("type", []),
+        "type": data.get("type", ()),
     }
 
 def charmorph_to_mblab(data):
@@ -96,11 +96,11 @@ def charmorph_to_mblab(data):
         "structural": {k:(v+1)/2 for k, v in data.get("morphs", {}).items()},
         "metaproperties": {k:v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
         "materialproperties": data.get("materials"),
-        "type": data.get("type", []),
+        "type": data.get("type", ()),
     }
 
 def load_morph_data(fn):
-    with open(fn, "r") as f:
+    with open(fn, "r", encoding="utf-8") as f:
         if fn[-5:] == ".yaml":
             return load_yaml(f)
         if fn[-5:] == ".json":
@@ -127,11 +127,11 @@ class Character:
     armature = {}
     armature_defaults = {}
     bones = {}
-    hairstyles = []
-    materials = []
+    hairstyles = ()
+    materials = ()
     material_lib = None
-    default_assets = []
-    underwear = []
+    default_assets = ()
+    underwear = ()
     types = {}
     hair_library = None
     hair_obj = None
@@ -193,7 +193,7 @@ class Character:
 
     @utils.lazyproperty
     def assets(self):
-        return load_data_dir(self.path("assets"), ".blend")
+        return load_assets_dir(self.path("assets"))
 
     @utils.lazyproperty
     def alt_topos(self):
@@ -235,7 +235,7 @@ class Character:
 
     @utils.lazyproperty
     def np_basis(self):
-        return self.get_np("morphs/L1/%s.npy" % self.basis)
+        return self.get_np(f"morphs/L1/{self.basis}.npy")
 
     @utils.lazyproperty
     def sliding_joints(self):
@@ -244,8 +244,7 @@ class Character:
     def _parse_armature(self, data):
         if isinstance(data, list):
             return self._parse_armature_list(data)
-        else:
-            return self._parse_armature_dict(data)
+        return self._parse_armature_dict(data)
 
     def _parse_armature_list(self, data):
         result = {}
@@ -255,7 +254,7 @@ class Character:
                 k = title.lower().replace(" ", "_")
             else:
                 k = str(i)
-                a["title"] = "<unnamed %s>" % k
+                a["title"] = f"<unnamed {k}>"
             if not self.default_armature:
                 self.default_armature = k
             result[k] = Armature(self, k, a)
@@ -286,14 +285,14 @@ def _lazy_yaml_props(*prop_lst):
 @_lazy_yaml_props("bones", "mixin_bones")
 class Armature:
     type = "regular"
-    tweaks = []
+    tweaks = ()
     ik_limits = {}
     sliding_joints = {}
     mixin = ""
     weights: str = None
     arp_reference_layer = 17
 
-    def __init__(self, char: Character, name : str, conf : dict):
+    def __init__(self, char: Character, name: str, conf: dict):
         self.title = name
         self.obj_name = name
         self.file = char.char_file
@@ -317,6 +316,71 @@ class Armature:
     def weights_npz(self):
         return self.char.get_np(self.weights)
 
+class Asset:
+    def __init__(self, name, file, path = None):
+        self.name = name
+        self.blend_file = file
+        self.dirpath = path
+
+    def path(self, name):
+        if self.dirpath:
+            return os.path.join(self.dirpath, name)
+        return ""
+
+    @utils.lazyproperty
+    def config(self):
+        file = self.path("config.yaml")
+        return load_yaml(file) if os.path.isfile(file) else {}
+
+    @utils.lazyproperty
+    def author(self):
+        return self.config.get("author", "")
+
+    @utils.lazyproperty
+    def license(self):
+        return self.config.get("license", "")
+
+    @utils.lazyproperty
+    def morph(self):
+        file = self.path("morph.npz")
+        return numpy.load(file) if os.path.isfile(file) else None
+
+def get_asset(asset_dir: str, name: str):
+    path = os.path.join(asset_dir, name)
+    if os.path.isdir(path):
+        for fname in (name, "asset"):
+            if os.path.isfile(os.path.join(path, fname + ".blend")):
+                return Asset(name, fname, path)
+    elif name.endswith(".blend"):
+        return Asset(name[:-6], path)
+    return None
+
+def load_assets_dir(path):
+    result = {}
+    if not os.path.isdir(path):
+        return result
+    for item in os.listdir(path):
+        asset = get_asset(path, item)
+        if asset:
+            result[asset.name] = asset
+    item = os.path.join(path, "authors.yaml")
+    if os.path.isfile(item):
+        for item in parse_file(item, load_yaml, ()):
+            assets = item.get("items", ())
+            del item["items"]
+            for name in assets:
+                asset = result.get(name)
+                if asset:
+                    asset.config.update(item)
+    return result
+
+def update_fitting_assets(ui, _):
+    global additional_assets
+    path = ui.fitting_library_dir
+    if not path:
+        return
+    additional_assets = load_assets_dir(path)
+
 empty_char = Character("")
 
 def char_by_name(name):
@@ -326,24 +390,6 @@ def obj_char(obj):
     if not obj:
         return empty_char
     return char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
-
-def update_fitting_assets(ui, _):
-    global additional_assets
-    path = ui.fitting_library_dir
-    if not path:
-        return
-    additional_assets = load_data_dir(path, ".blend")
-
-def fitting_asset_data(context):
-    ui = context.window_manager.charmorph_ui
-    item = ui.fitting_library_asset
-    if item.startswith("char_"):
-        obj = ui.fitting_char
-        char = obj_char(obj)
-        return char.assets.get(item[5:])
-    if item.startswith("add_"):
-        return additional_assets.get(item[4:])
-    return None
 
 def load_library():
     global hair_colors
@@ -420,7 +466,7 @@ def list_morph_dir(path):
 
 def create_morph_sk(obj, prefix, morph, counter):
     if morph.get("separator"):
-        obj.shape_key_add(name="---- sep-%d-%d ----" % tuple(counter), from_mix=False)
+        obj.shape_key_add(name=f"---- sep-{counter[0]}-{counter[1]} ----", from_mix=False)
         counter[1] += 1
         return None
 
@@ -459,7 +505,7 @@ def import_morphs(obj, char_name):
                 logger.error("Unknown L1 type: %s", file)
                 continue
             for morph in list_morph_dir(os.path.join(path, file)):
-                sk = create_morph_sk(obj, "L2_%s_" % file, morph, counter)
+                sk = create_morph_sk(obj, f"L2_{file}_", morph, counter)
                 if sk:
                     sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
                     import_morph(L1_basis, sk, os.path.join(path, file, morph["morph"] + ".npz"))

@@ -383,6 +383,16 @@ class Fitter:
         if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(self.obj)):
             self.do_fit(assets, True)
 
+def get_asset_conf(context):
+    ui = context.window_manager.charmorph_ui
+    item = ui.fitting_library_asset
+    if item.startswith("char_"):
+        obj = ui.fitting_char
+        char = charlib.obj_char(obj)
+        return char.assets.get(item[5:])
+    if item.startswith("add_"):
+        return charlib.additional_assets.get(item[4:])
+    return None
 
 def get_fitting_assets(ui, _):
     char = charlib.obj_char(ui.fitting_char)
@@ -441,8 +451,12 @@ def get_char(context):
         return None
     return obj
 
-def get_asset(context):
+def get_asset_obj(context):
     return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
+
+class EmptyAsset:
+    author=""
+    license=""
 
 class CHARMORPH_PT_Fitting(bpy.types.Panel):
     bl_label = "Assets"
@@ -458,25 +472,31 @@ class CHARMORPH_PT_Fitting(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        col = self.layout.column(align=True)
+        l = self.layout
+        col = l.column(align=True)
         col.prop(ui, "fitting_char")
         col.prop(ui, "fitting_asset")
-        self.layout.prop(ui, "fitting_mask")
-        col = self.layout.column(align=True)
+        l.prop(ui, "fitting_mask")
+        col = l.column(align=True)
         col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_weights_ovr")
         col.prop(ui, "fitting_transforms")
-        self.layout.separator()
+        l.separator()
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
-            self.layout.operator("charmorph.unfit")
+            l.operator("charmorph.unfit")
         else:
-            self.layout.operator("charmorph.fit_local")
-        self.layout.separator()
-        self.layout.operator("charmorph.fit_external")
-        self.layout.prop(ui, "fitting_library_asset")
-        self.layout.operator("charmorph.fit_library")
-        self.layout.prop(ui, "fitting_library_dir")
-        self.layout.separator()
+            l.operator("charmorph.fit_local")
+        l.separator()
+        l.operator("charmorph.fit_external")
+        asset = get_asset_conf(context) or EmptyAsset
+        col = l.column(align=True)
+        col.label(text="Author: " + asset.author)
+        col.label(text="License: " + asset.license)
+        l.prop(ui, "fitting_library_asset")
+
+        l.operator("charmorph.fit_library")
+        l.prop(ui, "fitting_library_dir")
+        l.separator()
 
 def mesh_obj(obj):
     if obj and obj.type == "MESH":
@@ -496,13 +516,13 @@ class OpFitLocal(bpy.types.Operator):
         char = get_char(context)
         if not char:
             return False
-        asset = get_asset(context)
+        asset = get_asset_obj(context)
         if not asset or asset == char:
             return False
         return True
 
     def execute(self, context): #pylint: disable=no-self-use
-        get_fitter(get_char(context)).fit_new(get_asset(context))
+        get_fitter(get_char(context)).fit_new(get_asset_obj(context))
         return {"FINISHED"}
 
 def fitExtPoll(context):
@@ -513,16 +533,16 @@ def fit_import(char, lst):
         return True
     f = get_fitter(char)
     f.lock_comb_mask()
-    for file, obj in lst:
-        asset = utils.import_obj(file, obj)
-        if asset is None:
+    for asset in lst:
+        obj = utils.import_obj(asset.blend_file, asset.name)
+        if obj is None:
             return False
-        f.fit_new(asset)
+        f.fit_new(obj)
     f.unlock_comb_mask()
     ui = bpy.context.window_manager.charmorph_ui
     ui.fitting_char = char # For some reason combo box value changes after importing, fix it
     if len(lst) == 1:
-        ui.fitting_asset = asset
+        ui.fitting_asset = obj
     return True
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -540,7 +560,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        if fit_import(get_char(context), ((self.filepath, name),)):
+        if fit_import(get_char(context), (charlib.Asset(name, self.filepath),)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -556,7 +576,7 @@ class OpFitLibrary(bpy.types.Operator):
         return fitExtPoll(context)
 
     def execute(self, context):
-        asset_data = charlib.fitting_asset_data(context)
+        asset_data = get_asset_conf(context)
         if asset_data is None:
             self.report({'ERROR'}, "Asset is not found")
             return {"CANCELLED"}
@@ -572,12 +592,12 @@ class OpUnfit(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        asset = get_asset(context)
+        asset = get_asset_obj(context)
         return context.mode == "OBJECT" and asset and 'charmorph_fit_id' in asset.data
 
     def execute(self, context): # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
-        asset = get_asset(context)
+        asset = get_asset_obj(context)
 
         del asset.data['charmorph_fit_id']
         mask = mask_name(asset)

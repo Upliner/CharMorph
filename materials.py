@@ -88,7 +88,7 @@ def load_materials(obj, char):
                 obj.data.materials.pop(index=i)
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(path, settings:dict={}):
+def load_texdir(path, settings:dict):
     if not os.path.exists(path):
         return {}
     settings = settings.copy()
@@ -110,9 +110,9 @@ def load_texdir(path, settings:dict={}):
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
 def load_texmap(char, tex_set):
     result = {}
-    char_texes, settings = load_texdir(charlib.char_file(char, "textures"))
+    char_texes, settings = load_texdir(charlib.char_file(char, "textures"), {})
 
-    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures"))[0].items():
+    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures"), {})[0].items():
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
 
