@@ -21,7 +21,7 @@
 import logging
 import bpy # pylint: disable=import-error
 
-from .lib import charlib, fit_calc, morphers, utils
+from .lib import charlib, fit, morphers, utils
 from . import materials
 
 logger = logging.getLogger(__name__)
@@ -156,8 +156,8 @@ class OpBuildAltTopo(bpy.types.Operator):
             obj.data["cm_alt_topo"] = "sk"
             update_morpher(get_morpher(obj))
             return {"FINISHED"}
-        weights = fit_calc.ReverseFitCalculator(morpher).get_weights(obj)
-        result = fit_calc.calc_fit(morpher.full_basis - morpher.get_final(), *weights)
+        weights = fit.ReverseFitCalculator(morpher).get_weights(obj)
+        result = fit.calc_fit(morpher.full_basis - morpher.get_final(), *weights)
         result += utils.get_morphed_numpy(obj)
         result = result.reshape(-1)
         if btype == "K":

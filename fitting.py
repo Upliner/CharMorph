@@ -22,7 +22,7 @@ import os, logging
 
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import charlib, fit_calc, morphers, utils
+from .lib import charlib, fit, morphers, utils
 from . import morphing
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def get_fitter(target):
         raise Exception("Fitter: invalid target")
 
     if not fitter or fitter.morpher != morpher:
-        fitter = fit_calc.Fitter(morpher)
+        fitter = fit.Fitter(morpher)
 
     return fitter
 
@@ -266,7 +266,7 @@ class OpUnfit(bpy.types.Operator):
         asset = get_asset_obj(context)
 
         del asset.data['charmorph_fit_id']
-        mask = fit_calc.mask_name(asset)
+        mask = fit.mask_name(asset)
         for char in [asset.parent, ui.fitting_char]:
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
