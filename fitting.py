@@ -23,7 +23,7 @@ import os, random, logging
 import bpy, bpy_extras  # pylint: disable=import-error
 import mathutils, bmesh # pylint: disable=import-error
 
-from .lib import charlib, fit_calc, rigging, utils
+from .lib import charlib, fit_calc, morphers, rigging, utils
 from . import morphing, hair
 
 logger = logging.getLogger(__name__)
@@ -46,16 +46,15 @@ def update_bbox(bbox_min, bbox_max, obj):
 
 def get_fitter(target):
     global fitter
-    if isinstance(target, morphing.Morpher):
+    if isinstance(target, morphers.Morpher):
         morpher = target
-        obj = target.obj
     elif isinstance(target, bpy.types.Object):
-        morpher = morphing.morpher if morphing.morpher and morphing.morpher.obj == target else None
-        obj = target
+        morpher = morphing.morpher if morphing.morpher and morphing.morpher.obj == target else morphers.get_morpher(target)
     else:
         raise Exception("Fitter: invalid target")
-    if not fitter or fitter.morpher != morpher or fitter.obj != obj:
-        fitter = Fitter(morpher, obj)
+
+    if not fitter or fitter.morpher != morpher:
+        fitter = Fitter(morpher)
 
     return fitter
 
@@ -69,21 +68,14 @@ def get_fitting_shapekey(obj):
         sk.value = 1
     return sk.data
 
-class Fitter:
+class Fitter(fit_calc.MorpherFitCalculator):
     children: list = None
     _lock_cm = False
     transfer_calc: fit_calc.ObjFitCalculator = None
 
-    def __init__(self, morpher, obj):
-        self.obj = obj
-        self.morpher = morpher
+    def __init__(self, morpher):
+        super().__init__(morpher, morphing.get_basis)
         self.weights_cache = {}
-        if self.morpher is None:
-            self.calc = fit_calc.ObjFitCalculator(obj, morphing.get_basis)
-            self.char = charlib.obj_char(obj)
-        else:
-            self.calc = fit_calc.MorpherFitCalculator(morpher, morphing.get_basis)
-            self.char = self.calc.char
 
     def add_mask_from_asset(self, asset):
         vg_name = mask_name(asset)
@@ -93,7 +85,7 @@ class Fitter:
         bbox_max = mathutils.Vector(asset.bound_box[0])
         update_bbox(bbox_min, bbox_max, asset)
 
-        self.add_mask(self.calc.get_bvh(asset), vg_name, bbox_min, bbox_max)
+        self.add_mask(self.get_bvh(asset), vg_name, bbox_min, bbox_max)
 
     def add_mask(self, bvh_asset, vg_name, bbox_min, bbox_max):
         def bbox_match(co):
@@ -102,7 +94,7 @@ class Fitter:
                     return False
             return True
 
-        bvh_char = self.calc.get_bvh(self.obj)
+        bvh_char = self.get_bvh(self.obj)
 
         bbox_min2 = bbox_min
         bbox_max2 = bbox_max
@@ -210,22 +202,22 @@ class Fitter:
         if result is not None:
             return result
 
-        result = self.calc.get_weights(asset)
+        result = self.get_weights(asset)
         self.weights_cache[fit_id] = result
         return result
 
     def _transfer_weights_orig(self, asset):
-        self.calc.transfer_weights(asset, rigging.char_weights_npz(self.obj, self.char))
+        self.transfer_weights(asset, rigging.char_weights_npz(self.obj, self.char))
 
     def _transfer_weights_obj(self, asset, vgs):
         if asset is self.obj:
             raise Exception("Tried to self-transfer weights")
-        if self.calc.alt_topo:
+        if self.alt_topo:
             if self.transfer_calc is None:
-                self.transfer_calc = fit_calc.ObjFitCalculator(self.obj, morphing.get_basis, self.calc)
+                self.transfer_calc = fit_calc.ObjFitCalculator(self.obj, morphing.get_basis, self)
             calc = self.transfer_calc
         else:
-            calc = self.calc
+            calc = self
         calc.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
 
     def transfer_armature(self, asset):
@@ -270,26 +262,19 @@ class Fitter:
     def transfer_new_armature(self):
         for asset in self.get_assets():
             self.transfer_armature(asset)
-        self.calc.tmp_buf = None
+        self.tmp_buf = None
         self.transfer_calc = None
 
-    def diff_array(self):
-        if hasattr(self.morpher, "get_diff"):
-            return self.morpher.get_diff()
-        morphed = utils.get_morphed_numpy(self.obj)
-        morphed -= self.calc.verts
-        return morphed
-
     def get_target(self, asset):
-        return morphing.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
+        return morphers.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
 
     def do_fit(self, assets, fit_hair = False):
         t = utils.Timer()
 
-        diff_arr = self.diff_array()
+        diff_arr = self.morpher.get_diff()
         for asset in assets:
             verts = fit_calc.calc_fit(diff_arr, *self.get_weights(asset))
-            verts += self.calc.get_verts(asset)
+            verts += self.get_verts(asset)
             self.get_target(asset).foreach_set("co", verts.reshape(-1))
             asset.data.update()
 
@@ -317,7 +302,7 @@ class Fitter:
         bbox_min = mathutils.Vector(assets[0].bound_box[0])
         bbox_max = mathutils.Vector(assets[0].bound_box[0])
         if len(assets) == 1:
-            bvh_assets = self.calc.get_bvh(assets[0])
+            bvh_assets = self.get_bvh(assets[0])
             update_bbox(bbox_min, bbox_max, assets[0])
         else:
             try:
@@ -378,7 +363,7 @@ class Fitter:
 
     def refit_all(self):
         assets = self.get_assets()
-        if self.calc.alt_topo:
+        if self.alt_topo:
             assets.append(self.obj)
         if assets or (bpy.context.window_manager.charmorph_ui.hair_deform and hair.has_hair(self.obj)):
             self.do_fit(assets, True)
@@ -531,19 +516,23 @@ def fitExtPoll(context):
 def fit_import(char, lst):
     if len(lst) == 0:
         return True
+    result = True
     f = get_fitter(char)
     f.lock_comb_mask()
-    for asset in lst:
-        obj = utils.import_obj(asset.blend_file, asset.name)
-        if obj is None:
-            return False
-        f.fit_new(obj)
-    f.unlock_comb_mask()
+    try:
+        for asset in lst:
+            obj = utils.import_obj(asset.blend_file, asset.name)
+            if obj is None:
+                result = False
+            obj["charmorph_asset"] = asset.name
+            f.fit_new(obj)
+    finally:
+        f.unlock_comb_mask()
     ui = bpy.context.window_manager.charmorph_ui
     ui.fitting_char = char # For some reason combo box value changes after importing, fix it
     if len(lst) == 1:
         ui.fitting_asset = obj
-    return True
+    return result
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.fit_external"

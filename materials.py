@@ -227,6 +227,7 @@ def get_props(obj):
 def update_props(obj):
     global props
     props = get_props(obj)
+    return props
 
 def prop_values():
     return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in props.items()}

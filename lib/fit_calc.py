@@ -217,7 +217,7 @@ class MorpherFitCalculator(FitCalculator):
 
     @utils.lazyproperty
     def verts(self):
-        return self.morpher.get_basis()
+        return self.morpher.full_basis
 
     @utils.lazyproperty
     def faces(self):
