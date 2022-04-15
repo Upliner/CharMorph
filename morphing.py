@@ -22,7 +22,7 @@ import logging
 import bpy # pylint: disable=import-error
 
 from .lib import charlib, fit_calc, morphers, utils
-from . import materials, fitting
+from . import materials
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +55,8 @@ def get_morpher(obj):
     logger.debug("switching object to %s", obj.name if obj else "")
 
     result = morphers.get_morpher(obj)
-    mtl_props = materials.update_props(obj)
-    result.apply_materials = lambda _, data: materials.apply_props(data, mtl_props)
-    result.handlers.append(lambda self: fitting.get_fitter(self).refit_all())
+    result.mtl_props = materials.update_props(obj)
+    result.apply_materials = lambda self, data: materials.apply_props(data, self.mtl_props)
     return result
 
 def update_morpher(m : morphers.Morpher):
@@ -89,7 +88,7 @@ def recreate_charmorphs():
     morpher.create_charmorphs_L2()
 
 def create_charmorphs(obj):
-    global last_object, morpher
+    global last_object
     last_object = obj
     if obj.type != "MESH":
         return
@@ -144,7 +143,7 @@ class OpBuildAltTopo(bpy.types.Operator):
     bl_options = {"UNDO"}
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, _):
         return morpher and morpher.alt_topo_buildable and morpher.has_morphs()
 
     def execute(self, context):

@@ -110,6 +110,7 @@ class Morpher:
     rig_name = ""
     rig = None
     categories = []
+    handlers = []
     mtl_props = {}
     sliding_joints = {}
     L1_idx = 0
@@ -124,7 +125,6 @@ class Morpher:
         self.morphs_l2 = {}
         self.morphs_combo = {}
         self.meta_prev = {}
-        self.handlers = []
 
         self.L1 = self.get_L1()
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
@@ -637,16 +637,6 @@ class ShapeKeysMorpher(Morpher):
         result -= self.full_basis
         return result
 
-def get_target(obj):
-    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
-        return obj.data.vertices
-    sk = obj.data.shape_keys.key_blocks.get("charmorph_final")
-    if sk is None:
-        sk = obj.shape_key_add(name="charmorph_final", from_mix=False)
-    if sk.value < 0.75:
-        sk.value = 1
-    return sk.data
-
 class NumpyMorpher(Morpher):
     basis = None
     morphed = None
@@ -770,7 +760,7 @@ class NumpyMorpher(Morpher):
         self._do_all_morphs()
 
         if not self.alt_topo:
-            get_target(self.obj).foreach_set("co", self.morphed.reshape(-1))
+            utils.get_target(self.obj).foreach_set("co", self.morphed.reshape(-1))
             self.obj.data.update()
 
         super().do_update()

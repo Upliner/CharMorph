@@ -135,6 +135,29 @@ def get_morphed_numpy(obj):
         if temporary:
             obj.shape_key_remove(morphed_shapekey)
 
+def get_target(obj):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        return obj.data.vertices
+    sk = obj.data.shape_keys.key_blocks.get("charmorph_final")
+    if sk is None:
+        sk = obj.shape_key_add(name="charmorph_final", from_mix=False)
+    if sk.value < 0.75:
+        sk.value = 1
+    return sk.data
+
+def is_obstructive_modifier(m):
+    return m.type in ("SUBSURF", "MASK")
+
+# Temporarily disable all modifiers that can make vertex mapping impossible
+def disable_modifiers(obj, predicate=is_obstructive_modifier):
+    lst = []
+    for m in obj.modifiers:
+        if predicate(m) and m.show_viewport:
+            m.show_viewport = False
+            lst.append(m)
+    return lst
+
+
 def is_true(value):
     if isinstance(value, str):
         return value.lower() in {'true', '1', 'y', 'yes'}

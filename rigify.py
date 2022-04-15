@@ -116,7 +116,7 @@ def add_mixin(char, conf, rig):
 
     return (bones, joints)
 
-def do_rig(m: morphing.Morpher, conf: charlib.Armature, rigger: rigging.Rigger):
+def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
     obj = m.obj
     metarig = bpy.context.object
     if hasattr(metarig.data, "rigify_generate_mode"):

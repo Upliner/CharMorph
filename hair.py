@@ -18,15 +18,13 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, random, numpy
+import logging, random
 import bpy, bmesh # pylint: disable=import-error
 
-from .lib import charlib, fit_calc, utils
+from .lib import charlib, utils
 from . import morphing, fitting
 
 logger = logging.getLogger(__name__)
-
-obj_cache = {}
 
 def create_hair_material(name, hair_color):
     mat = bpy.data.materials.new(name)
@@ -143,96 +141,15 @@ def create_default_hair(context, obj, char, scalp):
         hair.vertex_group_length = vg
     return s
 
-def invalidate_cache():
-    obj_cache.clear()
-
-no_result = None, None, (None, None, None)
-def get_data(char, psys, new):
-    if not psys.is_edited:
-        return no_result
-    fit_id = psys.settings.get("charmorph_fit_id")
-    if fit_id:
-        data = obj_cache.get(fit_id)
-        if data:
-            return data
-    else:
-        if not new:
-            return no_result
-        psys.settings["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
-
-    char_conf = charlib.obj_char(char)
-    style = psys.settings.get("charmorph_hairstyle")
-    if not char_conf or not style:
-        return no_result
-    z = char_conf.get_np(f"hairstyles/{style}.npz")
-    if z is None:
-        logger.error("Hairstyle npz file is not found")
-        return no_result
-
-    cnts = z["cnt"]
-    data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
-
-    if len(cnts) != len(psys.particles):
-        logger.error("Mismatch between current hairsyle and .npz!")
-        invalidate_cache()
-        return no_result
-
-    weights = fitting.get_fitter(char).calc.calc_weights_hair(data)
-    obj_cache[fit_id] = (cnts, data, weights)
-    return cnts, data, weights
-
-def fit_hair_asset(char, asset, diff_arr):
-    has_fit = False
-    for i, psys in enumerate(asset.particle_systems):
-        has_fit |= fit_hair(char, asset, psys, i, diff_arr, False)
-    return has_fit
-
-def fit_all_hair(char, diff_arr):
+def fit_all_hair(char):
     t = utils.Timer()
+    fitter = fitting.get_fitter(char)
     has_fit = False
-    for i, psys in enumerate(char.particle_systems):
-        has_fit |= fit_hair(char, char, psys, i, diff_arr, False)
-
-    for asset in fitting.get_fitter(char).get_assets():
-        has_fit |= fit_hair_asset(char, asset, diff_arr)
-
+    has_fit |= fitter.fit_obj_hair(char)
+    for asset in fitter.get_assets():
+        has_fit |= fitter.fit_obj_hair(asset)
     t.time("hair_fit")
     return has_fit
-
-def has_hair(char):
-    for psys in char.particle_systems:
-        cnts, data, weights = get_data(char, psys, False)
-        if cnts is not None and data is not None and weights:
-            return True
-    return False
-
-def fit_hair(char, obj, psys, idx, diff_arr, new):
-    t = utils.Timer()
-    cnts, data, weights = get_data(char, psys, new)
-    if cnts is None or data is None or not weights:
-        return False
-
-    morphed = numpy.empty((len(data)+1, 3))
-    morphed[1:] = fit_calc.calc_fit(diff_arr, *weights)
-    morphed[1:] += data
-
-    obj.particle_systems.active_index = idx
-
-    t.time("hair_fit_calc")
-
-    restore_modifiers = disable_modifiers(obj, lambda m: m.type=="SHRINKWRAP")
-    try:
-        utils.set_hair_points(obj, cnts, morphed)
-    except Exception as e:
-        logger.error(str(e))
-        invalidate_cache()
-    finally:
-        for m in restore_modifiers:
-            m.show_viewport = True
-
-    t.time("hair_fit_set")
-
-    return True
 
 def make_scalp(obj, name):
     vg = obj.vertex_groups.get("scalp_" + name)
@@ -251,40 +168,6 @@ def make_scalp(obj, name):
     finally:
         bm.free()
 
-def is_obstructive_modifier(m):
-    return m.type in ("SUBSURF", "MASK")
-
-# Temporarily disable all modifiers that can make vertex mapping impossible
-def disable_modifiers(obj, predicate=is_obstructive_modifier):
-    lst = []
-    for m in obj.modifiers:
-        if predicate(m) and m.show_viewport:
-            m.show_viewport = False
-            lst.append(m)
-    return lst
-
-def diff_array(context, char):
-    if not char.find_armature():
-        return fitting.get_fitter(char).diff_array()
-
-    restore_modifiers = disable_modifiers(char)
-    echar = char.evaluated_get(context.evaluated_depsgraph_get())
-    try:
-        deformed = echar.to_mesh()
-        basis = morphing.get_basis(char, False)
-        if len(deformed.vertices) != len(basis):
-            logger.error("Can't fit hair: vertex count mismatch")
-            return None
-        result = numpy.empty(len(basis) * 3)
-        deformed.vertices.foreach_get("co", result)
-        result = result.reshape(-1, 3)
-        result -= basis
-        return result
-    finally:
-        echar.to_mesh_clear()
-        for m in restore_modifiers:
-            m.show_viewport = True
-
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
     bl_label = "Refit hair"
@@ -298,20 +181,18 @@ class OpRefitHair(bpy.types.Operator):
         return context.mode in ["OBJECT", "POSE"] and obj.type in ["MESH", "ARMATURE"]
 
     def execute(self, context):
-        char = context.object
-        if char.type == "ARMATURE":
-            children = char.children
+        obj = context.object
+        if obj.type == "ARMATURE":
+            children = obj.children
             if len(children) == 1:
-                char = children[0]
-        if char.type != "MESH":
+                obj = children[0]
+        if obj.type != "MESH":
             self.report({"ERROR"}, "Character is not found")
             return {"CANCELLED"}
-        if "charmorph_fit_id" in char.data and char.parent and char.parent.type == "MESH":
-            obj = char
-            char = char.parent
-            has_fit = fit_hair_asset(char, obj, diff_array(context, char))
+        if "charmorph_fit_id" in obj.data and obj.parent and obj.parent.type == "MESH":
+            has_fit = fitting.get_fitter(obj.parent).fit_obj_hair(obj)
         else:
-            has_fit = fit_all_hair(char, diff_array(context, char))
+            has_fit = fit_all_hair(obj)
         if not has_fit:
             self.report({"ERROR"}, "No hair fitting data found")
             return {"CANCELLED"}
@@ -356,6 +237,7 @@ class OpCreateHair(bpy.types.Operator):
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
 
+        fitter = fitting.get_fitter(char)
         restore_modifiers = []
         if do_scalp:
             obj.particle_systems.active_index = idx
@@ -364,11 +246,11 @@ class OpCreateHair(bpy.types.Operator):
             dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
             attach_scalp(char, dst_obj)
         else:
-            restore_modifiers = disable_modifiers(char)
+            restore_modifiers = utils.disable_modifiers(char)
             dst_obj = char
-            fitting.get_fitter(char).do_fit([obj])
+            fitter.do_fit(obj)
             obj.parent = char
-        restore_modifiers.extend(disable_modifiers(dst_obj, lambda _: True))
+        restore_modifiers.extend(utils.disable_modifiers(dst_obj, lambda _: True))
         override["selected_editable_objects"] = [dst_obj]
         override["particle_system"] = src_psys
         bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
@@ -384,13 +266,14 @@ class OpCreateHair(bpy.types.Operator):
         bpy.data.objects.remove(obj)
         s = dst_psys.settings
         s["charmorph_hairstyle"] = style
+        s["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
         s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
 
         override["object"] = dst_obj
         cnt = len(dst_obj.modifiers)
         for m in list(dst_obj.modifiers):
             cnt -= 1
-            if is_obstructive_modifier(m):
+            if utils.is_obstructive_modifier(m):
                 for _ in range(cnt):
                     if bpy.ops.object.modifier_move_down.poll(override):
                         bpy.ops.object.modifier_move_down(override, modifier=m.name)
@@ -402,7 +285,7 @@ class OpCreateHair(bpy.types.Operator):
         for m in restore_modifiers:
             m.show_viewport = True
 
-        fit_hair(char, dst_obj, dst_psys, len(dst_obj.particle_systems)-1, diff_array(context, char), True)
+        fitter.fit_hair(dst_obj, len(dst_obj.particle_systems)-1)
 
         if do_shrinkwrap and dst_obj is not char:
             mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")

@@ -89,7 +89,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if conf.joints:
             joints = conf.joints
             if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fit_calc.RiggerFitCalculator(m, morphing.get_basis).transfer_weights_get(obj, rigging.vg_read(joints))
+                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)
@@ -107,7 +107,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
             clear_old_weights_with_assets(obj, char, old_rig)
 
         if m.alt_topo:
-            fitting.get_fitter(m).calc.transfer_weights(obj, conf.weights_npz)
+            fitting.get_fitter(m).transfer_weights(obj, conf.weights_npz)
         else:
             rigging.import_vg(obj, conf.weights_npz, False)
 
