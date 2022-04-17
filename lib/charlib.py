@@ -20,15 +20,9 @@
 
 import os, json, logging, traceback, numpy
 
-from . import utils
+from . import morphs, utils
 
 logger = logging.getLogger(__name__)
-
-try:
-    from yaml import load as yload, CSafeLoader as SafeLoader
-except ImportError:
-    from .yaml import load as yload, SafeLoader
-    logger.debug("Using bundled yaml library!")
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data"))
 
@@ -46,19 +40,6 @@ def char_file(char, file):
     if file == ".":
         os.path.join(data_dir, "characters", char)
     return os.path.join(data_dir, "characters", char, file)
-
-def parse_file(path, parse_func, default):
-    if not os.path.isfile(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return parse_func(f)
-    except Exception as e:
-        logger.error(e)
-        return default
-
-def load_yaml(data):
-    return yload(data, Loader=SafeLoader)
 
 def load_data_dir(path, target_ext):
     result = {}
@@ -78,34 +59,10 @@ def load_json_dir(path):
         name, ext = os.path.splitext(file)
         full_path = os.path.join(path, file)
         if ext == ".json" and os.path.isfile(full_path):
-            result[name] = parse_file(full_path, json.load, {})
+            result[name] = utils.parse_file(full_path, json.load, {})
     return result
 
 _empty_dict = object()
-
-def mblab_to_charmorph(data):
-    return {
-        "morphs": {k:v*2-1 for k, v in data.get("structural", {}).items()},
-        "materials": data.get("materialproperties", {}),
-        "meta": {(k[10:] if k.startswith("character_") else k):v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
-        "type": data.get("type", ()),
-    }
-
-def charmorph_to_mblab(data):
-    return {
-        "structural": {k:(v+1)/2 for k, v in data.get("morphs", {}).items()},
-        "metaproperties": {k:v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
-        "materialproperties": data.get("materials"),
-        "type": data.get("type", ()),
-    }
-
-def load_morph_data(fn):
-    with open(fn, "r", encoding="utf-8") as f:
-        if fn[-5:] == ".yaml":
-            return load_yaml(f)
-        if fn[-5:] == ".json":
-            return mblab_to_charmorph(json.load(f))
-    return None
 
 class Character:
     description = ""
@@ -175,7 +132,7 @@ class Character:
             default = {}
         if not self:
             return default
-        return parse_file(self.path(file), load_yaml, default)
+        return utils.parse_file(self.path(file), utils.load_yaml, default)
 
     @utils.lazyproperty
     def morphs_meta(self):
@@ -226,7 +183,7 @@ class Character:
             for file in os.listdir(path):
                 fpath = os.path.join(path, file)
                 if os.path.isfile(fpath):
-                    data = load_morph_data(fpath)
+                    data = morphs.load_morph_data(fpath)
                     if data is not None:
                         result[os.path.splitext(file)[0]] = data
         except Exception as e:
@@ -235,7 +192,7 @@ class Character:
 
     @utils.lazyproperty
     def np_basis(self):
-        return self.get_np(f"morphs/L1/{self.basis}.npy")
+        return morphs.np_ro64(self.get_np(f"morphs/L1/{self.basis}.npy"))
 
     @utils.lazyproperty
     def sliding_joints(self):
@@ -330,7 +287,7 @@ class Asset:
     @utils.lazyproperty
     def config(self):
         file = self.path("config.yaml")
-        return load_yaml(file) if os.path.isfile(file) else {}
+        return utils.load_yaml(file) if os.path.isfile(file) else {}
 
     @utils.lazyproperty
     def author(self):
@@ -342,8 +299,7 @@ class Asset:
 
     @utils.lazyproperty
     def morph(self):
-        file = self.path("morph.npz")
-        return numpy.load(file) if os.path.isfile(file) else None
+        return morphs.load_morph_noext("morph")
 
 def get_asset(asset_dir: str, name: str):
     path = os.path.join(asset_dir, name)
@@ -365,7 +321,7 @@ def load_assets_dir(path):
             result[asset.name] = asset
     item = os.path.join(path, "authors.yaml")
     if os.path.isfile(item):
-        for item in parse_file(item, load_yaml, ()):
+        for item in utils.parse_file(item, utils.load_yaml, ()):
             assets = item.get("items", ())
             del item["items"]
             for name in assets:
@@ -396,13 +352,13 @@ def load_library():
     t = utils.Timer()
     logger.debug("Loading character library at %s", data_dir)
     chars.clear()
-    hair_colors = parse_file(os.path.join(data_dir, "hair_colors.yaml"), load_yaml, {})
+    hair_colors = utils.parse_file(os.path.join(data_dir, "hair_colors.yaml"), utils.load_yaml, {})
     chardir = os.path.join(data_dir, "characters")
     if not os.path.isdir(chardir):
         logger.error("Directory %s is not found.", format(chardir))
         return
 
-    aliases = parse_file(os.path.join(chardir, "aliases.yaml"), load_yaml, None)
+    aliases = utils.parse_file(os.path.join(chardir, "aliases.yaml"), utils.load_yaml, None)
     char_aliases.clear()
     for k, v in aliases.items():
         for k2 in v if isinstance(v, list) else (v,):
@@ -425,96 +381,3 @@ def load_library():
         chars[char_name] = char
 
     t.time("Library load")
-
-# Morphs handling
-
-def import_morph(basis, sk, file):
-    data = numpy.load(file)
-    if isinstance(data, numpy.ndarray):
-        data = data.reshape(-1)
-        if basis is not None:
-            data += basis
-    elif isinstance(data, numpy.lib.npyio.NpzFile):
-        idx = data["idx"]
-        delta = data["delta"]
-        if basis is None:
-            data = numpy.zeros((len(sk.data), 3))
-        else:
-            data = basis.copy().reshape(-1, 3)
-        data[idx] += delta
-        data = data.reshape(-1)
-    else:
-        logger.error("bad morph file: %s", file)
-        return None
-    sk.data.foreach_set("co", data)
-    return data
-
-def ensure_basis_sk(obj):
-    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
-        obj.shape_key_add(name="Basis", from_mix=False)
-    return utils.get_basis_numpy(obj)
-
-def list_morph_dir(path):
-    if not os.path.isdir(path):
-        return ()
-    jslist = parse_file(os.path.join(path, "morphs.json"), json.load, None)
-    if jslist is not None:
-        return jslist
-
-    return ({"morph": name[:-4]} for name in sorted(os.listdir(path))
-        if name.endswith(".npz") and os.path.isfile(os.path.join(path, name)))
-
-def create_morph_sk(obj, prefix, morph, counter):
-    if morph.get("separator"):
-        obj.shape_key_add(name=f"---- sep-{counter[0]}-{counter[1]} ----", from_mix=False)
-        counter[1] += 1
-        return None
-
-    sk = obj.shape_key_add(name=prefix + morph["morph"], from_mix=False)
-    sk.slider_min = morph.get("min", 0)
-    sk.slider_max = morph.get("max", 1)
-    return sk
-
-def import_morphs(obj, char_name):
-    basis = ensure_basis_sk(obj)
-    path = char_file(char_name, "morphs/L1")
-    L1_basis_dict = {}
-    if os.path.isdir(path):
-        for file in sorted(os.listdir(path)):
-            if os.path.isfile(os.path.join(path, file)):
-                name = os.path.splitext(file)[0]
-                morph = import_morph(None, obj.shape_key_add(name="L1_" + name, from_mix=False), os.path.join(path, file))
-                if morph is not None:
-                    L1_basis_dict[name] = morph
-
-    path = char_file(char_name, "morphs/L2")
-    if not os.path.isdir(path):
-        return
-
-    counter = [2, 1]
-
-    for morph in list_morph_dir(path):
-        sk = create_morph_sk(obj, "L2__", morph, counter)
-        if sk:
-            import_morph(basis, sk, os.path.join(path, morph["morph"] + ".npz"))
-
-    for file in sorted(os.listdir(path)):
-        if os.path.isdir(os.path.join(path, file)):
-            L1_basis = L1_basis_dict.get(file)
-            if L1_basis is None:
-                logger.error("Unknown L1 type: %s", file)
-                continue
-            for morph in list_morph_dir(os.path.join(path, file)):
-                sk = create_morph_sk(obj, f"L2_{file}_", morph, counter)
-                if sk:
-                    sk.relative_key = obj.data.shape_keys.key_blocks["L1_" + file]
-                    import_morph(L1_basis, sk, os.path.join(path, file, morph["morph"] + ".npz"))
-
-def import_expressions(obj, char_name):
-    basis = ensure_basis_sk(obj)
-    counter = [3,1]
-    path = char_file(char_name, "morphs/L3")
-    for morph in  list_morph_dir(path):
-        sk = create_morph_sk(obj, "L3_", morph, counter)
-        if sk:
-            import_morph(basis, sk, os.path.join(path, morph["morph"] + ".npz"))

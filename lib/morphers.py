@@ -18,12 +18,12 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, re, logging, numpy
+import re, logging, numpy
 
 import bpy # pylint: disable=import-error
 import mathutils # pylint: disable=import-error
 
-from . import charlib, utils, rigging
+from . import charlib, morphs, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -73,21 +73,6 @@ def get_basis(data, morpher = None, use_char=True):
 
     return utils.verts_to_numpy(data.vertices)
 
-
-d_minmax = {"min": 0, "max": 1}
-def convertSigns(signs):
-    try:
-        return sum(d_minmax[sign] << i for i, sign in enumerate(signs))
-    except KeyError:
-        return -1
-
-class Morph:
-    __slots__ = "min", "max", "data"
-    def __init__(self, data, minval=0, maxval=0):
-        self.min = minval
-        self.max = maxval
-        self.data = data
-
 # Delete morphs property group
 def del_charmorphs_L2():
     if not hasattr(bpy.types.WindowManager, "charmorphs"):
@@ -111,6 +96,7 @@ class Morpher:
     rig = None
     categories = []
     handlers = []
+    morphs_l2 = []
     mtl_props = {}
     sliding_joints = {}
     L1_idx = 0
@@ -122,10 +108,9 @@ class Morpher:
         self.obj = obj
         self.char = charlib.obj_char(obj)
         self.morphs_l1 = {}
-        self.morphs_l2 = {}
-        self.morphs_combo = {}
         self.meta_prev = {}
 
+        self._init_storage()
         self.L1 = self.get_L1()
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
         self.update_L1_idx()
@@ -140,14 +125,16 @@ class Morpher:
 
     # these methods are overriden in subclass
     @staticmethod
+    def _init_storage():
+        pass
+    @staticmethod
     def get_L1():
         return ""
     @staticmethod
     def update_L1():
         pass
-    @staticmethod
-    def get_morphs_L2():
-        pass
+    def get_morphs_L2(self):
+        return self.morphs_l2
     @staticmethod
     def prop_get(_name):
         return 0
@@ -172,6 +159,11 @@ class Morpher:
         if result:
             self.update_L1_idx()
         return result
+
+    def update_morphs_L2(self):
+        self.morphs_l2 = self.get_morphs_L2()
+        if not self.char.custom_morph_order:
+            self.morphs_l2.sort(key=lambda morph: morph.name)
 
     def _set_L1(self, L1):
         if L1 not in self.morphs_l1:
@@ -216,61 +208,18 @@ class Morpher:
     def apply_materials(self, _):
         pass
 
-    def add_morph_l2(self, name, data, minval = 0, maxval = 1):
-        nameParts = name.split("_")
-
-        signIdx = -1
-        if len(nameParts) == 3:
-            signArr = nameParts[2].split("-")
-            signIdx = convertSigns(signArr)
-
-        if signIdx < 0:
-            self.morphs_l2[name] = Morph([data], minval, maxval)
-            return
-
-        names = nameParts[1].split("-")
-
-        if len(names) == 0 or len(names) != len(signArr):
-            logger.error("Invalid L2 morph name: %s, skipping", name)
-            return
-
-        morph_name = nameParts[0]+"_"+nameParts[1]
-        cnt = 2 ** len(names)
-
-        if len(names) == 1:
-            arr = self.morphs_l2
-        else:
-            arr = self.morphs_combo
-
-        if morph_name in arr:
-            morph = arr[morph_name]
-            if len(morph.data) != cnt:
-                logger.error("L2 combo morph conflict: different dimension count on %s, skipping", name)
-                return
-        else:
-            morph = Morph([None] * cnt)
-            arr[morph_name] = morph
-
-        for sign in signArr:
-            if sign == "min":
-                morph.min = min(morph.min, -maxval)
-            elif sign == "max":
-                morph.max = max(morph.max, maxval)
-
-        morph.data[signIdx] = data
-
     def apply_morph_data(self, data, preset_mix):
         morph_props = data.get("morphs", {})
         meta_props = data.get("meta", {})
         self.lock()
         try:
-            for name, morph in self.morphs_l2.items():
-                if morph is None:
+            for morph in self.morphs_l2:
+                if not morph.name:
                     continue
-                value = morph_props.get(name, 0)
+                value = morph_props.get(morph.name, 0)
                 if preset_mix:
-                    value = (value+self.prop_get(name))/2
-                self.prop_set(name, value)
+                    value = (value+self.prop_get(morph.name))/2
+                self.prop_set(morph.name, value)
             for name in self.meta_dict():
                 # TODO handle preset_mix?
                 value = meta_props.get(name, 0)
@@ -325,9 +274,6 @@ class Morpher:
 
             self.version += 1
             for prop, coeffs in data.get("morphs", {}).items():
-                if prop not in self.morphs_l2:
-                    continue
-
                 if not ui.relative_meta:
                     self.prop_set_internal(prop, self._calc_meta_abs_val(prop))
                     continue
@@ -369,13 +315,13 @@ class Morpher:
         self.prop_set_internal(name, value)
         self.update()
 
-    def morph_prop(self, name, morph):
+    def morph_prop(self, morph):
         return bpy.props.FloatProperty(
-            name=name,
+            name=morph.name,
             soft_min=morph.min, soft_max=morph.max,
             precision=3,
-            get=lambda _: self.prop_get(name),
-            set=lambda _, value: self.prop_set(name, max(min(value, morph.max), morph.min) if self.clamp else value)
+            get=lambda _: self.prop_get(morph.name),
+            set=lambda _, value: self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.clamp else value)
         )
 
     def get_presets(self):
@@ -391,12 +337,12 @@ class Morpher:
 
     def update_morph_categories(self):
         if not self.char.no_morph_categories:
-            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph) for morph, val in self.morphs_l2.items() if val is not None))]
+            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph.name) for morph in self.morphs_l2 if morph.name))]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
         del_charmorphs_L2()
-        self.get_morphs_L2()
+        self.update_morphs_L2()
         self.update_morph_categories()
         self.update_presets()
         self._init_sliding_joints()
@@ -404,8 +350,8 @@ class Morpher:
 
         props = {}
         if self.morphs_l2:
-            props.update(prefixed_prop("prop_", self.morph_prop(k, v)) for k, v in self.morphs_l2.items() if v is not None)
-            props.update(prefixed_prop("meta_", self.meta_prop (k, v)) for k, v in self.meta_dict().items())
+            props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.morphs_l2 if morph.name)
+            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.meta_dict().items())
         if self.sliding_joints:
             props.update(prefixed_prop("sj_", self.sliding_prop(k)) for k in self.sliding_joints.keys())
         if not props:
@@ -529,6 +475,7 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 class ShapeKeysMorpher(Morpher):
+    morphs_l2_dict = {}
     def update_L1(self):
         for name, sk in self.morphs_l1.items():
             sk.value = 1 if name == self.L1 else 0
@@ -569,30 +516,32 @@ class ShapeKeysMorpher(Morpher):
         return False
 
     def get_morphs_L2(self):
-        self.morphs_l2.clear()
-        self.morphs_combo.clear()
         if not self.obj.data.shape_keys:
-            return
+            return []
 
+        combiner = morphs.MorphCombiner()
         def load_shape_keys_by_prefix(prefix):
             for sk in self.obj.data.shape_keys.key_blocks:
                 if sk.name.startswith(prefix):
-                    self.add_morph_l2(sk.name[len(prefix):], sk, sk.slider_min, sk.slider_max)
+                    combiner.add_morph(morphs.MinMaxMorphData(sk.name[len(prefix):], sk.slider_min, sk.slider_max), sk)
 
         load_shape_keys_by_prefix("L2__")
 
         if len(self.L1) > 0:
             load_shape_keys_by_prefix(f"L2_{self.L1}_")
 
-        for k, v in self.morphs_combo.items():
+        for k, v in combiner.morphs_combo.items():
             names = list(enum_combo_names(k))
             combo_morpher = ShapeKeysComboMorpher(v.data, len(names))
             for i, name in enumerate(names):
-                morph = self.morphs_l2.get(name)
-                if not morph:
-                    morph = Morph([], -1, 1)
-                    self.morphs_l2[name] = morph
+                morph = combiner.morphs_dict[name]
+                if morph.data is None:
+                    morph.data = []
                 morph.data.append((combo_morpher, i))
+
+        self.morphs_l2_dict = combiner.morphs_dict
+        return combiner.morphs_list
+
 
     @staticmethod
     def is_combo_morph(morph):
@@ -617,14 +566,14 @@ class ShapeKeysMorpher(Morpher):
             if skmax is not None: skmax.value = value
 
     def prop_set_internal(self, name, value):
-        morph = self.morphs_l2[name]
+        morph = self.morphs_l2_dict[name]
         if self.is_combo_morph(morph):
             self._prop_set_combo(morph, value)
         else:
             self._prop_set_simple(morph, value)
 
     def prop_get(self, name):
-        morph = self.morphs_l2[name]
+        morph = self.morphs_l2_dict[name]
         if self.is_combo_morph(morph):
             return sum(combo_morpher.get(idx) for combo_morpher, idx in morph.data)/len(morph.data)
         if len(morph.data) == 1:
@@ -638,11 +587,14 @@ class ShapeKeysMorpher(Morpher):
         return result
 
 class NumpyMorpher(Morpher):
-    basis = None
-    morphed = None
-    def __init__(self, obj):
+    storage: morphs.MorphStorage
+    basis: numpy.ndarray = None
+    morphed: numpy.ndarray = None
+    morphs_combo = {}
+
+    def __init__(self, obj, storage=None):
+        self.storage = storage
         super().__init__(obj)
-        self.counter = 1
         if obj.data.get("cm_alt_topo"):
             self.alt_topo = True
             self.alt_topo_basis = get_basis(obj)
@@ -653,108 +605,57 @@ class NumpyMorpher(Morpher):
             if not self.alt_topo and self.char.faces is not None:
                 self.alt_topo_buildable = True
 
+    def _init_storage(self):
+        if self.storage is None:
+            self.storage = morphs.MorphStorage(self.char)
+
     def has_morphs(self):
         return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed
 
-    def _get_L1_data(self, name):
-        if not name:
-            return None
-        if name == self.char.basis:
-            return self.char.np_basis
-
-        file = self.morphs_l1.get(name, "")
-        if not os.path.isfile(file):
-            return None
-        result = numpy.load(file)
-        result.flags.writeable = False
-        return result
-
     def update_L1(self):
-        self.basis = self._get_L1_data(self.L1)
         if self.L1:
             self.obj.data["cmorph_L1"] = self.L1
+            self.basis = self.storage.resolve_lazy_L1(self.morphs_l1.get(self.L1))
+            if self.basis is not None:
+                self.morphs_l1[self.L1] = self.basis
+
         if self.basis is None:
             self.basis = self.full_basis
 
     def get_L1(self):
-        self.morphs_l1.clear()
-        path = self.char.path("morphs/L1")
-        if not os.path.isdir(path):
-            return ""
-        for file in os.listdir(path):
-            if file[-4:] != ".npy":
-                continue
-            self.morphs_l1[file[:-4]] = os.path.join(path, file)
+        self.morphs_l1 = {morph.name: self.storage.get_lazy(1, morph.name) for morph in self.storage.enum(1)}
         L1 = self.obj.data.get("cmorph_L1", "")
         if L1 not in self.morphs_l1:
             L1 = ""
         return L1
 
-    def _load_dir(self, path):
-        path = self.char.path(path)
-        for morph in charlib.list_morph_dir(path):
-            if morph.get("separator"):
-                self.morphs_l2[f"\0\0\0{self.counter}"] = None
-                self.counter += 1
-            else:
-                self.add_morph_l2(morph["morph"], os.path.join(path, morph["morph"] + ".npz"), morph.get("min", 0), morph.get("max", 1))
-
     def get_morphs_L2(self):
-        self.morphs_l2.clear()
-        self.morphs_combo.clear()
-        self._load_dir("morphs/L2")
+        combiner = morphs.MorphCombiner()
+        for morph in self.storage.enum(2):
+            combiner.add_morph(morph, self.storage.get_lazy(2, morph.name))
         if self.L1:
-            self._load_dir("morphs/L2/"+self.L1)
-
-        for k, v in self.morphs_combo.items():
-            for name in enum_combo_names(k):
-                self.morphs_l2[name] = self.morphs_l2.get(name, v)
-
-    def _do_morph(self, data, idx, value):
-        if abs(value) < 0.001:
-            return
-        item = data[idx]
-        if item is None:
-            return
-        if isinstance(item, str):
-            npz = numpy.load(item)
-            item = (npz["idx"], npz["delta"].astype(dtype=numpy.float64, casting="same_kind"))
-            data[idx] = item
-        if self.morphed is None:
-            self.morphed = self.basis.astype(dtype=numpy.float64, casting="same_kind")
-        self.morphed[item[0]] += item[1] * value
+            for morph in self.storage.enum(2, self.L1):
+                combiner.add_morph(morph, self.storage.get_lazy(2, self.L1, morph.name))
+        self.morphs_combo = combiner.morphs_combo
+        return combiner.morphs_list
 
     def _do_all_morphs(self):
         if self.basis is None:
             self.update_L1()
-        self.morphed = None
+        if self.morphed is None:
+            self.morphed = self.basis.copy()
+        else:
+            self.morphed[:] = self.basis
 
-        for name, morph in self.morphs_l2.items():
-            if morph is None or len(morph.data) > 2:
-                continue
-            data = morph.data
-            val = self.obj.data.get("cmorph_L2_"+name)
-            if val:
-                if self.clamp:
-                    val = max(min(val, morph.max), morph.min)
-                if len(data) == 1:
-                    self._do_morph(data, 0, val)
-                elif len(data) == 2:
-                    if val < 0:
-                        self._do_morph(data, 0, -val)
-                    else:
-                        self._do_morph(data, 1, val)
+        for morph in self.morphs_l2:
+            morph.apply(self.morphed, self.prop_get_clamped(morph.name))
 
         for name, morph in self.morphs_combo.items():
             values = [self.prop_get_clamped(morph_name) for morph_name in enum_combo_names(name)]
             data = morph.data
             coeff = 2 / len(data)
             for i in range(len(data)):
-                val2 = get_combo_item_value(i, values) * coeff
-                self._do_morph(data, i, val2)
-
-        if self.morphed is None:
-            self.morphed = self.basis
+                morph.get_morph(i).apply(self.morphed, get_combo_item_value(i, values) * coeff)
 
     def do_update(self):
         self._do_all_morphs()
@@ -770,6 +671,8 @@ class NumpyMorpher(Morpher):
 
     # Clamp to -1..1 only for combo props
     def prop_get_clamped(self, name):
+        if not name:
+            return 0.0
         val = self.prop_get(name)
         if self.clamp:
             return max(min(val, 1), -1)
@@ -798,7 +701,7 @@ class NumpyMorpher(Morpher):
             self._do_all_morphs()
         return self.morphed
 
-def get_morpher(obj):
+def get_morpher(obj, storage = None):
     if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
-        return NumpyMorpher(obj)
+        return NumpyMorpher(obj, storage)
     return ShapeKeysMorpher(obj)

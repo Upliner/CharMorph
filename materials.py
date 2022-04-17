@@ -92,7 +92,7 @@ def load_texdir(path, settings:dict):
     if not os.path.exists(path):
         return {}
     settings = settings.copy()
-    settings.update(charlib.parse_file(os.path.join(path, "settings.yaml"), charlib.load_yaml, {}))
+    settings.update(utils.parse_file(os.path.join(path, "settings.yaml"), utils.load_yaml, {}))
     default_setting = settings.get("*")
 
     result = {}

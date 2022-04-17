@@ -317,6 +317,11 @@ def mask_name(asset):
 
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
+class EmptyAsset:
+    author = ""
+    license = ""
+    morph = None
+
 class Fitter(MorpherFitCalculator):
     children: list = None
     _lock_cm = False
@@ -461,8 +466,12 @@ class Fitter(MorpherFitCalculator):
             self.diff_arr = self.morpher.get_diff()
         return self.diff_arr
 
-    def calc_fit(self, weights_tuple):
-        return calc_fit(self.get_diff_arr(), *weights_tuple)
+    def calc_fit(self, weights_tuple, morph = None):
+        diff_arr = self.get_diff_arr()
+        if morph is not None:
+            diff_arr = diff_arr.copy()
+            diff_arr[morph[0]] -= morph[1]
+        return calc_fit(diff_arr, *weights_tuple)
 
     def get_hair_data(self, psys):
         if not psys.is_edited:
@@ -586,10 +595,11 @@ class Fitter(MorpherFitCalculator):
     def get_target(self, asset):
         return utils.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
 
-    def do_fit(self, asset):
+    def fit(self, asset):
         t = utils.Timer()
 
-        verts = self.calc_fit(self.get_weights(asset))
+        self.char.assets.get(asset.data.get("charmorph_asset"))
+        verts = self.calc_fit(self.get_weights(asset), )
         verts += self.get_verts(asset)
         self.get_target(asset).foreach_set("co", verts.reshape(-1))
         asset.data.update()
@@ -644,7 +654,7 @@ class Fitter(MorpherFitCalculator):
         if ui.fitting_transforms:
             utils.apply_transforms(asset)
 
-        self.do_fit(asset)
+        self.fit(asset)
 
         if self.children is None:
             self.get_children()
@@ -678,11 +688,11 @@ class Fitter(MorpherFitCalculator):
     def refit_all(self):
         self.diff_arr = None
         if self.alt_topo:
-            self.do_fit(self.obj)
+            self.fit(self.obj)
         hair_deform = bpy.context.window_manager.charmorph_ui.hair_deform
         if hair_deform:
             self.fit_obj_hair(self.obj)
         for asset in self.get_assets():
-            self.do_fit(asset)
+            self.fit(asset)
             if hair_deform:
                 self.fit_obj_hair(asset)

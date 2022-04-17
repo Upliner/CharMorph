@@ -272,7 +272,7 @@ class MorphExporter:
 
         rk.data.foreach_get("co", self.basis)
 
-    def do_export(self, sk, path):
+    def do_export(self, sk, path, has_ext):
         if sk.relative_key == sk:
             return
         sk.data.foreach_get("co", self.morphed)
@@ -295,24 +295,31 @@ class MorphExporter:
                 else:
                     m2[i] = (0, 0, 0)
 
+        if has_ext and path[-4:] == ".npy":
+            numpy.save(path, m2.astype(dtype=self.dtype, casting="same_kind"))
+            return
+
         idx = ((m2 * m2).sum(1) > self.epsilonsq).nonzero()[0]
-        numpy.savez(path, idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=self.dtype, casting="same_kind"))
+        if (has_ext and path[-4:] == ".npz") or len(idx) * 5 <= len(m2) * 4:
+            numpy.savez(path, idx=idx.astype(dtype=numpy.uint16), delta=m2[idx].astype(dtype=self.dtype, casting="same_kind"))
+        else:
+            numpy.save(path, m2.astype(dtype=self.dtype, casting="same_kind"))
 
 class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.morph_export"
     bl_label = "Export single morph"
     bl_description = "Export active shapekey as L2/L3 morph"
 
-    filename_ext = ".npz"
+    #filename_ext = ".npz"
 
-    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
+    filter_glob: bpy.props.StringProperty(default="*.npy;*.npz", options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
         return context.object and context.object.type == "MESH" and context.object.active_shape_key
 
     def execute(self, context):
-        MorphExporter(context).do_export(context.object.active_shape_key, self.filepath)
+        MorphExporter(context).do_export(context.object.active_shape_key, self.filepath, True)
         return {"FINISHED"}
 
 class OpMorphsExport(DirExport):
@@ -336,18 +343,19 @@ class OpMorphsExport(DirExport):
         for sk in m.shape_keys.key_blocks:
             if not r.match(sk.name):
                 continue
-            name = r.sub(ui.morph_replace, sk.name) + ".npz"
+            name = r.sub(ui.morph_replace, sk.name)
             keys[name] = sk
-            if os.path.exists(os.path.join(self.directory, name)):
-                self.report({"ERROR"}, name + ".npz already exists!")
-                return {"CANCELLED"}
+            for ext in (".npy",".npz"):
+                if os.path.exists(os.path.join(self.directory, name + ext)):
+                    self.report({"ERROR"}, name + f"{name}{ext} already exists!")
+                    return {"CANCELLED"}
 
         me = MorphExporter(context)
 
         for name, sk in keys.items():
             if sk == me.rk:
                 continue
-            me.do_export(sk, os.path.join(self.directory, name))
+            me.do_export(sk, os.path.join(self.directory, name), False)
 
         return {"FINISHED"}
 

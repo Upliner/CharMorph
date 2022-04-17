@@ -18,12 +18,29 @@
 #
 # Copyright (C) 2021-2022 Michael Vigovsky
 
-import time, logging, numpy
+import os, time, logging, numpy
 import bpy, mathutils # pylint: disable=import-error
 
-from . import yaml
-
 logger = logging.getLogger(__name__)
+
+#### YAML stuff
+
+try:
+    from yaml import load as yload, CSafeLoader as SafeLoader, Dumper
+except ImportError:
+    from .yaml import load as yload, SafeLoader, Dumper
+    logger.debug("Using bundled yaml library!")
+
+def load_yaml(data):
+    return yload(data, Loader=SafeLoader)
+
+# set some yaml styles
+class MyDumper(Dumper):
+    pass
+MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style=True))
+MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value, 5)))
+
+#########
 
 class Timer:
     def __init__(self):
@@ -49,11 +66,15 @@ class lazyproperty(named_lazyprop):
     def __init__(self, fn):
         super().__init__(fn.__name__, fn)
 
-# set some yaml styles
-class MyDumper(yaml.Dumper):
-    pass
-MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style=True))
-MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value, 5)))
+def parse_file(path, parse_func, default):
+    if not os.path.isfile(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return parse_func(f)
+    except Exception as e:
+        logger.error(e)
+        return default
 
 def parse_color(val):
     if isinstance(val, list):

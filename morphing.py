@@ -51,12 +51,12 @@ null_morpher.lock()
 
 morpher = null_morpher
 
-def get_morpher(obj):
+def get_morpher(obj, storage = None):
     logger.debug("switching object to %s", obj.name if obj else "")
 
-    result = morphers.get_morpher(obj)
+    result = morphers.get_morpher(obj, storage)
     result.mtl_props = materials.update_props(obj)
-    result.apply_materials = lambda self, data: materials.apply_props(data, self.mtl_props)
+    result.apply_materials = lambda data: materials.apply_props(data, result.mtl_props)
     return result
 
 def update_morpher(m : morphers.Morpher):
@@ -310,8 +310,6 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.prop(ui, "morph_clamp")
 
-        morph_list = m.morphs_l2.keys()
-
         self.layout.separator()
 
         if m.categories:
@@ -322,10 +320,9 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
         self.layout.prop(ui, "morph_filter")
         col = self.layout.column(align=True)
-        if not m.char.custom_morph_order:
-            morph_list = sorted(morph_list)
-        for prop in morph_list:
-            if m.char.custom_morph_order and m.morphs_l2[prop] is None:
+        for morph in m.morphs_l2:
+            prop = morph.name
+            if not prop:
                 col.separator()
             elif ui.morph_category == "<All>" or prop.startswith(ui.morph_category):
                 if ui.morph_filter.lower() in prop.lower():

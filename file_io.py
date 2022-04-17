@@ -22,7 +22,7 @@ import json
 import bpy, bpy_extras # pylint: disable=import-error
 
 from .lib import yaml, utils
-from .lib.charlib import charmorph_to_mblab, load_morph_data
+from .lib.morphs import charmorph_to_mblab, load_morph_data
 from . import morphing, materials
 
 class UIProps:
@@ -72,7 +72,7 @@ def morphs_to_data():
 
     return {
         "type":   typ,
-        "morphs": {k: m.prop_get(k) for k, v in m.morphs_l2.items() if v is not None},
+        "morphs": {m.name: m.prop_get(m.name) for m in m.morphs_l2 if m.name},
         "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
         "materials": materials.prop_values()
     }

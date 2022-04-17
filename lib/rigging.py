@@ -25,7 +25,7 @@ import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
 from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
 
-from . import yaml, utils
+from . import utils
 
 logger = logging.getLogger(__name__)
 
@@ -341,9 +341,8 @@ class Rigger:
                 if align_bone:
                     bone.align_orientation(align_bone)
                     continue
-                else:
-                    logger.error("Align bone %s is not found", align)
-                    self.result = False
+                logger.error("Align bone %s is not found", align)
+                self.result = False
 
             vector, axis = self.get_roll(bone, "")
             if vector:
@@ -475,7 +474,7 @@ def unpack_tweaks(path, tweaks, stages=None, depth=0):
         if isinstance(tweak, str):
             newpath = os.path.join(path, tweak)
             with open(newpath, "r", encoding="utf-8") as f:
-                unpack_tweaks(os.path.dirname(newpath), yaml.safe_load(f), stages, depth+1)
+                unpack_tweaks(os.path.dirname(newpath), utils.load_yaml(f), stages, depth+1)
         elif tweak.get("stage") == "pre":
             stages[0].append(tweak)
         elif tweak.get("tweak") == "rigify_sliding_joint":

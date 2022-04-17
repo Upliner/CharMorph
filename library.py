@@ -22,7 +22,7 @@ import os, logging
 import bpy # pylint: disable=import-error
 
 from . import assets, morphing, materials
-from .lib import charlib, utils
+from .lib import charlib, morphs, utils
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,7 @@ class OpImport(bpy.types.Operator):
 
             obj = bpy.data.objects.new(char.name, mesh)
             context.collection.objects.link(obj)
+            storage = None
         else:
             obj = utils.import_obj(char.blend_file(), char.char_obj)
             if obj is None:
@@ -81,12 +82,14 @@ class OpImport(bpy.types.Operator):
                 ui.import_morphs = False
                 ui.import_expressions = False
 
+            storage = morphs.MorphStorage(char)
+            importer = morphs.MorphImporter(storage, obj)
             if ui.import_morphs:
-                charlib.import_morphs(obj, ui.base_model)
+                importer.import_morphs()
             elif os.path.isdir(char.path("morphs")):
                 obj.data["cm_morpher"] = "ext"
             if ui.import_expressions:
-                charlib.import_expressions(obj, ui.base_model)
+                importer.import_expressions()
 
             materials.init_materials(obj, char)
 
@@ -100,7 +103,7 @@ class OpImport(bpy.types.Operator):
         if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
-        m = morphing.get_morpher(obj)
+        m = morphing.get_morpher(obj, storage)
         morphing.update_morpher(m)
         m.update()
 
@@ -115,14 +118,14 @@ class OpImport(bpy.types.Operator):
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
 
-        assets = []
+        asset_list = []
         def add_assets(lst):
-            assets.extend((char.assets[name] for name in lst))
+            asset_list.extend((char.assets[name] for name in lst))
         add_assets(char.default_assets)
         if not utils.is_adult_mode():
             add_assets(char.underwear)
 
-        assets.fit_import(obj, assets)
+        assets.fit_import(obj, asset_list)
 
         return {"FINISHED"}
 

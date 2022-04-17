@@ -116,10 +116,6 @@ def get_char(context):
 def get_asset_obj(context):
     return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
 
-class EmptyAsset:
-    author=""
-    license=""
-
 class CHARMORPH_PT_Assets(bpy.types.Panel):
     bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -150,7 +146,7 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
             l.operator("charmorph.fit_local")
         l.separator()
         l.operator("charmorph.fit_external")
-        asset = get_asset_conf(context) or EmptyAsset
+        asset = get_asset_conf(context) or fitting.EmptyAsset
         col = l.column(align=True)
         col.label(text="Author: " + asset.author)
         col.label(text="License: " + asset.license)

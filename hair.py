@@ -248,7 +248,7 @@ class OpCreateHair(bpy.types.Operator):
         else:
             restore_modifiers = utils.disable_modifiers(char)
             dst_obj = char
-            fitter.do_fit(obj)
+            fitter.fit(obj)
             obj.parent = char
         restore_modifiers.extend(utils.disable_modifiers(dst_obj, lambda _: True))
         override["selected_editable_objects"] = [dst_obj]
