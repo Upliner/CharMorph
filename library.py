@@ -21,7 +21,7 @@
 import os, logging
 import bpy # pylint: disable=import-error
 
-from . import morphing, materials, fitting
+from . import assets, morphing, materials
 from .lib import charlib, utils
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class OpImport(bpy.types.Operator):
         if not utils.is_adult_mode():
             add_assets(char.underwear)
 
-        fitting.fit_import(obj, assets)
+        assets.fit_import(obj, assets)
 
         return {"FINISHED"}
 

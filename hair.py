@@ -22,7 +22,7 @@ import logging, random
 import bpy, bmesh # pylint: disable=import-error
 
 from .lib import charlib, utils
-from . import morphing, fitting
+from . import assets, morphing
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def attach_scalp(char, obj):
     else:
         for c in collections:
             c.objects.link(obj)
-    fitting.get_fitter(char).fit_new(obj)
+    assets.get_fitter(char).fit_new(obj)
 
 def create_scalp(name, char, vgi):
     vmap = {}
@@ -143,7 +143,7 @@ def create_default_hair(context, obj, char, scalp):
 
 def fit_all_hair(char):
     t = utils.Timer()
-    fitter = fitting.get_fitter(char)
+    fitter = assets.get_fitter(char)
     has_fit = False
     has_fit |= fitter.fit_obj_hair(char)
     for asset in fitter.get_assets():
@@ -190,7 +190,7 @@ class OpRefitHair(bpy.types.Operator):
             self.report({"ERROR"}, "Character is not found")
             return {"CANCELLED"}
         if "charmorph_fit_id" in obj.data and obj.parent and obj.parent.type == "MESH":
-            has_fit = fitting.get_fitter(obj.parent).fit_obj_hair(obj)
+            has_fit = assets.get_fitter(obj.parent).fit_obj_hair(obj)
         else:
             has_fit = fit_all_hair(obj)
         if not has_fit:
@@ -237,7 +237,7 @@ class OpCreateHair(bpy.types.Operator):
             self.report({"ERROR"}, "Hairstyle is not found")
             return {"CANCELLED"}
 
-        fitter = fitting.get_fitter(char)
+        fitter = assets.get_fitter(char)
         restore_modifiers = []
         if do_scalp:
             obj.particle_systems.active_index = idx

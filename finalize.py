@@ -22,8 +22,8 @@ import logging, traceback, numpy
 
 import bpy # pylint: disable=import-error
 
-from .lib import fit, rigging, utils
-from . import morphing, fitting, rigify
+from .lib import fitting, rigging, utils
+from . import assets, morphing, rigify
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +54,12 @@ def clear_old_weights(obj, char, rig):
 
 def clear_old_weights_with_assets(obj, char, rig):
     clear_old_weights(obj, char, rig)
-    for asset in fitting.get_fitter(obj).get_assets():
+    for asset in assets.get_fitter(obj).get_assets():
         clear_old_weights(asset, char, rig)
 
 def delete_old_rig_with_assets(obj, rig):
     delete_old_rig(obj, rig)
-    for asset in fitting.get_fitter(obj).get_assets():
+    for asset in assets.get_fitter(obj).get_assets():
         remove_armature_modifiers(asset)
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
@@ -89,7 +89,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if conf.joints:
             joints = conf.joints
             if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fit.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
+                joints = fitting.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)
@@ -107,7 +107,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
             clear_old_weights_with_assets(obj, char, old_rig)
 
         if m.alt_topo:
-            fitting.get_fitter(m).transfer_weights(obj, conf.weights_npz)
+            assets.get_fitter(m).transfer_weights(obj, conf.weights_npz)
         else:
             rigging.import_vg(obj, conf.weights_npz, False)
 
@@ -179,7 +179,7 @@ def attach_rig(obj, rig):
         mod.use_deform_preserve_volume = True
 
     if bpy.context.window_manager.charmorph_ui.fitting_weights != "NONE":
-        fitting.get_fitter(obj).transfer_new_armature()
+        assets.get_fitter(obj).transfer_new_armature()
 
 def sk_to_verts(obj, sk):
     if isinstance(sk, str):
@@ -301,7 +301,7 @@ def _add_modifiers(ui):
     add_corrective_smooth(obj)
     add_subsurf(obj)
 
-    for asset in fitting.get_fitter(obj).get_assets():
+    for asset in assets.get_fitter(obj).get_assets():
         if ui.fin_csmooth_assets == "RO":
             sk_to_verts(asset, "charmorph_fitting")
         elif ui.fin_csmooth_assets == "FR":

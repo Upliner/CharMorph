@@ -22,7 +22,7 @@ import os, logging
 
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import charlib, fit, morphers, utils
+from .lib import charlib, fitting, morphers, utils
 from . import morphing
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def get_fitter(target):
         raise Exception("Fitter: invalid target")
 
     if not fitter or fitter.morpher != morpher:
-        fitter = fit.Fitter(morpher)
+        fitter = fitting.Fitter(morpher)
 
     return fitter
 
@@ -120,7 +120,7 @@ class EmptyAsset:
     author=""
     license=""
 
-class CHARMORPH_PT_Fitting(bpy.types.Panel):
+class CHARMORPH_PT_Assets(bpy.types.Panel):
     bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CharMorph"
     bl_space_type = 'VIEW_3D'
@@ -266,7 +266,7 @@ class OpUnfit(bpy.types.Operator):
         asset = get_asset_obj(context)
 
         del asset.data['charmorph_fit_id']
-        mask = fit.mask_name(asset)
+        mask = fitting.mask_name(asset)
         for char in [asset.parent, ui.fitting_char]:
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
@@ -287,4 +287,4 @@ class OpUnfit(bpy.types.Operator):
 
         return {"FINISHED"}
 
-classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Fitting]
+classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Assets]
