@@ -21,6 +21,7 @@ Morphing:
   - Manual sculpting mode
   - Shape rig morphing
   - Allow to mix L1 shapes?
+  - Replace preset mix with mix factor
 
 Finalize:
   - Choice between materials displacement and displacement modifier

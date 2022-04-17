@@ -21,8 +21,8 @@
 import os, logging
 import bpy # pylint: disable=import-error
 
-from . import assets, morphing, materials
-from .lib import charlib, morphs, utils
+from . import assets, morphing
+from .lib import charlib, materials, morphs, utils
 
 logger = logging.getLogger(__name__)
 

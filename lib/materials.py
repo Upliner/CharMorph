@@ -19,11 +19,10 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import os, logging, collections
+
 import bpy # pylint: disable=import-error
 
-from .lib import charlib, utils
-
-props = None
+from . import charlib, utils
 
 logger = logging.getLogger(__name__)
 
@@ -224,43 +223,25 @@ def get_props(obj):
         scan_nodes(mtl.node_tree.nodes.values())
     return collections.OrderedDict(colors + values)
 
-def update_props(obj):
-    global props
-    props = get_props(obj)
-    return props
+class Materials:
+    props = {}
+    def __init__(self, obj):
+        if obj:
+            self.props = get_props(obj)
 
-def prop_values():
-    return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in props.items()}
+    def as_dict(self):
+        return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in self.props.items()}
 
-def apply_props(data, mtl_props=None):
-    if mtl_props is None:
-        mtl_props = props
-    if not data or not mtl_props:
-        return
-    for k, v in data.items():
-        prop = mtl_props.get(k)
-        if not prop:
-            continue
-        if prop.node.type == "RGB":
-            mtl_props[k].default_value = utils.parse_color(v)
-        else:
-            mtl_props[k].default_value = v
-
-class CHARMORPH_PT_Materials(bpy.types.Panel):
-    bl_label = "Materials"
-    bl_parent_id = "VIEW3D_PT_CharMorph"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    bl_order = 6
-
-    @classmethod
-    def poll(cls, _):
-        return bool(props)
-
-    def draw(self, _):
-        for prop in props.values():
-            if prop.node:
-                self.layout.prop(prop, "default_value", text=prop.node.label)
-
-classes = [CHARMORPH_PT_Materials]
+    def apply(self, data):
+        if not data:
+            return
+        if isinstance(data, dict):
+            data = data.items()
+        for k, v in data:
+            prop = self.props.get(k)
+            if not prop:
+                continue
+            if prop.node.type == "RGB":
+                self.props.default_value = utils.parse_color(v)
+            else:
+                self.props.default_value = v

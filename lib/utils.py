@@ -26,19 +26,22 @@ logger = logging.getLogger(__name__)
 #### YAML stuff
 
 try:
-    from yaml import load as yload, CSafeLoader as SafeLoader, Dumper
+    from yaml import load as yload, dump as ydump, CSafeLoader as SafeLoader, Dumper
 except ImportError:
-    from .yaml import load as yload, SafeLoader, Dumper
+    from .yaml import load as yload, dump as ydump, SafeLoader, Dumper
     logger.debug("Using bundled yaml library!")
-
-def load_yaml(data):
-    return yload(data, Loader=SafeLoader)
 
 # set some yaml styles
 class MyDumper(Dumper):
     pass
 MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style=True))
 MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value, 5)))
+
+def load_yaml(data):
+    return yload(data, Loader=SafeLoader)
+
+def dump_yaml(data, f):
+    return ydump(data, f, Dumper=MyDumper)
 
 #########
 

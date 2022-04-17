@@ -21,8 +21,7 @@
 import logging
 import bpy # pylint: disable=import-error
 
-from .lib import charlib, fitting, morphers, utils
-from . import materials
+from .lib import charlib, morphers, materials, fitting, utils
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,7 @@ def get_morpher(obj, storage = None):
     logger.debug("switching object to %s", obj.name if obj else "")
 
     result = morphers.get_morpher(obj, storage)
-    result.mtl_props = materials.update_props(obj)
-    result.apply_materials = lambda data: materials.apply_props(data, result.mtl_props)
+    result.materials = materials.Materials(obj)
     return result
 
 def update_morpher(m : morphers.Morpher):
@@ -328,4 +326,21 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 if ui.morph_filter.lower() in prop.lower():
                     col.prop(morphs, "prop_" + prop, slider=True)
 
-classes = [CHARMORPH_PT_Morphing, OpResetChar, OpBuildAltTopo]
+class CHARMORPH_PT_Materials(bpy.types.Panel):
+    bl_label = "Materials"
+    bl_parent_id = "VIEW3D_PT_CharMorph"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_options = {"DEFAULT_CLOSED"}
+    bl_order = 6
+
+    @classmethod
+    def poll(cls, _):
+        return morpher and morpher.materials and morpher.materials.props
+
+    def draw(self, _):
+        for prop in morpher.materials.props.values():
+            if prop.node:
+                self.layout.prop(prop, "default_value", text=prop.node.label)
+
+classes = [OpResetChar, OpBuildAltTopo, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]

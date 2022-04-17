@@ -21,7 +21,7 @@
 import logging
 import bpy # pylint: disable=import-error
 
-from . import assets, library, morphing, randomize, file_io, materials, hair, finalize, rigify, pose, cmedit
+from . import assets, library, morphing, randomize, file_io, hair, finalize, rigify, pose, cmedit
 from .lib import charlib
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-for module in [library, morphing, randomize, file_io, materials, assets, hair, finalize, rigify, pose]:
+for module in [library, morphing, randomize, file_io, assets, hair, finalize, rigify, pose]:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)

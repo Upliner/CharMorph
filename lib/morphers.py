@@ -23,7 +23,7 @@ import re, logging, numpy
 import bpy # pylint: disable=import-error
 import mathutils # pylint: disable=import-error
 
-from . import charlib, morphs, rigging, utils
+from . import charlib, morphs, materials, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class Morpher:
     categories = []
     handlers = []
     morphs_l2 = []
-    mtl_props = {}
+    materials = materials.Materials(None)
     sliding_joints = {}
     L1_idx = 0
 
@@ -171,7 +171,7 @@ class Morpher:
         self.L1 = L1
         self.update_L1()
         self.create_charmorphs_L2()
-        self.apply_materials(self.char.types.get(L1, {}).get("mtl_props"))
+        self.materials.apply(self.char.types.get(L1, {}).get("mtl_props"))
         self.update()
         return True
 
@@ -205,9 +205,6 @@ class Morpher:
         self.upd_lock = False
         self.update()
 
-    def apply_materials(self, _):
-        pass
-
     def apply_morph_data(self, data, preset_mix):
         morph_props = data.get("morphs", {})
         meta_props = data.get("meta", {})
@@ -227,7 +224,7 @@ class Morpher:
                 self.obj.data["cmorph_meta_" + name] = value
         finally:
             self.unlock()
-        self.apply_materials(data.get("materials"))
+        self.materials.apply(data.get("materials"))
 
     # Reset all meta properties to 0
     def reset_meta(self):
@@ -294,13 +291,10 @@ class Morpher:
 
             self.update()
 
-            if ui.meta_materials != "N":
-                for k, coeffs in data.get("materials", {}).items():
-                    if k in self.mtl_props:
-                        if ui.meta_materials == "R":
-                            self.mtl_props[k].default_value += self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)
-                        else:
-                            self.mtl_props[k].default_value = self._calc_meta_val(coeffs, value)
+            if ui.meta_materials == "R":
+                self.materials.apply((name, self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)) for name, coeffs in data.get("materials", {}).items())
+            elif ui.meta_materials == "A":
+                self.materials.apply((name, self._calc_meta_val(coeffs, value)) for name, coeffs in data.get("materials", {}).items())
 
         return bpy.props.FloatProperty(
             name=name,

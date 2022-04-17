@@ -21,9 +21,8 @@
 import json
 import bpy, bpy_extras # pylint: disable=import-error
 
-from .lib import yaml, utils
-from .lib.morphs import charmorph_to_mblab, load_morph_data
-from . import morphing, materials
+from .lib import morphs, utils
+from . import morphing
 
 class UIProps:
     export_format: bpy.props.EnumProperty(
@@ -74,7 +73,7 @@ def morphs_to_data():
         "type":   typ,
         "morphs": {m.name: m.prop_get(m.name) for m in m.morphs_l2 if m.name},
         "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
-        "materials": materials.prop_values()
+        "materials": m.materials.as_dict()
     }
 
 class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
@@ -91,9 +90,8 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, _):
         with open(self.filepath, "w", encoding="utf-8") as f:
-            json.dump(charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
+            json.dump(morphs.charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
         return {"FINISHED"}
-
 
 class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_yaml"
@@ -109,7 +107,7 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, _):
         with open(self.filepath, "w", encoding="utf-8") as f:
-            yaml.dump(morphs_to_data(), f, Dumper=utils.MyDumper)
+            utils.dump_yaml(morphs_to_data(), f)
         return {"FINISHED"}
 
 class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
@@ -125,7 +123,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         return bool(morphing.morpher)
 
     def execute(self, _):
-        data = load_morph_data(self.filepath)
+        data = morphs.load_morph_data(self.filepath)
         if data is None:
             self.report({'ERROR'}, "Can't recognize format")
             return {"CANCELLED"}
