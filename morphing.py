@@ -21,19 +21,19 @@
 import logging
 import bpy # pylint: disable=import-error
 
-from .lib import charlib, morphers, fit_calc, utils
+from .lib import charlib, morpher, fit_calc, utils
 
 logger = logging.getLogger(__name__)
 
 class Manager:
     last_object = None
     def __init__(self):
-        self.morpher = morphers.null_morpher
+        self.morpher = morpher.null_morpher
 
     def get_basis(self, data):
         return charlib.get_basis(data, self.morpher, True)
 
-    def update_morpher(self, m : morphers.Morpher):
+    def update_morpher(self, m : morpher.Morpher):
         self.morpher = m
         self.last_object = m.core.obj
 
@@ -56,7 +56,7 @@ class Manager:
     def recreate_charmorphs(self):
         if not self.morpher:
             return
-        self.morpher = morphers.get(self.morpher.core.obj)
+        self.morpher = morpher.get(self.morpher.core.obj)
         self.morpher.create_charmorphs_L2()
 
     def create_charmorphs(self, obj):
@@ -70,12 +70,12 @@ class Manager:
         if hasattr(self.morpher.core, "storage") and self.morpher.core.char is charlib.obj_char(obj):
             storage = self.morpher.core.storage
 
-        self.update_morpher(morphers.get(obj, storage))
+        self.update_morpher(morpher.get(obj, storage))
 
     def del_charmorphs(self, ):
         self.last_object = None
-        self.morpher = morphers.null_morpher
-        morphers.del_charmorphs_L2()
+        self.morpher = morpher.null_morpher
+        morpher.del_charmorphs_L2()
 
     def bad_object(self):
         if not self.morpher:
@@ -134,7 +134,7 @@ class OpResetChar(bpy.types.Operator):
     def execute(self, _):
         obj = manager.morpher.core.obj
         obj.data["cm_morpher"] = "ext"
-        new_morpher = morphers.get(obj)
+        new_morpher = morpher.get(obj)
         if new_morpher.error or not new_morpher.core.has_morphs():
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
@@ -164,7 +164,7 @@ class OpBuildAltTopo(bpy.types.Operator):
         has_sk = bool(sk and sk.key_blocks)
         if btype == "K" and has_sk:
             obj.data["cm_alt_topo"] = "sk"
-            manager.update_morpher(morphers.get(obj))
+            manager.update_morpher(morpher.get(obj))
             return {"FINISHED"}
         weights = fit_calc.ReverseFitCalculator(mcore).get_weights(obj)
         result = fit_calc.calc_fit(mcore.full_basis - mcore.get_final(), *weights)
@@ -187,7 +187,7 @@ class OpBuildAltTopo(bpy.types.Operator):
                 obj.data = old_mesh
             mesh.vertices.foreach_set("co", result)
 
-        manager.update_morpher(morphers.get(obj))
+        manager.update_morpher(morpher.get(obj))
         return {"FINISHED"}
 
 class UIProps:
