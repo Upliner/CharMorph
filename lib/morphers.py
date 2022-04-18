@@ -178,8 +178,17 @@ class Morpher:
         self.update()
 
     def apply_morph_data(self, data, preset_mix):
+        if data is None:
+            self.reset_meta()
+            data = {}
+        else:
+            meta_props = data.get("meta", {})
+            for name in self.char.morphs_meta:
+                # TODO handle preset_mix?
+                value = meta_props.get(name, 0)
+                self.meta_prev[name] = value
+                self.obj.data["cmorph_meta_" + name] = value
         morph_props = data.get("morphs", {})
-        meta_props = data.get("meta", {})
         self.lock()
         try:
             for morph in self.morphs_l2:
@@ -189,11 +198,6 @@ class Morpher:
                 if preset_mix:
                     value = (value+self.prop_get(morph.name))/2
                 self.prop_set(morph.name, value)
-            for name in self.char.morphs_meta:
-                # TODO handle preset_mix?
-                value = meta_props.get(name, 0)
-                self.meta_prev[name] = value
-                self.obj.data["cmorph_meta_" + name] = value
         finally:
             self.unlock()
         self.materials.apply(data.get("materials"))
@@ -201,7 +205,8 @@ class Morpher:
     # Reset all meta properties to 0
     def reset_meta(self):
         d = self.obj.data
-        for k in self.char.morphs_meta:
+        for k, v in self.char.morphs_meta.items():
+            self.materials.apply((name, 0) for name in v.get("materials", ()))
             self.meta_prev[k] = 0
             pname = "cmorph_meta_" + k
             if pname in d:
@@ -260,10 +265,14 @@ class Morpher:
 
             self.update()
 
+            mtl_items = data.get("materials", {}).items()
             if ui.meta_materials == "R":
-                self.materials.apply((name, self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)) for name, coeffs in data.get("materials", {}).items())
+                for pname, coeffs in mtl_items:
+                    prop = self.materials.props.get(pname)
+                    if prop:
+                        prop.default_value += self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)
             elif ui.meta_materials == "A":
-                self.materials.apply((name, self._calc_meta_val(coeffs, value)) for name, coeffs in data.get("materials", {}).items())
+                self.materials.apply((name, self._calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
 
         return bpy.props.FloatProperty(
             name=name,

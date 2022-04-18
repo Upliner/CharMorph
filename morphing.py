@@ -179,7 +179,7 @@ class OpBuildAltTopo(bpy.types.Operator):
     def poll(cls, _):
         return manager.morpher and manager.morpher.alt_topo_buildable and manager.morpher.has_morphs()
 
-    def execute(self, context):
+    def execute(self, context): # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
         obj = manager.morpher.obj
         btype = ui.alt_topo_build_type
@@ -236,23 +236,23 @@ class UIProps:
         description="Clamp properties to (-1..1) so they remain in realistic range",
         get=lambda _: manager.morpher.clamp,
         set=lambda _, value: manager.morpher.set_clamp(value),
-        update=lambda ui, _: manager.morpher.update())
+        update=lambda _ui, _: manager.morpher.update())
     morph_l1: bpy.props.EnumProperty(
         name="Type",
         description="Choose character type",
-        items=lambda ui, _: manager.morpher.L1_list,
+        items=lambda _ui, _: manager.morpher.L1_list,
         get=lambda _: manager.morpher.L1_idx,
         set=lambda _, value: manager.morpher.set_L1_by_idx(value),
         options={"SKIP_SAVE"})
     morph_category: bpy.props.EnumProperty(
         name="Category",
-        items=lambda ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + manager.morpher.categories,
+        items=lambda _ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + manager.morpher.categories,
         description="Select morphing categories to show")
     morph_preset: bpy.props.EnumProperty(
         name="Presets",
-        items=lambda ui, _: manager.morpher.presets_list,
+        items=lambda _ui, _: manager.morpher.presets_list,
         description="Choose morphing preset",
-        update=lambda ui, _: manager.morpher.apply_morph_data(manager.morpher.presets.get(ui.morph_preset, {}), ui.morph_preset_mix))
+        update=lambda ui, _: manager.morpher.apply_morph_data(manager.morpher.presets.get(ui.morph_preset), ui.morph_preset_mix))
     morph_preset_mix: bpy.props.BoolProperty(
         name="Mix with current",
         description="Mix selected preset with current morphs",
