@@ -358,7 +358,7 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        _, char = morphing.manager.get_obj_char(context)
+        char = morphing.manager.morpher.core.char
         if not char:
             char = charlib.empty_char
         l = self.layout

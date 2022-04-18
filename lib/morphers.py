@@ -18,11 +18,11 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import re, logging, numpy
+import re, logging
 
-import bpy, mathutils # pylint: disable=import-error
+import bpy # pylint: disable=import-error
 
-from . import charlib, morphs, materials, fitting, sliding_joints, utils
+from . import morpher_cores, materials, fitting, sliding_joints
 
 logger = logging.getLogger(__name__)
 
@@ -61,121 +61,63 @@ def del_charmorphs_L2():
     bpy.utils.unregister_class(propGroup)
 
 class Morpher:
-    upd_lock = False
-    clamp = True
     version = 0
     error = None
-    alt_topo = False
-    alt_topo_buildable = False
     categories = []
-    morphs_l2: list[morphs.MinMaxMorph] = []
-    materials = materials.Materials(None)
     L1_idx = 0
 
     presets = {}
     presets_list = [("_", "(reset)", "")]
 
-    def __init__(self, obj):
-        self.obj = obj
-        self.char = charlib.obj_char(obj)
-        self.morphs_l1 = {}
+    def __init__(self, core: morpher_cores.MorpherCore):
+        self.core = core
+        self.error = core.error
         self.meta_prev = {}
-        self.fitter = fitting.Fitter(self)
+        self.materials = materials.Materials(core.obj)
+        self.fitter = fitting.Fitter(self.core)
 
-        self._init_storage()
-        self.L1 = self.get_L1()
-        self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
+        self.L1_list = [(name, core.char.types.get(name, {}).get("title", name), "") for name in sorted(core.morphs_l1.keys())]
         self.update_L1_idx()
-        self.update_morphs_L2()
-        rig = obj.find_armature() if obj else None
+        rig = core.obj.find_armature() if core.obj else None
         if rig:
             self.error = "Character is rigged.\nLive rig deform is not supported"
-        self.sj_calc = sliding_joints.SJCalc(self.char, rig, self._get_co)
+        self.sj_calc = sliding_joints.SJCalc(self.core.char, rig, self.core.get_co)
 
     def __bool__(self):
-        return self.obj is not None
-
-    # these methods are overriden in subclass
-    @staticmethod
-    def _init_storage():
-        pass
-    @staticmethod
-    def get_L1():
-        return ""
-    @staticmethod
-    def update_L1():
-        pass
-    def get_morphs_L2(self):
-        return self.morphs_l2
-    @staticmethod
-    def prop_get(_name):
-        return 0
-    @staticmethod
-    def prop_set_internal(_name, _value):
-        pass
-    @staticmethod
-    def has_morphs():
-        return False
-
-    def _get_co(self, i):
-        return self.obj.data.vertices[i].co
-
-    def update_morphs_L2(self):
-        self.morphs_l2 = self.get_morphs_L2()
-        if not self.char.custom_morph_order:
-            self.morphs_l2.sort(key=lambda morph: morph.name)
+        return self.core.obj is not None
 
     def update_L1_idx(self):
         try:
-            self.L1_idx = next((i for i, item in enumerate(self.L1_list) if item[0] == self.L1))
+            self.L1_idx = next((i for i, item in enumerate(self.L1_list) if item[0] == self.core.L1))
         except StopIteration:
             pass
 
-    def set_L1(self, L1):
-        result = self._set_L1(L1)
+    def set_L1(self, L1, update=True):
+        result = self._set_L1(L1, update)
         if result:
             self.update_L1_idx()
         return result
 
-    def _set_L1(self, L1):
-        if L1 not in self.morphs_l1:
+    def _set_L1(self, L1, update):
+        if L1 not in self.core.morphs_l1:
             return False
-        self.L1 = L1
-        self.update_L1()
-        self.update_morphs_L2()
+        self.core.set_L1(L1)
         self.create_charmorphs_L2()
-        self.materials.apply(self.char.types.get(L1, {}).get("mtl_props"))
-        self.update()
+        self.materials.apply(self.core.char.types.get(L1, {}).get("mtl_props"))
+        if update:
+            self.update()
         return True
 
     def set_L1_by_idx(self, idx):
         if idx == self.L1_idx or idx >= len(self.L1_list):
             return
         self.L1_idx = idx
-        self._set_L1(self.L1_list[idx][0])
-
-    def do_update(self):
-        self.fitter.refit_all()
-        self.sj_calc.recalc()
+        self._set_L1(self.L1_list[idx][0], True)
 
     def update(self):
-        if self.upd_lock:
-            return
-        self.do_update()
-
-    @utils.lazyproperty
-    def full_basis(self):
-        return self.char.np_basis if self.char.np_basis is not None else charlib.get_basis(self.obj)
-
-    def get_basis_alt_topo(self):
-        return self.full_basis
-
-    def lock(self):
-        self.upd_lock = True
-
-    def unlock(self):
-        self.upd_lock = False
-        self.update()
+        self.core.update()
+        self.fitter.refit_all()
+        self.sj_calc.recalc()
 
     def apply_morph_data(self, data, preset_mix):
         if data is None:
@@ -183,29 +125,26 @@ class Morpher:
             data = {}
         else:
             meta_props = data.get("meta", {})
-            for name in self.char.morphs_meta:
+            for name in self.core.char.morphs_meta:
                 # TODO handle preset_mix?
                 value = meta_props.get(name, 0)
                 self.meta_prev[name] = value
-                self.obj.data["cmorph_meta_" + name] = value
+                self.core.obj.data["cmorph_meta_" + name] = value
         morph_props = data.get("morphs", {})
-        self.lock()
-        try:
-            for morph in self.morphs_l2:
-                if not morph.name:
-                    continue
-                value = morph_props.get(morph.name, 0)
-                if preset_mix:
-                    value = (value+self.prop_get(morph.name))/2
-                self.prop_set(morph.name, value)
-        finally:
-            self.unlock()
+        for morph in self.core.morphs_l2:
+            if not morph.name:
+                continue
+            value = morph_props.get(morph.name, 0)
+            if preset_mix:
+                value = (value+self.core.prop_get(morph.name))/2
+            self.core.prop_set(morph.name, value)
         self.materials.apply(data.get("materials"))
+        self.update()
 
     # Reset all meta properties to 0
     def reset_meta(self):
-        d = self.obj.data
-        for k, v in self.char.morphs_meta.items():
+        d = self.core.obj.data
+        for k, v in self.core.char.morphs_meta.items():
             if bpy.context.window_manager.charmorph_ui.meta_materials != "N":
                 self.materials.apply((name, 0) for name in v.get("materials", ()))
             self.meta_prev[k] = 0
@@ -214,22 +153,22 @@ class Morpher:
                 del d[pname]
 
     def _calc_meta_abs_val(self, prop):
-        return sum(calc_meta_val(self.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
+        return sum(calc_meta_val(self.core.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
             for meta_prop, val in self.meta_prev.items())
 
     def meta_get(self, name):
-        return self.obj.data.get("cmorph_meta_" + name, 0.0)
+        return self.core.obj.data.get("cmorph_meta_" + name, 0.0)
 
     def meta_prop(self, name, data):
         pname = "cmorph_meta_" + name
 
-        value = self.obj.data.get(pname, 0.0)
+        value = self.core.obj.data.get(pname, 0.0)
         self.meta_prev[name] = value
 
         def setter(_, new_value):
             nonlocal value
             value = new_value
-            self.obj.data[pname] = value
+            self.core.obj.data[pname] = value
 
         def update(_, context):
             prev_value = self.meta_prev.get(name, 0.0)
@@ -241,10 +180,10 @@ class Morpher:
             self.version += 1
             for prop, coeffs in data.get("morphs", {}).items():
                 if not ui.relative_meta:
-                    self.prop_set_internal(prop, self._calc_meta_abs_val(prop))
+                    self.core.prop_set(prop, self._calc_meta_abs_val(prop))
                     continue
 
-                propval = self.prop_get(prop)
+                propval = self.core.prop_get(prop)
 
                 val_prev = calc_meta_val(coeffs, prev_value)
                 val_cur = calc_meta_val(coeffs, value)
@@ -256,9 +195,7 @@ class Morpher:
                     propval = self._calc_meta_abs_val(prop)
                 else:
                     propval += val_cur-val_prev
-                self.prop_set_internal(prop, propval)
-
-            self.update()
+                self.core.prop_set(prop, propval)
 
             mtl_items = data.get("materials", {}).items()
             if ui.meta_materials == "R":
@@ -268,6 +205,8 @@ class Morpher:
                         prop.default_value += calc_meta_val(coeffs, value)-calc_meta_val(coeffs, prev_value)
             elif ui.meta_materials == "A":
                 self.materials.apply((name, calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
+
+            self.update()
 
         return bpy.props.FloatProperty(
             name=name,
@@ -279,7 +218,7 @@ class Morpher:
 
     def prop_set(self, name, value):
         self.version += 1
-        self.prop_set_internal(name, value)
+        self.core.prop_set(name, value)
         self.update()
 
     def morph_prop(self, morph):
@@ -287,15 +226,15 @@ class Morpher:
             name=morph.name,
             soft_min=morph.min, soft_max=morph.max,
             precision=3,
-            get=lambda _: self.prop_get(morph.name),
-            set=lambda _, value: self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.clamp else value)
+            get=lambda _: self.core.prop_get(morph.name),
+            set=lambda _, value: self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.core.clamp else value)
         )
 
     def get_presets(self):
-        if not self.char:
+        if not self.core.char:
             return {}
-        result = self.char.presets.copy()
-        result.update(self.char.load_presets("presets/" + self.L1))
+        result = self.core.char.presets.copy()
+        result.update(self.core.char.load_presets("presets/" + self.core.L1))
         return result
 
     def update_presets(self):
@@ -303,8 +242,8 @@ class Morpher:
         self.presets_list = Morpher.presets_list + [(name, name, "") for name in sorted(self.presets.keys())]
 
     def update_morph_categories(self):
-        if not self.char.no_morph_categories:
-            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph.name) for morph in self.morphs_l2 if morph.name))]
+        if not self.core.char.no_morph_categories:
+            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph.name) for morph in self.core.morphs_l2 if morph.name))]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
@@ -313,9 +252,9 @@ class Morpher:
         self.update_presets()
 
         props = {}
-        if self.morphs_l2:
-            props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.morphs_l2 if morph.name)
-            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.char.morphs_meta.items())
+        if self.core.morphs_l2:
+            props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.core.morphs_l2 if morph.name)
+            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.core.char.morphs_meta.items())
         props.update(prefixed_prop("sj_", prop) for prop in self.sj_calc.props())
         if not props:
             return
@@ -326,266 +265,9 @@ class Morpher:
             type=propGroup, options={"SKIP_SAVE"})
 
     def set_clamp(self, clamp):
-        self.clamp = clamp
+        self.core.clamp = clamp
 
-def get_combo_item_value(arr_idx, values):
-    return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)
+null_morpher = Morpher(morpher_cores.MorpherCore(None))
 
-def enum_combo_names(name):
-    nameParts = name.split("_")
-    return (f"{nameParts[0]}_{name}" for name in nameParts[1].split("-"))
-
-class ShapeKeysComboMorpher:
-    def __init__(self, arr, dims):
-        self.arr = arr
-        self.coeff = 2 / len(arr)
-        self.values = [self.get_combo_prop_value(i) for i in range(dims)]
-
-    def get_combo_prop_value(self, idx):
-        return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1)*2-1) for arr_idx, sk in enumerate(self.arr))
-
-    def get(self, idx):
-        val = self.get_combo_prop_value(idx)
-        self.values[idx] = val
-        return val
-
-    def set(self, idx, value):
-        self.values[idx] = value
-        for arr_idx, sk in enumerate(self.arr):
-            sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
-
-class ShapeKeysMorpher(Morpher):
-    morphs_l2_dict = {}
-    def update_L1(self):
-        for name, sk in self.morphs_l1.items():
-            sk.value = 1 if name == self.L1 else 0
-
-        # clear old L2 shape keys
-        if not self.obj.data.shape_keys:
-            return
-        for sk in self.obj.data.shape_keys.key_blocks:
-            if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith(f"L2_{self.L1}_"):
-                sk.value = 0
-
-    # scan object shape keys and convert them to dictionary
-    def get_L1(self):
-        self.morphs_l1.clear()
-        if not self.obj.data.shape_keys:
-            return ""
-        maxkey = ""
-        maxval = 0
-        for sk in self.obj.data.shape_keys.key_blocks:
-            if not sk.name.startswith("L1_"):
-                continue
-            name = sk.name[3:]
-            if sk.value > maxval:
-                maxkey = name
-                maxval = sk.value
-            self.morphs_l1[name] = sk
-
-        return maxkey
-
-    def has_morphs(self):
-        if self.morphs_l1:
-            return True
-        if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
-            return False
-        for sk in self.obj.data.shape_keys.key_blocks:
-            if sk.name.startswith("L2_"):
-                return True
-        return False
-
-    def get_morphs_L2(self):
-        if not self.obj.data.shape_keys:
-            return []
-
-        combiner = morphs.MorphCombiner()
-        def load_shape_keys_by_prefix(prefix):
-            for sk in self.obj.data.shape_keys.key_blocks:
-                if sk.name.startswith(prefix):
-                    combiner.add_morph(morphs.MinMaxMorphData(sk.name[len(prefix):], sk.slider_min, sk.slider_max), sk)
-
-        load_shape_keys_by_prefix("L2__")
-
-        if len(self.L1) > 0:
-            load_shape_keys_by_prefix(f"L2_{self.L1}_")
-
-        for k, v in combiner.morphs_combo.items():
-            names = list(enum_combo_names(k))
-            combo_morpher = ShapeKeysComboMorpher(v.data, len(names))
-            for i, name in enumerate(names):
-                morph = combiner.morphs_dict[name]
-                if morph.data is None:
-                    morph.data = []
-                morph.data.append((combo_morpher, i))
-
-        self.morphs_l2_dict = combiner.morphs_dict
-        return combiner.morphs_list
-
-
-    @staticmethod
-    def is_combo_morph(morph):
-        return len(morph.data) > 0 and isinstance(morph.data[0], tuple)
-
-    @staticmethod
-    def _prop_set_combo(morph, value):
-        for combo_morpher, idx in morph.data:
-            combo_morpher.set(idx, value)
-
-    @staticmethod
-    def _prop_set_simple(morph, value):
-        if len(morph.data) == 1:
-            morph.data[0].value = value
-            return
-        skmin, skmax = tuple(morph.data)
-        if value < 0:
-            if skmax is not None: skmax.value = 0
-            if skmin is not None: skmin.value = -value
-        else:
-            if skmin is not None: skmin.value = 0
-            if skmax is not None: skmax.value = value
-
-    def prop_set_internal(self, name, value):
-        morph = self.morphs_l2_dict[name]
-        if self.is_combo_morph(morph):
-            self._prop_set_combo(morph, value)
-        else:
-            self._prop_set_simple(morph, value)
-
-    def prop_get(self, name):
-        morph = self.morphs_l2_dict[name]
-        if self.is_combo_morph(morph):
-            return sum(combo_morpher.get(idx) for combo_morpher, idx in morph.data)/len(morph.data)
-        if len(morph.data) == 1:
-            return morph.data[0].value
-        skmin, skmax = tuple(morph.data)
-        return (0 if skmax is None else skmax.value) - (0 if skmin is None else skmin.value)
-
-    def get_diff(self):
-        result = utils.get_morphed_numpy(self.obj)
-        result -= self.full_basis
-        return result
-
-class NumpyMorpher(Morpher):
-    storage: morphs.MorphStorage
-    basis: numpy.ndarray = None
-    morphed: numpy.ndarray = None
-    morphs_combo: dict[str, morphs.MinMaxMorph] = {}
-
-    def __init__(self, obj, storage=None):
-        self.storage = storage
-        super().__init__(obj)
-        if len(self.get_basis_alt_topo()) != len(obj.data.vertices):
-            self.error = f"Vertex count mismatch {len(self.get_basis_alt_topo())} != {len(obj.data.vertices)}"
-            if not self.alt_topo and self.char.faces is not None:
-                self.alt_topo_buildable = True
-
-    def _init_storage(self):
-        if self.storage is None:
-            self.storage = morphs.MorphStorage(self.char)
-
-    def has_morphs(self):
-        return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed
-
-    def update_L1(self):
-        if self.L1:
-            self.obj.data["cmorph_L1"] = self.L1
-            self.basis = self.storage.resolve_lazy_L1(self.morphs_l1.get(self.L1))
-            if self.basis is not None:
-                self.morphs_l1[self.L1] = self.basis
-
-        if self.basis is None:
-            self.basis = self.full_basis
-
-    def get_L1(self):
-        self.morphs_l1 = {morph.name: self.storage.get_lazy(1, morph.name) for morph in self.storage.enum(1)}
-        L1 = self.obj.data.get("cmorph_L1", "")
-        if L1 not in self.morphs_l1:
-            L1 = ""
-        return L1
-
-    def get_morphs_L2(self):
-        combiner = morphs.MorphCombiner()
-        for morph in self.storage.enum(2):
-            combiner.add_morph(morph, self.storage.get_lazy(2, morph.name))
-        if self.L1:
-            for morph in self.storage.enum(2, self.L1):
-                combiner.add_morph(morph, self.storage.get_lazy(2, self.L1, morph.name))
-        self.morphs_combo = combiner.morphs_combo
-        return combiner.morphs_list
-
-    def _do_all_morphs(self):
-        if self.basis is None:
-            self.update_L1()
-        if self.morphed is None:
-            self.morphed = self.basis.copy()
-        else:
-            self.morphed[:] = self.basis
-
-        for morph in self.morphs_l2:
-            morph.apply(self.morphed, self.prop_get_clamped(morph.name))
-
-        for name, morph in self.morphs_combo.items():
-            values = [self.prop_get_clamped(morph_name) for morph_name in enum_combo_names(name)]
-            data = morph.data
-            coeff = 2 / len(data)
-            for i in range(len(data)):
-                morph.get_morph(i).apply(self.morphed, get_combo_item_value(i, values) * coeff)
-
-    def do_update(self):
-        self._do_all_morphs()
-
-        if not self.alt_topo:
-            utils.get_target(self.obj).foreach_set("co", self.morphed.reshape(-1))
-            self.obj.data.update()
-
-        super().do_update()
-
-    def prop_get(self, name):
-        return self.obj.data.get("cmorph_L2_"+name, 0.0)
-
-    # Clamp to -1..1 only for combo props
-    def prop_get_clamped(self, name):
-        if not name:
-            return 0.0
-        val = self.prop_get(name)
-        if self.clamp:
-            return max(min(val, 1), -1)
-        return val
-
-    def prop_set_internal(self, name, value):
-        self.obj.data["cmorph_L2_" + name] = value
-
-    def _get_co(self, i):
-        if self.morphed is None:
-            self._do_all_morphs()
-        return mathutils.Vector(self.morphed[i])
-
-    def get_diff(self):
-        if self.morphed is None:
-            self._do_all_morphs()
-        return self.morphed - self.full_basis
-
-    def get_final(self):
-        if not self.has_morphs():
-            return None
-        if self.morphed is None:
-            self._do_all_morphs()
-        return self.morphed
-
-class AltTopoMorpher(NumpyMorpher):
-    def __init__(self, obj, storage=None):
-        self.alt_topo = True
-        self.alt_topo_basis = charlib.get_basis(obj)
-        super().__init__(obj, storage)
-
-    def get_basis_alt_topo(self):
-        return self.alt_topo_basis
-
-
-def get_morpher(obj, storage = None):
-    if utils.is_true(obj.data.get("cm_alt_topo")):
-        return AltTopoMorpher(obj, storage)
-    if obj.data.get("cm_morpher") == "ext":
-        return NumpyMorpher(obj, storage)
-    return ShapeKeysMorpher(obj)
+def get(obj, storage=None):
+    return Morpher(morpher_cores.get(obj, storage))

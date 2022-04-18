@@ -24,7 +24,6 @@ import bpy # pylint: disable=import-error
 from .morphing import manager as mm
 
 saved_props = {}
-saved_version = -1
 
 class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(
@@ -80,12 +79,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
     def poll(cls, context):
         if context.window_manager.charmorph_ui.randomize_mode != "RL1":
             saved_props.clear()
-        m = mm.morpher
-        if not m:
-            return False
-        if m.version != saved_version:
-            saved_props.clear()
-        return True
+        return mm.morpher and not mm.morpher.error
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
@@ -106,30 +100,32 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
             self.layout.prop(ui, "randomize_strength")
         self.layout.operator('charmorph.randomize')
 
-def save_props():
-    m = mm.morpher
-    if m.version == saved_version:
-        return
-    saved_props.clear()
-    for name, morph in m.morphs_l2.items():
-        if morph is not None:
-            saved_props[name] = m.prop_get(name)
-
 class OpRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
     bl_label = "Randomize"
     bl_options = {"UNDO"}
 
+    saved_version = -1
+
+    def save_props(self):
+        m = mm.morpher
+        if m.version == type(self).saved_version:
+            return
+        saved_props.clear()
+        for morph in m.core.morphs_l2:
+            if morph.name:
+                saved_props[morph.name] = m.core.prop_get(morph.name)
+
     @classmethod
-    def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and mm.morpher
+    def poll(cls, _):
+        if mm.morpher.version != cls.saved_version:
+            saved_props.clear()
+        return mm.morpher and not mm.morpher.error
 
     def execute(self, context): # pylint: disable=no-self-use
-        global saved_version
-        wm = context.window_manager
-        ui = wm.charmorph_ui
+        ui = context.window_manager.charmorph_ui
         if ui.randomize_mode == "RL1":
-            save_props()
+            self.save_props()
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_func == "GAU":
@@ -138,32 +134,30 @@ class OpRandomize(bpy.types.Operator):
             random_func = random.random
         m = mm.morpher
         if ui.randomize_morphs:
-            m.lock()
-            try:
-                for name, morph in m.morphs_l2.items():
-                    if morph is None:
-                        continue
-                    if ui.randomize_excl and (excl.search(name) or not incl.search(name)):
-                        continue
-                    if ui.randomize_mode == "OVR":
-                        m.reset_meta()
-                    if ui.randomize_mode == "SEG":
-                        val = (math.floor((m.prop_get(name)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
-                    else:
-                        val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
-                    if ui.randomize_mode == "RL1":
-                        val += saved_props.get(name, 0)
-                    elif ui.randomize_mode == "RL2":
-                        val += m.prop_get(name)
-                    if val < 0 and morph.min == 0:
-                        val = -val
-                    if m.clamp:
-                        val = max(min(val, morph.max), morph.min)
-                    m.prop_set(name, val)
-            finally:
-                m.unlock()
+            for morph in m.core.morphs_l2:
+                name = morph.name
+                if not name:
+                    continue
+                if ui.randomize_excl and (excl.search(name) or not incl.search(name)):
+                    continue
+                if ui.randomize_mode == "OVR":
+                    m.reset_meta()
+                if ui.randomize_mode == "SEG":
+                    val = (math.floor((m.core.prop_get(name)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
+                else:
+                    val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
+                if ui.randomize_mode == "RL1":
+                    val += saved_props.get(name, 0)
+                elif ui.randomize_mode == "RL2":
+                    val += m.core.prop_get(name)
+                if val < 0 and morph.min == 0:
+                    val = -val
+                if m.core.clamp:
+                    val = max(min(val, morph.max), morph.min)
+                m.core.prop_set(name, val)
+            mm.morpher.update()
         if ui.randomize_mode == "RL1":
-            saved_version = m.version
+            type(self).saved_version = m.version
         return {"FINISHED"}
 
 classes = [OpRandomize, CHARMORPH_PT_Randomize]

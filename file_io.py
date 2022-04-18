@@ -71,8 +71,8 @@ def morphs_to_data():
 
     return {
         "type":   typ,
-        "morphs": {m.name: m.prop_get(m.name) for m in m.morphs_l2 if m.name},
-        "meta":   {k: m.meta_get(k) for k in m.char.morphs_meta},
+        "morphs": {m.name: m.core.prop_get(m.name) for m in m.core.morphs_l2 if m.name},
+        "meta":   {k: m.meta_get(k) for k in m.core.char.morphs_meta},
         "materials": m.materials.as_dict()
     }
 
@@ -133,19 +133,14 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             typenames = [typenames]
 
         m = mm.morpher
-        typemap = {v["title"]:k for k, v in m.char.types.items() if "title" in v}
-        m.lock()
-        try:
-            for name in (name for sublist in ([name, typemap.get(name)] for name in typenames) for name in sublist):
-                if not name:
-                    continue
-                if m.set_L1(name):
-                    break
+        typemap = {v["title"]:k for k, v in m.core.char.types.items() if "title" in v}
+        for name in (name for sublist in ([name, typemap.get(name)] for name in typenames) for name in sublist):
+            if not name:
+                continue
+            if m.set_L1(name, False):
+                break
 
-            m.apply_morph_data(data, False)
-        except:
-            m.unlock()
-            raise
+        m.apply_morph_data(data, False)
         return {"FINISHED"}
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]

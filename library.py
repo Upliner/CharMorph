@@ -22,7 +22,7 @@ import os, logging
 import bpy # pylint: disable=import-error
 
 from . import assets, morphing
-from .lib import charlib, materials, morphs, utils
+from .lib import charlib, morphers, materials, morphs, utils
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class OpImport(bpy.types.Operator):
         if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
-        m = morphing.get_morpher(obj, storage)
+        m = morphers.get(obj, storage)
         morphing.manager.update_morpher(m)
         m.update()
 

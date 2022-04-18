@@ -340,7 +340,7 @@ empty_char = Character("")
 def char_by_name(name):
     return chars.get(name) or chars.get(char_aliases.get(name)) or empty_char
 
-def obj_char(obj):
+def obj_char(obj) -> Character:
     if not obj:
         return empty_char
     return char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
@@ -380,15 +380,15 @@ def load_library():
 
     t.time("Library load")
 
-def get_basis(data, morpher = None, use_char=True):
+def get_basis(data, mcore = None, use_char=True):
     if isinstance(data, bpy.types.Object):
         data = data.data
     k = data.shape_keys
     if k:
         return utils.verts_to_numpy(k.reference_key.data)
 
-    if morpher and morpher.obj.data == data:
-        return morpher.get_basis_alt_topo()
+    if mcore and mcore.obj.data == data:
+        return mcore.get_basis_alt_topo()
 
     alt_topo = data.get("cm_alt_topo")
     if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):

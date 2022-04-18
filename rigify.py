@@ -117,7 +117,7 @@ def add_mixin(char, conf, rig):
     return (bones, joints)
 
 def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
-    obj = m.obj
+    obj = m.core.obj
     metarig = bpy.context.object
     if hasattr(metarig.data, "rigify_generate_mode"):
         metarig.data.rigify_generate_mode = "new"
@@ -134,9 +134,9 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
         rigging.rigify_finalize(rig, obj)
         apply_rig_parameters(rig, conf)
 
-        new_bones, new_joints = add_mixin(m.char, conf, rig)
+        new_bones, new_joints = add_mixin(m.core.char, conf, rig)
 
-        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(m.char.path("."), conf.tweaks)
+        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(m.core.char.path("."), conf.tweaks)
         for tweak in pre_tweaks:
             rigging.apply_tweak(rig, tweak)
 
@@ -244,7 +244,7 @@ class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
 
     @classmethod
     def poll(cls, context):
-        rig = mm.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
+        rig = mm.morpher.core.char.armature.get(context.window_manager.charmorph_ui.fin_rig)
         if not rig:
             return False
         result = rig.type == "rigify"

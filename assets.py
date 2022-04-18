@@ -23,15 +23,15 @@ from typing import Iterable
 
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import charlib, fitting, morphers, utils
+from .lib import morpher_cores, charlib, fitting, utils
 from .morphing import manager as mm
 
 logger = logging.getLogger(__name__)
 
 def get_fitter(obj):
-    if obj is mm.morpher.obj:
+    if obj is mm.morpher.core.obj:
         return mm.morpher.fitter
-    return fitting.Fitter(morphers.get_morpher(obj))
+    return fitting.Fitter(morpher_cores.get(obj))
 
 def get_asset_conf(context):
     ui = context.window_manager.charmorph_ui

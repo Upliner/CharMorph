@@ -22,7 +22,7 @@ import logging, traceback, numpy
 
 import bpy # pylint: disable=import-error
 
-from .lib import fitting, rigging, utils
+from .lib import fit_calc, rigging, utils
 from .morphing import manager as mm
 from . import assets, rigify
 
@@ -64,7 +64,7 @@ def delete_old_rig_with_assets(obj, rig):
         remove_armature_modifiers(asset)
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
-    m = mm.morpher
+    m = mm.morpher.core
     obj = m.obj
     char = m.char
     conf = char.armature.get(ui.fin_rig)
@@ -90,7 +90,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if conf.joints:
             joints = conf.joints
             if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fitting.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
+                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)
@@ -122,7 +122,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
                 utils.copy_transforms(rig, obj)
                 attach = False
             else:
-                rig = rigify.do_rig(m, conf, rigger)
+                rig = rigify.do_rig(mm.morpher, conf, rigger)
 
         if rig_type == "arp":
             if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
@@ -204,7 +204,7 @@ def _get_fin_sk(obj):
     return fin_sk, False
 
 def _get_sk_verts(ui):
-    m = mm.morpher
+    m = mm.morpher.core
     fin_sk = None
     fin_sk_tmp = False
     verts, verts_alt = None, None
@@ -234,7 +234,7 @@ def _get_sk_verts(ui):
 def _cleanup_morphs(ui, fin_sk):
     if ui.fin_morph == "NO":
         return
-    obj = mm.morpher.obj
+    obj = mm.morpher.core.obj
 
     if "cm_morpher" in obj.data:
         del obj.data["cm_morpher"]
@@ -266,11 +266,11 @@ def apply_morphs(ui):
     fin_sk, verts, verts_alt = _get_sk_verts(ui)
     _cleanup_morphs(ui, fin_sk)
     if (ui.fin_csmooth and not ui.fin_cs_morphing) or ui.fin_morph == "AL":
-        mm.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
+        mm.morpher.core.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     return verts, verts_alt
 
 def _add_modifiers(ui):
-    obj = mm.morpher.obj
+    obj = mm.morpher.core.obj
     def add_modifier(obj, typ, reposition):
         for mod in obj.modifiers:
             if mod.type == typ:
@@ -314,7 +314,7 @@ def _add_modifiers(ui):
 
 def _do_vg_cleanup():
     unused_l1 = set()
-    m = mm.morpher
+    m = mm.morpher.core
     current_l1 = m.L1
     for l1 in m.morphs_l1:
         if l1 != current_l1:
@@ -398,33 +398,31 @@ class OpUnrig(bpy.types.Operator):
     def poll(cls, context):
         if context.mode != "OBJECT":
             return False
-        obj = mm.get_obj_char(context)[0]
-        return obj.find_armature()
+        obj = mm.morpher.core.obj
+        return obj and obj.find_armature()
 
-    def execute(self, context): # pylint: disable=no-self-use
-        obj, char = mm.get_obj_char(context)
+    def execute(self, _): # pylint: disable=no-self-use
+        c = mm.morpher.core
 
-        old_rig = obj.find_armature()
+        old_rig = c.obj.find_armature()
         if old_rig:
-            if obj.parent is old_rig:
-                utils.copy_transforms(obj, old_rig)
-                utils.lock_obj(obj, False)
-            clear_old_weights_with_assets(obj, char, old_rig)
+            if c.obj.parent is old_rig:
+                utils.copy_transforms(c.obj, old_rig)
+                utils.lock_obj(c.obj, False)
+            clear_old_weights_with_assets(c.obj, c.char, old_rig)
 
-        delete_old_rig_with_assets(obj, old_rig)
+        delete_old_rig_with_assets(c.obj, old_rig)
 
-        if "charmorph_rig_type" in obj.data:
-            del obj.data["charmorph_rig_type"]
+        if "charmorph_rig_type" in c.obj.data:
+            del c.obj.data["charmorph_rig_type"]
 
         mm.recreate_charmorphs()
 
         return {"FINISHED"}
 
-def get_rigs(_, context):
-    char = mm.get_obj_char(context)[1]
+def get_rigs(_ui, _ctx):
     result = [("-", "<None>", "Don't generate rig")]
-    if char:
-        result.extend((name, rig.title, "") for name, rig in char.armature.items())
+    result.extend((name, rig.title, "") for name, rig in mm.morpher.core.char.armature.items())
     return result
 
 class UIProps:
@@ -503,7 +501,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and mm.get_obj_char(context)[0]
+        return context.mode == "OBJECT" and mm.morpher
 
     def draw(self, context):
         l = self.layout
