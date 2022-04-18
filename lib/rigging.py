@@ -18,14 +18,12 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, math, os
-import numpy
+import logging, math, os, numpy
 
 import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
-from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
 
-from . import utils
+from . import sliding_joints, utils
 
 logger = logging.getLogger(__name__)
 
@@ -543,7 +541,7 @@ def apply_editmode_tweak(context, tweak):
     edit_bones = context.object.data.edit_bones
     if t == "rigify_sliding_joint":
         logger.warning("Legacy sliding_joint tweak is used")
-        sliding_joint_create(context, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"])
+        sliding_joints.create(context, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"])
     elif t == "assign_parents":
         for k, v in tweak["bones"].items():
             if v:
@@ -570,7 +568,7 @@ def apply_editmode_tweak(context, tweak):
 def apply_tweak(rig, tweak):
     if tweak.get("tweak") == "rigify_sliding_joint":
         logger.warning("Legacy sliding_joint tweak is used")
-        sliding_joint_finalize(rig, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"], tweak["influence"])
+        sliding_joints.finalize(rig, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"], tweak["influence"])
         return
 
     select = tweak.get("select")
@@ -617,126 +615,3 @@ def apply_tweak(rig, tweak):
             continue
         setattr(obj, attr, val)
 
-def iterate_sliding_joints_item(item):
-    side = item.get("side", "")
-    if isinstance(side, list):
-        for s in side:
-            yield item["upper_bone"], item["lower_bone"], s
-    else:
-        yield item["upper_bone"], item["lower_bone"], side
-
-def iterate_sliding_joints(data):
-    for k, v in data.items():
-        for result in iterate_sliding_joints_item(v):
-            yield k, *result
-
-# My implementation of sliding joints on top of rigify
-# Thanks to DanPro for the idea!
-# https://www.youtube.com/watch?v=c7csuy-09k8
-
-def sliding_joint_create(context, upper_bone, lower_bone, side):
-    bones = context.object.data.edit_bones
-
-    mch_name = f"MCH-{lower_bone}{side}"
-
-    if mch_name in bones:
-        raise Exception("Seems to already have sliding joint")
-
-    tweak_name = f"{lower_bone}_tweak{side}"
-
-    bone = bones[f"MCH-{tweak_name}"]
-    bone.name = f"MCH-{upper_bone}_tweak{side}.002"
-
-    mch_size = bone.bbone_x
-    mch_layer = bone.layers
-
-    bone = bones[tweak_name]
-    bone.name = f"{upper_bone}_tweak{side}.002"
-    tweak_tail = bone.tail
-    tweak_layer = bone.layers
-    tweak_size = bone.bbone_x
-
-    bone = bones.new(mch_name)
-    bone.parent = bones[f"ORG-{lower_bone}{side}"]
-    bone.use_connect = True
-    bone.use_deform = False
-    bone.tail = bone.parent.head
-    org_roll = bone.parent.z_axis
-    bone.align_roll(-org_roll)
-    bone.layers = mch_layer
-    bone.bbone_x = bone.parent.bbone_x
-    bone.bbone_z = bone.parent.bbone_z
-    mch_bone = bone
-
-    bone = bones.new(f"MCH-{lower_bone}_tweak{side}")
-    bone.parent = mch_bone
-    bone.use_connect = True
-    bone.tail = tweak_tail
-    bone.layers = mch_layer
-    bone.bbone_x = mch_size
-    bone.bbone_z = mch_size
-    mch_bone = bone
-
-    bone = bones.new(tweak_name)
-    bone.parent = mch_bone
-    bone.head = mch_bone.head
-    bone.use_deform = False
-    bone.tail = tweak_tail
-    bone.align_roll(org_roll)
-    bone.layers = tweak_layer
-    bone.bbone_x = tweak_size
-    bone.bbone_z = tweak_size
-
-    lower_bone = bones[f"DEF-{lower_bone}{side}"]
-    lower_bone.use_connect = False
-
-    bone = bones[f"DEF-{upper_bone}{side}.001"]
-    bone.bbone_handle_type_end = "TANGENT"
-    bone.bbone_custom_handle_end = lower_bone
-
-def sliding_joint_finalize(rig, upper_bone, lower_bone, side, influence):
-    bones = rig.pose.bones
-
-    mch_name = f"MCH-{lower_bone}{side}"
-    tweak_name = f"{lower_bone}_tweak{side}"
-    old_tweak = f"{upper_bone}_tweak{side}.002"
-
-    obone = bones[old_tweak]
-    bone = bones[tweak_name]
-    bone.custom_shape = obone.custom_shape
-    bone.bone_group = obone.bone_group
-    bone.lock_rotation = (True, False, True)
-    bone.lock_scale = (False, True, False)
-
-    # Make rubber tweak property, but lock it to zero
-    rna_idprop_ui_create(bone, "rubber_tweak", default=0, min=0, max=0)
-
-    mch_bone = bones[mch_name]
-    utils.lock_obj(mch_bone, True)
-
-    c = mch_bone.constraints.new("COPY_ROTATION")
-    c.target = rig
-    c.subtarget = f"ORG-{lower_bone}{side}"
-    c.use_y = False
-    c.use_z = False
-    c.influence = influence
-    c.owner_space = "LOCAL"
-    c.target_space = "LOCAL"
-
-    c = bones[f"MCH-{lower_bone}_tweak{side}"].constraints.new("COPY_SCALE")
-    c.target = rig
-    c.subtarget = "root"
-    c.use_make_uniform = True
-
-    def replace_tweak(bone):
-        for c in bone.constraints:
-            if c.type == "COPY_TRANSFORMS" and c.target == rig and c.subtarget == old_tweak:
-                c.subtarget = tweak_name
-
-    replace_tweak(bones[f"DEF-{lower_bone}{side}"])
-    replace_tweak(bones[f"MCH-{tweak_name}.001"])
-
-    c = mch_bone.constraints.new("LIMIT_ROTATION")
-    c.owner_space = "LOCAL"
-    c.use_limit_x = True
-    c.max_x = math.pi/2

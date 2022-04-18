@@ -20,15 +20,13 @@
 
 import re, logging, numpy
 
-import bpy # pylint: disable=import-error
-import mathutils # pylint: disable=import-error
+import bpy, mathutils # pylint: disable=import-error
 
-from . import charlib, morphs, materials, fitting, rigging, utils
+from . import charlib, morphs, materials, fitting, sliding_joints, utils
 
 logger = logging.getLogger(__name__)
 
 sep_re = re.compile(r"[ _-]")
-eval_unsafe = re.compile(r"__|[:;,({'\"\[]")
 
 if isinstance(bpy.props.StringProperty(), tuple):
     # Before Blender 2.93 properties were tuples
@@ -44,6 +42,11 @@ def morph_category_name(name):
     if m:
         return name[:m.start()]
     return name
+
+def calc_meta_val(coeffs, val):
+    if not coeffs:
+        return 0
+    return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -64,12 +67,9 @@ class Morpher:
     error = None
     alt_topo = False
     alt_topo_buildable = False
-    rig_name = ""
-    rig = None
     categories = []
     morphs_l2: list[morphs.MinMaxMorph] = []
     materials = materials.Materials(None)
-    sliding_joints = {}
     L1_idx = 0
 
     presets = {}
@@ -87,11 +87,10 @@ class Morpher:
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
         self.update_L1_idx()
         self.update_morphs_L2()
-        if self.obj:
-            self.rig = obj.find_armature()
-        if self.rig:
-            self.rig_name = self.rig.data.get("charmorph_rig_type","")
+        rig = obj.find_armature() if obj else None
+        if rig:
             self.error = "Character is rigged.\nLive rig deform is not supported"
+        self.sj_calc = sliding_joints.SJCalc(self.char, rig, self._get_co)
 
     def __bool__(self):
         return self.obj is not None
@@ -143,6 +142,7 @@ class Morpher:
             return False
         self.L1 = L1
         self.update_L1()
+        self.update_morphs_L2()
         self.create_charmorphs_L2()
         self.materials.apply(self.char.types.get(L1, {}).get("mtl_props"))
         self.update()
@@ -156,7 +156,7 @@ class Morpher:
 
     def do_update(self):
         self.fitter.refit_all()
-        self._recalc_sliding_joints()
+        self.sj_calc.recalc()
 
     def update(self):
         if self.upd_lock:
@@ -206,20 +206,15 @@ class Morpher:
     def reset_meta(self):
         d = self.obj.data
         for k, v in self.char.morphs_meta.items():
-            self.materials.apply((name, 0) for name in v.get("materials", ()))
+            if bpy.context.window_manager.charmorph_ui.meta_materials != "N":
+                self.materials.apply((name, 0) for name in v.get("materials", ()))
             self.meta_prev[k] = 0
             pname = "cmorph_meta_" + k
             if pname in d:
                 del d[pname]
 
-    @staticmethod
-    def _calc_meta_val(coeffs, val):
-        if not coeffs:
-            return 0
-        return coeffs[1]*val if val > 0 else -coeffs[0]*val
-
     def _calc_meta_abs_val(self, prop):
-        return sum(self._calc_meta_val(self.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
+        return sum(calc_meta_val(self.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
             for meta_prop, val in self.meta_prev.items())
 
     def meta_get(self, name):
@@ -251,8 +246,8 @@ class Morpher:
 
                 propval = self.prop_get(prop)
 
-                val_prev = self._calc_meta_val(coeffs, prev_value)
-                val_cur = self._calc_meta_val(coeffs, value)
+                val_prev = calc_meta_val(coeffs, prev_value)
+                val_cur = calc_meta_val(coeffs, value)
 
                 # assign absolute prop value if current property value is out of range
                 # or add a delta if it is within (-0.999 .. 0.999)
@@ -270,9 +265,9 @@ class Morpher:
                 for pname, coeffs in mtl_items:
                     prop = self.materials.props.get(pname)
                     if prop:
-                        prop.default_value += self._calc_meta_val(coeffs, value)-self._calc_meta_val(coeffs, prev_value)
+                        prop.default_value += calc_meta_val(coeffs, value)-calc_meta_val(coeffs, prev_value)
             elif ui.meta_materials == "A":
-                self.materials.apply((name, self._calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
+                self.materials.apply((name, calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
 
         return bpy.props.FloatProperty(
             name=name,
@@ -316,15 +311,12 @@ class Morpher:
         del_charmorphs_L2()
         self.update_morph_categories()
         self.update_presets()
-        self._init_sliding_joints()
-        self.meta_prev.clear()
 
         props = {}
         if self.morphs_l2:
             props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.morphs_l2 if morph.name)
             props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.char.morphs_meta.items())
-        if self.sliding_joints:
-            props.update(prefixed_prop("sj_", self.sliding_prop(k)) for k in self.sliding_joints.keys())
+        props.update(prefixed_prop("sj_", prop) for prop in self.sj_calc.props())
         if not props:
             return
 
@@ -335,89 +327,6 @@ class Morpher:
 
     def set_clamp(self, clamp):
         self.clamp = clamp
-
-    # Sliding joint calculation
-    def _calc_avg_dists(self, vert_pairs):
-        if not vert_pairs:
-            return 1
-        return sum((self._get_co(a)-self._get_co(b)).length for a, b in vert_pairs)/len(vert_pairs)
-
-    def _calc_sliding_influence(self, data):
-        result = data.get("influence")
-        if result is not None:
-            return result
-        calc = data["calc"]
-        if not calc:
-            return 0
-
-        if isinstance(calc, str):
-            # Check for eval safety. Attacks like 9**9**9 are still possible, but quite useless
-            if eval_unsafe.search(calc):
-                logger.error("bad calc: %s", calc)
-                return 0
-            calc = compile(calc, "", "eval")
-            data["calc"] = calc
-
-        vals = {}
-        for k, v in data.items():
-            if k.startswith("verts_"):
-                vals[k] = self._calc_avg_dists(v)
-        try:
-            return eval(calc, {"__builtins__": None}, vals)
-        except Exception as e:
-            logger.error("bad calc: %s", e)
-            return 0
-
-    def _recalc_sliding_joints(self):
-        for k, v in self.char.sliding_joints.items():
-            if k in self.sliding_joints and "calc" in v:
-                self.sliding_joints[k] = self._calc_sliding_influence(v)
-
-    def _init_sliding_joints(self):
-        if self.rig:
-            self.sliding_joints = {name: self._get_sliding_influence(name)
-                for name in self.char.sliding_joints
-                if name.startswith(self.rig_name + "_")
-            }
-        else:
-            self.sliding_joints = {k: self._calc_sliding_influence(v) for k,v in self.char.sliding_joints.items()}
-
-    # Sliding joint handling
-    def _iterate_sliding_constraints(self, name):
-        item = self.char.sliding_joints.get(name)
-        if not item:
-            return
-        for _, lower_bone, side in rigging.iterate_sliding_joints_item(item):
-            bone = self.rig.pose.bones.get(f"MCH-{lower_bone}{side}")
-            if not bone:
-                continue
-            c = bone.constraints
-            if not c or c[0].type != "COPY_ROTATION":
-                continue
-            yield c[0]
-
-    def _get_sliding_influence(self, name):
-        for c in self._iterate_sliding_constraints(name):
-            return c.influence
-
-    def set_sliding_influence(self, name, value):
-        self.sliding_joints[name] = value
-        if self.rig:
-            for c in self._iterate_sliding_constraints(name):
-                c.influence = value
-
-    def sliding_joints_by_rig(self, rig):
-        return (name for name in self.sliding_joints
-            if name.startswith(rig + "_"))
-
-    def sliding_prop(self, name):
-        return bpy.props.FloatProperty(
-            name=name,
-            min=0, soft_max = 0.2, max=1.0,
-            precision=3,
-            get=lambda _: self.sliding_joints.get(name, 0),
-            set=lambda _, value: self.set_sliding_influence(name, value)
-        )
 
 def get_combo_item_value(arr_idx, values):
     return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)

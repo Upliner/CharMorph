@@ -196,10 +196,6 @@ class Character:
     def np_basis(self):
         return morphs.np_ro64(self.get_np(f"morphs/L1/{self.basis}.npy"))
 
-    @utils.lazyproperty
-    def sliding_joints(self):
-        return {"_".join((rig.name, jname)): j for rig in self.armature.values() for jname, j in rig.sliding_joints.items()}
-
     def _parse_armature(self, data):
         if isinstance(data, list):
             return self._parse_armature_list(data)

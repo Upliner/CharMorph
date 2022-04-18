@@ -258,7 +258,9 @@ class MorphCombiner:
             signIdx = convertSigns(signArr)
 
         if signIdx < 0:
-            self.morphs_dict[morph.name] = MinMaxMorph(morph.name, data, morph.min, morph.max)
+            result = MinMaxMorph(morph.name, [data], morph.min, morph.max)
+            self.morphs_dict[morph.name] = result
+            self.morphs_list.append(result)
             return
 
         names = nameParts[1].split("-")

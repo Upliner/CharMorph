@@ -87,7 +87,7 @@ class Manager:
         self.last_object = obj
         if obj.type != "MESH":
             return
-        if self.morpher.obj == obj:
+        if self.morpher.obj is obj and not self.morpher.error:
             return
 
         storage = None
