@@ -22,7 +22,7 @@ import logging, os
 import bpy, mathutils # pylint: disable=import-error
 
 from . import file_io, vg_calc
-from ..lib import yaml, rigging, utils
+from ..lib import rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ class OpRigifyTweaks(bpy.types.Operator):
     def execute(self, context): # pylint: disable=no-self-use
         file = context.window_manager.cmedit_ui.rig_tweaks_file
         with open(file, "r", encoding="utf-8") as f:
-            tweaks = yaml.safe_load(f)
+            tweaks = utils.load_yaml(f)
         pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(os.path.dirname(file), tweaks)
         old_mode = context.mode
         if old_mode.startswith("EDIT_"):

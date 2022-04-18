@@ -85,7 +85,7 @@ def attach_scalp(char, obj):
 def create_scalp(name, char, vgi):
     vmap = {}
     verts = []
-    for mv, bv in zip(char.data.vertices, morphing.get_basis(char)):
+    for mv, bv in zip(char.data.vertices, morphing.manager.get_basis(char)):
         for g in mv.groups:
             if g.group == vgi:
                 vmap[mv.index] = len(verts)
@@ -358,7 +358,7 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        _, char = morphing.get_obj_char(context)
+        _, char = morphing.manager.get_obj_char(context)
         if not char:
             char = charlib.empty_char
         l = self.layout

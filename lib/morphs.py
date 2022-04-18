@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class Morph:
     __slots__ = ()
     @staticmethod
-    def apply(verts, _ = None):
+    def apply(verts: numpy.ndarray, _ = None):
         return verts
 
 class FullMorph(Morph):

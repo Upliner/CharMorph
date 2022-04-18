@@ -19,31 +19,19 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, logging
+from typing import Iterable
 
 import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import charlib, fitting, morphers, utils
-from . import morphing
+from .morphing import manager as mm
 
 logger = logging.getLogger(__name__)
 
-fitter = None
-
-def get_fitter(target):
-    global fitter
-    if isinstance(target, morphers.Morpher):
-        morpher = target
-    elif isinstance(target, bpy.types.Object):
-        morpher = morphing.morpher if morphing.morpher and morphing.morpher.obj == target else morphers.get_morpher(target)
-    else:
-        raise Exception("Fitter: invalid target")
-
-    if not fitter or fitter.morpher != morpher:
-        fitter = fitting.Fitter(morpher)
-
-    return fitter
-
-morphers.Morpher.handlers.append(lambda self: get_fitter(self).refit_all())
+def get_fitter(obj):
+    if obj is mm.morpher.obj:
+        return mm.morpher.fitter
+    return fitting.Fitter(morphers.get_morpher(obj))
 
 def get_asset_conf(context):
     ui = context.window_manager.charmorph_ui
@@ -107,15 +95,6 @@ class UIProps:
         update=charlib.update_fitting_assets,
         subtype='DIR_PATH')
 
-def get_char(context):
-    obj = mesh_obj(context.window_manager.charmorph_ui.fitting_char)
-    if not obj or ('charmorph_fit_id' in obj.data and 'cm_alt_topo' not in obj.data):
-        return None
-    return obj
-
-def get_asset_obj(context):
-    return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
-
 class CHARMORPH_PT_Assets(bpy.types.Panel):
     bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -161,6 +140,18 @@ def mesh_obj(obj):
         return obj
     return None
 
+def get_char(context):
+    obj = mesh_obj(context.window_manager.charmorph_ui.fitting_char)
+    if not obj or ('charmorph_fit_id' in obj.data and 'cm_alt_topo' not in obj.data):
+        return None
+    return obj
+
+def fitter_from_ctx(context):
+    return get_fitter(get_char(context))
+
+def get_asset_obj(context):
+    return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
+
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"
     bl_label = "Fit local asset"
@@ -180,17 +171,18 @@ class OpFitLocal(bpy.types.Operator):
         return True
 
     def execute(self, context): #pylint: disable=no-self-use
-        get_fitter(get_char(context)).fit_new(get_asset_obj(context))
+        fitter_from_ctx(context).fit_new(get_asset_obj(context))
         return {"FINISHED"}
 
 def fitExtPoll(context):
     return context.mode == "OBJECT" and get_char(context)
 
-def fit_import(char, lst):
+def fit_import(f: fitting.Fitter, lst: Iterable[charlib.Asset]):
+    if not f:
+        return False
     if len(lst) == 0:
         return True
     result = True
-    f = get_fitter(char)
     f.lock_comb_mask()
     try:
         for asset in lst:
@@ -202,7 +194,7 @@ def fit_import(char, lst):
     finally:
         f.unlock_comb_mask()
     ui = bpy.context.window_manager.charmorph_ui
-    ui.fitting_char = char # For some reason combo box value changes after importing, fix it
+    ui.fitting_char = f.obj # For some reason combo box value changes after importing, fix it
     if len(lst) == 1:
         ui.fitting_asset = obj
     return result
@@ -222,7 +214,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        if fit_import(get_char(context), (charlib.Asset(name, self.filepath),)):
+        if fit_import(fitter_from_ctx(context), (charlib.Asset(name, self.filepath),)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -242,7 +234,7 @@ class OpFitLibrary(bpy.types.Operator):
         if asset_data is None:
             self.report({'ERROR'}, "Asset is not found")
             return {"CANCELLED"}
-        if fit_import(get_char(context), (asset_data,)):
+        if fit_import(fitter_from_ctx(context), (asset_data,)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}

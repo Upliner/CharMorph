@@ -22,7 +22,7 @@ import os, re, json, numpy
 import bpy, bpy_extras # pylint: disable=import-error
 import idprop          # pylint: disable=import-error
 
-from ..lib import yaml, rigging, utils
+from ..lib import rigging, utils
 
 def np_particles_data(obj, particles):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
@@ -227,7 +227,7 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
                 result[b.name] = bd
 
         with open(self.filepath, "w", encoding="utf-8") as f:
-            yaml.dump(result, f, Dumper=utils.MyDumper)
+            utils.dump_yaml(result, f)
 
         return {"FINISHED"}
 

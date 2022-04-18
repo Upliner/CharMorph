@@ -21,9 +21,9 @@
 import re, random, math
 import bpy # pylint: disable=import-error
 
-from . import morphing
+from .morphing import manager as mm
 
-saved_props = None
+saved_props = {}
 saved_version = -1
 
 class WhatToProps:
@@ -78,14 +78,13 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        global saved_props
         if context.window_manager.charmorph_ui.randomize_mode != "RL1":
-            saved_props = None
-        m = morphing.morpher
+            saved_props.clear()
+        m = mm.morpher
         if not m:
             return False
         if m.version != saved_version:
-            saved_props = None
+            saved_props.clear()
         return True
 
     def draw(self, context):
@@ -108,11 +107,10 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
         self.layout.operator('charmorph.randomize')
 
 def save_props():
-    global saved_props
-    m = morphing.morpher
+    m = mm.morpher
     if m.version == saved_version:
         return
-    saved_props = {}
+    saved_props.clear()
     for name, morph in m.morphs_l2.items():
         if morph is not None:
             saved_props[name] = m.prop_get(name)
@@ -124,7 +122,7 @@ class OpRandomize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.window_manager, 'charmorphs') and morphing.morpher
+        return hasattr(context.window_manager, 'charmorphs') and mm.morpher
 
     def execute(self, context): # pylint: disable=no-self-use
         global saved_version
@@ -138,7 +136,7 @@ class OpRandomize(bpy.types.Operator):
             random_func = lambda: random.gauss(0.5, ui.randomize_sigma)
         else:
             random_func = random.random
-        m = morphing.morpher
+        m = mm.morpher
         if ui.randomize_morphs:
             m.lock()
             try:

@@ -25,30 +25,8 @@ from .lib import charlib, morphers, materials, fitting, utils
 
 logger = logging.getLogger(__name__)
 
-last_object = None
-
-def get_obj_char(context):
-    if morpher:
-        return morpher.obj, morpher.char
-    obj = context.object
-    if obj:
-        if obj.type == "ARMATURE":
-            children = obj.children
-            if len(children) == 1:
-                obj = children[0]
-        if obj.type == "MESH":
-            char = charlib.obj_char(obj)
-            if char:
-                return obj, char
-    return (None, None)
-
-def get_basis(data):
-    return morphers.get_basis(data, morpher, True)
-
 null_morpher = morphers.Morpher(None)
 null_morpher.lock()
-
-morpher = null_morpher
 
 def get_morpher(obj, storage = None):
     logger.debug("switching object to %s", obj.name if obj else "")
@@ -57,58 +35,115 @@ def get_morpher(obj, storage = None):
     result.materials = materials.Materials(obj)
     return result
 
-def update_morpher(m : morphers.Morpher):
-    global last_object, morpher
-    morpher = m
-    last_object = m.obj
+class Manager:
+    last_object = None
+    def __init__(self):
+        self.morpher = null_morpher
 
-    ui = bpy.context.window_manager.charmorph_ui
+    def get_basis(self, data):
+        return charlib.get_basis(data, self.morpher, True)
 
-    if ui.fin_rig not in m.char.armature:
-        if m.char.default_armature:
-            ui.fin_rig = m.char.default_armature
-        else:
-            ui.fin_rig = "-"
+    def get_obj_char(self, context):
+        if manager.morpher:
+            return manager.morpher.obj, self.morpher.char
+        obj = context.object
+        if obj:
+            if obj.type == "ARMATURE":
+                children = obj.children
+                if len(children) == 1:
+                    obj = children[0]
+            if obj.type == "MESH":
+                char = charlib.obj_char(obj)
+                if char:
+                    return obj, char
+        return (None, None)
 
-    if not m.L1 and m.char.default_type:
-        m.set_L1(m.char.default_type)
+    def update_morpher(self, m : morphers.Morpher):
+        self.morpher = m
+        self.last_object = m.obj
 
-    ui.morph_category = "<None>"
+        ui = bpy.context.window_manager.charmorph_ui
 
-    if not m.morphs_l2:
+        if ui.fin_rig not in m.char.armature:
+            if m.char.default_armature:
+                ui.fin_rig = m.char.default_armature
+            else:
+                ui.fin_rig = "-"
+
+        if not m.L1 and m.char.default_type:
+            m.set_L1(m.char.default_type)
+
+        ui.morph_category = "<None>"
+
         m.create_charmorphs_L2()
 
-def recreate_charmorphs():
-    global morpher
-    if not morpher:
-        return
-    morpher = get_morpher(morpher.obj)
-    morpher.create_charmorphs_L2()
+    def recreate_charmorphs(self):
+        if not self.morpher:
+            return
+        self.morpher = get_morpher(self.morpher.obj)
+        self.morpher.create_charmorphs_L2()
 
-def create_charmorphs(obj):
-    global last_object
-    last_object = obj
-    if obj.type != "MESH":
-        return
-    if morpher.obj == obj:
-        return
+    def create_charmorphs(self, obj):
+        self.last_object = obj
+        if obj.type != "MESH":
+            return
+        if self.morpher.obj == obj:
+            return
 
-    update_morpher(get_morpher(obj))
+        storage = None
+        if hasattr(self.morpher, "storage") and self.morpher.char is charlib.obj_char(obj):
+            storage = self.morpher.storage
 
-def del_charmorphs():
-    global last_object, morpher
-    last_object = None
-    morpher = null_morpher
-    morphers.del_charmorphs_L2()
+        self.update_morpher(get_morpher(obj, storage))
 
-def bad_object():
-    if not morpher:
-        return False
-    try:
-        return bpy.data.objects.get(morpher.obj.name) is not morpher.obj
-    except ReferenceError:
-        logger.warning("Current morphing object is bad, resetting...")
-        return True
+    def del_charmorphs(self, ):
+        self.last_object = None
+        self.morpher = null_morpher
+        morphers.del_charmorphs_L2()
+
+    def bad_object(self):
+        if not self.morpher:
+            return False
+        try:
+            return bpy.data.objects.get(self.morpher.obj.name) is not self.morpher.obj
+        except ReferenceError:
+            logger.warning("Current morphing object is bad, resetting...")
+            return True
+
+    def on_select(self):
+        if self.bad_object():
+            self.del_charmorphs()
+        if bpy.context.mode != "OBJECT":
+            return
+        obj = bpy.context.object
+        if obj is None:
+            return
+        ui = bpy.context.window_manager.charmorph_ui
+
+        if obj is self.last_object:
+            return
+
+        if obj.type == "MESH":
+            asset = None
+            if (obj.parent and obj.parent.type == "MESH" and
+                    "charmorph_fit_id" in obj.data and
+                    "charmorph_template" not in obj.data):
+                asset = obj
+                obj = obj.parent
+            if asset:
+                ui.fitting_char = obj
+                ui.fitting_asset = asset
+            elif charlib.obj_char(obj):
+                ui.fitting_char = obj
+            else:
+                ui.fitting_asset = obj
+
+        if obj is self.last_object:
+            return
+
+        self.create_charmorphs(obj)
+
+manager = Manager()
 
 class OpResetChar(bpy.types.Operator):
     bl_idname = "charmorph.reset_char"
@@ -118,10 +153,10 @@ class OpResetChar(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and morpher.char
+        return context.mode == "OBJECT" and manager.morpher.char
 
     def execute(self, _):
-        obj = morpher.obj
+        obj = manager.morpher.obj
         obj.data["cm_morpher"] = "ext"
         new_morpher = get_morpher(obj)
         if new_morpher.error or not new_morpher.has_morphs():
@@ -131,7 +166,7 @@ class OpResetChar(bpy.types.Operator):
                 self.report({'ERROR'}, "Still no morphs found")
             del obj.data["cm_morpher"]
             return {"CANCELLED"}
-        update_morpher(new_morpher)
+        manager.update_morpher(new_morpher)
         return {"FINISHED"}
 
 class OpBuildAltTopo(bpy.types.Operator):
@@ -142,20 +177,20 @@ class OpBuildAltTopo(bpy.types.Operator):
 
     @classmethod
     def poll(cls, _):
-        return morpher and morpher.alt_topo_buildable and morpher.has_morphs()
+        return manager.morpher and manager.morpher.alt_topo_buildable and manager.morpher.has_morphs()
 
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
-        obj = morpher.obj
+        obj = manager.morpher.obj
         btype = ui.alt_topo_build_type
         sk = obj.data.shape_keys
         has_sk = bool(sk and sk.key_blocks)
         if btype == "K" and has_sk:
             obj.data["cm_alt_topo"] = "sk"
-            update_morpher(get_morpher(obj))
+            manager.update_morpher(get_morpher(obj))
             return {"FINISHED"}
-        weights = fitting.ReverseFitCalculator(morpher).get_weights(obj)
-        result = fitting.calc_fit(morpher.full_basis - morpher.get_final(), *weights)
+        weights = fitting.ReverseFitCalculator(manager.morpher).get_weights(obj)
+        result = fitting.calc_fit(manager.morpher.full_basis - manager.morpher.get_final(), *weights)
         result += utils.get_morphed_numpy(obj)
         result = result.reshape(-1)
         if btype == "K":
@@ -175,7 +210,7 @@ class OpBuildAltTopo(bpy.types.Operator):
                 obj.data = old_mesh
             mesh.vertices.foreach_set("co", result)
 
-        update_morpher(get_morpher(obj))
+        manager.update_morpher(get_morpher(obj))
         return {"FINISHED"}
 
 class UIProps:
@@ -199,25 +234,25 @@ class UIProps:
     morph_clamp: bpy.props.BoolProperty(
         name="Clamp props",
         description="Clamp properties to (-1..1) so they remain in realistic range",
-        get=lambda _: morpher.clamp,
-        set=lambda _, value: morpher.set_clamp(value),
-        update=lambda ui, _: morpher.update())
+        get=lambda _: manager.morpher.clamp,
+        set=lambda _, value: manager.morpher.set_clamp(value),
+        update=lambda ui, _: manager.morpher.update())
     morph_l1: bpy.props.EnumProperty(
         name="Type",
         description="Choose character type",
-        items=lambda ui, _: morpher.L1_list,
-        get=lambda _: morpher.L1_idx,
-        set=lambda _, value: morpher.set_L1_by_idx(value),
+        items=lambda ui, _: manager.morpher.L1_list,
+        get=lambda _: manager.morpher.L1_idx,
+        set=lambda _, value: manager.morpher.set_L1_by_idx(value),
         options={"SKIP_SAVE"})
     morph_category: bpy.props.EnumProperty(
         name="Category",
-        items=lambda ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + morpher.categories,
+        items=lambda ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + manager.morpher.categories,
         description="Select morphing categories to show")
     morph_preset: bpy.props.EnumProperty(
         name="Presets",
-        items=lambda ui, _: morpher.presets_list,
+        items=lambda ui, _: manager.morpher.presets_list,
         description="Choose morphing preset",
-        update=lambda ui, _: morpher.apply_morph_data(morpher.presets.get(ui.morph_preset, {}), ui.morph_preset_mix))
+        update=lambda ui, _: manager.morpher.apply_morph_data(manager.morpher.presets.get(ui.morph_preset, {}), ui.morph_preset_mix))
     morph_preset_mix: bpy.props.BoolProperty(
         name="Mix with current",
         description="Mix selected preset with current morphs",
@@ -240,16 +275,15 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        global last_object, morpher
         if context.mode != "OBJECT":
-            if morpher:
-                last_object = None
-                morpher = null_morpher
+            if manager.morpher and not manager.morpher.error:
+                manager.last_object = None
+                manager.morpher.error = "Please re-select character"
             return False
-        return morpher
+        return manager.morpher
 
     def draw(self, context):
-        m = morpher
+        m = manager.morpher
         ui = context.window_manager.charmorph_ui
 
         if m.error:
@@ -296,7 +330,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         col.separator()
 
         morphs = context.window_manager.charmorphs
-        meta_morphs = m.meta_dict().keys()
+        meta_morphs = m.char.morphs_meta.keys()
         if meta_morphs:
             self.layout.label(text="Meta morphs")
             col = self.layout.column(align=True)
@@ -336,10 +370,10 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
 
     @classmethod
     def poll(cls, _):
-        return morpher and morpher.materials and morpher.materials.props
+        return manager.morpher and manager.morpher.materials and manager.morpher.materials.props
 
     def draw(self, _):
-        for prop in morpher.materials.props.values():
+        for prop in manager.morpher.materials.props.values():
             if prop.node:
                 self.layout.prop(prop, "default_value", text=prop.node.label)
 

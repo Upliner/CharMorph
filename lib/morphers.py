@@ -23,7 +23,7 @@ import re, logging, numpy
 import bpy # pylint: disable=import-error
 import mathutils # pylint: disable=import-error
 
-from . import charlib, morphs, materials, rigging, utils
+from . import charlib, morphs, materials, fitting, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -44,34 +44,6 @@ def morph_category_name(name):
     if m:
         return name[:m.start()]
     return name
-
-def get_basis(data, morpher = None, use_char=True):
-    if isinstance(data, bpy.types.Object):
-        data = data.data
-    k = data.shape_keys
-    if k:
-        return utils.verts_to_numpy(k.reference_key.data)
-
-    if morpher and morpher.obj.data == data:
-        return morpher.get_basis_alt_topo()
-
-    alt_topo = data.get("cm_alt_topo")
-    if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
-        return get_basis(alt_topo, None, False)
-
-    char = None
-    if use_char:
-        char = charlib.char_by_name(data.get("charmorph_template"))
-
-    if char:
-        if not alt_topo:
-            basis = char.np_basis
-            if basis is not None:
-                return basis.copy()
-        elif isinstance(alt_topo, str):
-            return charlib.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
-
-    return utils.verts_to_numpy(data.vertices)
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -95,8 +67,7 @@ class Morpher:
     rig_name = ""
     rig = None
     categories = []
-    handlers = []
-    morphs_l2 = []
+    morphs_l2: list[morphs.MinMaxMorph] = []
     materials = materials.Materials(None)
     sliding_joints = {}
     L1_idx = 0
@@ -109,11 +80,13 @@ class Morpher:
         self.char = charlib.obj_char(obj)
         self.morphs_l1 = {}
         self.meta_prev = {}
+        self.fitter = fitting.Fitter(self)
 
         self._init_storage()
         self.L1 = self.get_L1()
         self.L1_list = [(name, self.char.types.get(name, {}).get("title", name), "") for name in sorted(self.morphs_l1.keys())]
         self.update_L1_idx()
+        self.update_morphs_L2()
         if self.obj:
             self.rig = obj.find_armature()
         if self.rig:
@@ -182,8 +155,7 @@ class Morpher:
         self._set_L1(self.L1_list[idx][0])
 
     def do_update(self):
-        for handler in self.handlers:
-            handler(self)
+        self.fitter.refit_all()
         self._recalc_sliding_joints()
 
     def update(self):
@@ -193,7 +165,7 @@ class Morpher:
 
     @utils.lazyproperty
     def full_basis(self):
-        return self.char.np_basis if self.char.np_basis is not None else get_basis(self.obj)
+        return self.char.np_basis if self.char.np_basis is not None else charlib.get_basis(self.obj)
 
     def get_basis_alt_topo(self):
         return self.full_basis
@@ -217,7 +189,7 @@ class Morpher:
                 if preset_mix:
                     value = (value+self.prop_get(morph.name))/2
                 self.prop_set(morph.name, value)
-            for name in self.meta_dict():
+            for name in self.char.morphs_meta:
                 # TODO handle preset_mix?
                 value = meta_props.get(name, 0)
                 self.meta_prev[name] = value
@@ -229,7 +201,7 @@ class Morpher:
     # Reset all meta properties to 0
     def reset_meta(self):
         d = self.obj.data
-        for k in self.meta_dict():
+        for k in self.char.morphs_meta:
             self.meta_prev[k] = 0
             pname = "cmorph_meta_" + k
             if pname in d:
@@ -242,14 +214,11 @@ class Morpher:
         return coeffs[1]*val if val > 0 else -coeffs[0]*val
 
     def _calc_meta_abs_val(self, prop):
-        return sum(self._calc_meta_val(self.meta_dict()[meta_prop].get("morphs", {}).get(prop), val)
+        return sum(self._calc_meta_val(self.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
             for meta_prop, val in self.meta_prev.items())
 
     def meta_get(self, name):
         return self.obj.data.get("cmorph_meta_" + name, 0.0)
-
-    def meta_dict(self) -> dict:
-        return self.char.morphs_meta
 
     def meta_prop(self, name, data):
         pname = "cmorph_meta_" + name
@@ -336,7 +305,6 @@ class Morpher:
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):
         del_charmorphs_L2()
-        self.update_morphs_L2()
         self.update_morph_categories()
         self.update_presets()
         self._init_sliding_joints()
@@ -345,7 +313,7 @@ class Morpher:
         props = {}
         if self.morphs_l2:
             props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.morphs_l2 if morph.name)
-            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.meta_dict().items())
+            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.char.morphs_meta.items())
         if self.sliding_joints:
             props.update(prefixed_prop("sj_", self.sliding_prop(k)) for k in self.sliding_joints.keys())
         if not props:
@@ -584,14 +552,14 @@ class NumpyMorpher(Morpher):
     storage: morphs.MorphStorage
     basis: numpy.ndarray = None
     morphed: numpy.ndarray = None
-    morphs_combo = {}
+    morphs_combo: dict[str, morphs.MinMaxMorph] = {}
 
     def __init__(self, obj, storage=None):
         self.storage = storage
         super().__init__(obj)
         if obj.data.get("cm_alt_topo"):
             self.alt_topo = True
-            self.alt_topo_basis = get_basis(obj)
+            self.alt_topo_basis = charlib.get_basis(obj)
         else:
             self.alt_topo_basis = self.full_basis
         if len(self.alt_topo_basis) != len(obj.data.vertices):

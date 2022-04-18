@@ -20,6 +20,8 @@
 
 import os, json, logging, traceback, numpy
 
+import bpy # pylint: disable=import-error
+
 from . import morphs, utils
 
 logger = logging.getLogger(__name__)
@@ -381,3 +383,31 @@ def load_library():
         chars[char_name] = char
 
     t.time("Library load")
+
+def get_basis(data, morpher = None, use_char=True):
+    if isinstance(data, bpy.types.Object):
+        data = data.data
+    k = data.shape_keys
+    if k:
+        return utils.verts_to_numpy(k.reference_key.data)
+
+    if morpher and morpher.obj.data == data:
+        return morpher.get_basis_alt_topo()
+
+    alt_topo = data.get("cm_alt_topo")
+    if isinstance(alt_topo, (bpy.types.Object, bpy.types.Mesh)):
+        return get_basis(alt_topo, None, False)
+
+    char = None
+    if use_char:
+        char = char_by_name(data.get("charmorph_template"))
+
+    if char:
+        if not alt_topo:
+            basis = char.np_basis
+            if basis is not None:
+                return basis.copy()
+        elif isinstance(alt_topo, str):
+            return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+
+    return utils.verts_to_numpy(data.vertices)

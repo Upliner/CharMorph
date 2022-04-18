@@ -31,9 +31,9 @@ class OpReloadLib(bpy.types.Operator):
     bl_label = "Reload library"
     bl_description = "Reload character library"
 
-    def execute(self, _context): # pylint: disable=no-self-use
+    def execute(self, _): # pylint: disable=no-self-use
         charlib.load_library()
-        morphing.recreate_charmorphs()
+        morphing.manager.recreate_charmorphs()
         return {"FINISHED"}
 
 class OpImport(bpy.types.Operator):
@@ -104,7 +104,7 @@ class OpImport(bpy.types.Operator):
             obj.shape_key_add(name="Basis", from_mix=False)
 
         m = morphing.get_morpher(obj, storage)
-        morphing.update_morpher(m)
+        morphing.manager.update_morpher(m)
         m.update()
 
         context.view_layer.objects.active = obj
@@ -125,7 +125,7 @@ class OpImport(bpy.types.Operator):
         if not utils.is_adult_mode():
             add_assets(char.underwear)
 
-        assets.fit_import(obj, asset_list)
+        assets.fit_import(m.fitter, asset_list)
 
         return {"FINISHED"}
 

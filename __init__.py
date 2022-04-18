@@ -62,47 +62,14 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
     def draw(self, _):
         self.layout.prop(self, "adult_mode")
 
-def on_select_object():
-    if morphing.bad_object():
-        morphing.del_charmorphs()
-    if bpy.context.mode != "OBJECT":
-        return
-    obj = bpy.context.object
-    if obj is None:
-        return
-    ui = bpy.context.window_manager.charmorph_ui
-
-    if obj is morphing.last_object:
-        return
-
-    if obj.type == "MESH":
-        asset = None
-        if (obj.parent and obj.parent.type == "MESH" and
-                "charmorph_fit_id" in obj.data and
-                "charmorph_template" not in obj.data):
-            asset = obj
-            obj = obj.parent
-        if asset:
-            ui.fitting_char = obj
-            ui.fitting_asset = asset
-        elif charlib.obj_char(obj).name:
-            ui.fitting_char = obj
-        else:
-            ui.fitting_asset = obj
-
-    if obj is morphing.last_object:
-        return
-
-    morphing.create_charmorphs(obj)
-
 @bpy.app.handlers.persistent
 def load_handler(_):
-    morphing.del_charmorphs()
-    on_select_object()
+    morphing.manager.del_charmorphs()
+    morphing.manager.on_select()
 
 @bpy.app.handlers.persistent
 def select_handler(_):
-    on_select_object()
+    morphing.manager.on_select()
 
 classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
@@ -129,7 +96,7 @@ def register():
         owner=owner,
         key=(bpy.types.LayerObjects, "active"),
         args=(),
-        notify=on_select_object)
+        notify=lambda: morphing.manager.on_select()) # pylint: disable=unnecessary-lambda # this thing really doesn't work without lambda
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)
@@ -152,7 +119,7 @@ def unregister():
 
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.WindowManager.charmorph_ui
-    morphing.del_charmorphs()
+    morphing.manager.del_charmorphs()
 
     class_unregister()
 

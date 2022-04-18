@@ -242,6 +242,6 @@ class Materials:
             if not prop:
                 continue
             if prop.node.type == "RGB":
-                self.props.default_value = utils.parse_color(v)
+                prop.default_value = utils.parse_color(v)
             else:
-                self.props.default_value = v
+                prop.default_value = v

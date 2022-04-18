@@ -22,7 +22,7 @@ import json
 import bpy, bpy_extras # pylint: disable=import-error
 
 from .lib import morphs, utils
-from . import morphing
+from .morphing import manager as mm
 
 class UIProps:
     export_format: bpy.props.EnumProperty(
@@ -44,7 +44,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
 
     @classmethod
     def poll(cls, _):
-        return bool(morphing.morpher)
+        return bool(mm.morpher)
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
@@ -60,7 +60,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
         col.operator("charmorph.import")
 
 def morphs_to_data():
-    m = morphing.morpher
+    m = mm.morpher
     typ = []
 
     if m.L1:
@@ -72,7 +72,7 @@ def morphs_to_data():
     return {
         "type":   typ,
         "morphs": {m.name: m.prop_get(m.name) for m in m.morphs_l2 if m.name},
-        "meta":   {k: m.meta_get(k) for k in m.meta_dict()},
+        "meta":   {k: m.meta_get(k) for k in m.char.morphs_meta},
         "materials": m.materials.as_dict()
     }
 
@@ -86,7 +86,7 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, _):
-        return bool(morphing.morpher)
+        return bool(mm.morpher)
 
     def execute(self, _):
         with open(self.filepath, "w", encoding="utf-8") as f:
@@ -103,7 +103,7 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, _):
-        return bool(morphing.morpher)
+        return bool(mm.morpher)
 
     def execute(self, _):
         with open(self.filepath, "w", encoding="utf-8") as f:
@@ -120,7 +120,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, _):
-        return bool(morphing.morpher)
+        return bool(mm.morpher)
 
     def execute(self, _):
         data = morphs.load_morph_data(self.filepath)
@@ -132,7 +132,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         if isinstance(typenames, str):
             typenames = [typenames]
 
-        m = morphing.morpher
+        m = mm.morpher
         typemap = {v["title"]:k for k, v in m.char.types.items() if "title" in v}
         m.lock()
         try:

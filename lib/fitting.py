@@ -22,7 +22,7 @@ import random, logging, numpy
 
 import bpy, bmesh, mathutils # pylint: disable=import-error
 
-from . import morphers, rigging, utils
+from . import charlib, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,9 @@ class ObjFitCalculator(FitCalculator):
         return self.bvh
 
 class MorpherFitCalculator(FitCalculator):
-    def __init__(self, morpher: morphers.Morpher, get_basis):
+    def __init__(self, morpher, get_basis = None):
+        if get_basis is None:
+            get_basis = lambda data: charlib.get_basis(data, self.morpher)
         super().__init__(morpher.obj, get_basis)
         self.morpher = morpher
         self.char = morpher.char
@@ -247,7 +249,7 @@ repsilon = 1e-5
 
 class RiggerFitCalculator(MorpherFitCalculator):
     def __init__(self, morpher):
-        super().__init__(morpher, lambda data: morphers.get_basis(data, morpher))
+        super().__init__(morpher)
         self.subset = None
 
     # when transferring joints to another geometry, we need to make sure
@@ -329,7 +331,7 @@ class Fitter(MorpherFitCalculator):
     diff_arr: numpy.ndarray = None
 
     def __init__(self, morpher):
-        super().__init__(morpher, lambda data: morphers.get_basis(data, morpher))
+        super().__init__(morpher)
         self.weights_cache = {}
 
     def add_mask_from_asset(self, asset):
@@ -599,7 +601,7 @@ class Fitter(MorpherFitCalculator):
         t = utils.Timer()
 
         self.char.assets.get(asset.data.get("charmorph_asset"))
-        verts = self.calc_fit(self.get_weights(asset), )
+        verts = self.calc_fit(self.get_weights(asset))
         verts += self.get_verts(asset)
         self.get_target(asset).foreach_set("co", verts.reshape(-1))
         asset.data.update()
@@ -681,7 +683,7 @@ class Fitter(MorpherFitCalculator):
     def get_assets(self):
         try:
             return self._get_assets()
-        except ReferenceError: # can happen if some of the assets was deleted
+        except ReferenceError: # can happen if some of the assets were deleted
             self.children = None
             return self._get_assets()
 

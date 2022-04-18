@@ -23,7 +23,8 @@ import logging, traceback, numpy
 import bpy # pylint: disable=import-error
 
 from .lib import fitting, rigging, utils
-from . import assets, morphing, rigify
+from .morphing import manager as mm
+from . import assets, rigify
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def delete_old_rig_with_assets(obj, rig):
         remove_armature_modifiers(asset)
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
-    m = morphing.morpher
+    m = mm.morpher
     obj = m.obj
     char = m.char
     conf = char.armature.get(ui.fin_rig)
@@ -203,7 +204,7 @@ def _get_fin_sk(obj):
     return fin_sk, False
 
 def _get_sk_verts(ui):
-    m = morphing.morpher
+    m = mm.morpher
     fin_sk = None
     fin_sk_tmp = False
     verts, verts_alt = None, None
@@ -233,7 +234,7 @@ def _get_sk_verts(ui):
 def _cleanup_morphs(ui, fin_sk):
     if ui.fin_morph == "NO":
         return
-    obj = morphing.morpher.obj
+    obj = mm.morpher.obj
 
     if "cm_morpher" in obj.data:
         del obj.data["cm_morpher"]
@@ -265,11 +266,11 @@ def apply_morphs(ui):
     fin_sk, verts, verts_alt = _get_sk_verts(ui)
     _cleanup_morphs(ui, fin_sk)
     if (ui.fin_csmooth and not ui.fin_cs_morphing) or ui.fin_morph == "AL":
-        morphing.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
+        mm.morpher.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     return verts, verts_alt
 
 def _add_modifiers(ui):
-    obj = morphing.morpher.obj
+    obj = mm.morpher.obj
     def add_modifier(obj, typ, reposition):
         for mod in obj.modifiers:
             if mod.type == typ:
@@ -313,7 +314,7 @@ def _add_modifiers(ui):
 
 def _do_vg_cleanup():
     unused_l1 = set()
-    m = morphing.morpher
+    m = mm.morpher
     current_l1 = m.L1
     for l1 in m.morphs_l1:
         if l1 != current_l1:
@@ -347,7 +348,7 @@ class OpFinalize(bpy.types.Operator):
 
     @classmethod
     def poll(cls, _):
-        return morphing.morpher
+        return mm.morpher
 
     def _do_rig(self, ui, verts, verts_alt):
         if ui.fin_rig == "-":
@@ -381,7 +382,7 @@ class OpFinalize(bpy.types.Operator):
         if self.vg_cleanup:
             _do_vg_cleanup()
 
-        morphing.recreate_charmorphs()
+        mm.recreate_charmorphs()
 
         t.time("total finalize")
 
@@ -397,11 +398,11 @@ class OpUnrig(bpy.types.Operator):
     def poll(cls, context):
         if context.mode != "OBJECT":
             return False
-        obj = morphing.get_obj_char(context)[0]
+        obj = mm.get_obj_char(context)[0]
         return obj.find_armature()
 
     def execute(self, context): # pylint: disable=no-self-use
-        obj, char = morphing.get_obj_char(context)
+        obj, char = mm.get_obj_char(context)
 
         old_rig = obj.find_armature()
         if old_rig:
@@ -415,12 +416,12 @@ class OpUnrig(bpy.types.Operator):
         if "charmorph_rig_type" in obj.data:
             del obj.data["charmorph_rig_type"]
 
-        morphing.recreate_charmorphs()
+        mm.recreate_charmorphs()
 
         return {"FINISHED"}
 
 def get_rigs(_, context):
-    char = morphing.get_obj_char(context)[1]
+    char = mm.get_obj_char(context)[1]
     result = [("-", "<None>", "Don't generate rig")]
     if char:
         result.extend((name, rig.title, "") for name, rig in char.armature.items())
@@ -502,7 +503,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and morphing.get_obj_char(context)[0]
+        return context.mode == "OBJECT" and mm.get_obj_char(context)[0]
 
     def draw(self, context):
         l = self.layout

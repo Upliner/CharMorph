@@ -27,8 +27,8 @@ import math
 import bpy          # pylint: disable=import-error
 import rna_prop_ui  # pylint: disable=import-error
 
-from . import morphing
 from .lib import charlib, rigging, utils
+from .morphing import manager as mm
 
 def remove_rig(rig):
     try:
@@ -225,7 +225,7 @@ class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
 
     @classmethod
     def poll(cls, context):
-        m = morphing.morpher
+        m = mm.morpher
         if not m or not hasattr(context.window_manager, "charmorphs"):
             return False
         return next(m.sliding_joints_by_rig(context.window_manager.charmorph_ui.fin_rig), False)
@@ -235,7 +235,7 @@ class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
         col.label(text="You can adjust these values")
         col.label(text="if joint bending looks strange")
         col = self.layout.column()
-        for name in morphing.morpher.sliding_joints_by_rig(context.window_manager.charmorph_ui.fin_rig):
+        for name in mm.morpher.sliding_joints_by_rig(context.window_manager.charmorph_ui.fin_rig):
             col.prop(context.window_manager.charmorphs, "sj_" + name,
                 slider=True, text=name[name.index("_")+1:])
 
@@ -245,7 +245,7 @@ class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
 
     @classmethod
     def poll(cls, context):
-        rig = morphing.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
+        rig = mm.get_obj_char(context)[1].armature.get(context.window_manager.charmorph_ui.fin_rig)
         if not rig:
             return False
         result = rig.type == "rigify"
