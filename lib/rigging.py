@@ -614,4 +614,3 @@ def apply_tweak(rig, tweak):
                 t.weight = v
             continue
         setattr(obj, attr, val)
-

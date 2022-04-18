@@ -120,6 +120,11 @@ class Morpher:
     def _get_co(self, i):
         return self.obj.data.vertices[i].co
 
+    def update_morphs_L2(self):
+        self.morphs_l2 = self.get_morphs_L2()
+        if not self.char.custom_morph_order:
+            self.morphs_l2.sort(key=lambda morph: morph.name)
+
     def update_L1_idx(self):
         try:
             self.L1_idx = next((i for i, item in enumerate(self.L1_list) if item[0] == self.L1))
@@ -131,11 +136,6 @@ class Morpher:
         if result:
             self.update_L1_idx()
         return result
-
-    def update_morphs_L2(self):
-        self.morphs_l2 = self.get_morphs_L2()
-        if not self.char.custom_morph_order:
-            self.morphs_l2.sort(key=lambda morph: morph.name)
 
     def _set_L1(self, L1):
         if L1 not in self.morphs_l1:
@@ -475,13 +475,8 @@ class NumpyMorpher(Morpher):
     def __init__(self, obj, storage=None):
         self.storage = storage
         super().__init__(obj)
-        if obj.data.get("cm_alt_topo"):
-            self.alt_topo = True
-            self.alt_topo_basis = charlib.get_basis(obj)
-        else:
-            self.alt_topo_basis = self.full_basis
-        if len(self.alt_topo_basis) != len(obj.data.vertices):
-            self.error = f"Vertex count mismatch {len(self.alt_topo_basis)} != {len(obj.data.vertices)}"
+        if len(self.get_basis_alt_topo()) != len(obj.data.vertices):
+            self.error = f"Vertex count mismatch {len(self.get_basis_alt_topo())} != {len(obj.data.vertices)}"
             if not self.alt_topo and self.char.faces is not None:
                 self.alt_topo_buildable = True
 
@@ -561,9 +556,6 @@ class NumpyMorpher(Morpher):
     def prop_set_internal(self, name, value):
         self.obj.data["cmorph_L2_" + name] = value
 
-    def get_basis_alt_topo(self):
-        return self.alt_topo_basis
-
     def _get_co(self, i):
         if self.morphed is None:
             self._do_all_morphs()
@@ -581,7 +573,19 @@ class NumpyMorpher(Morpher):
             self._do_all_morphs()
         return self.morphed
 
+class AltTopoMorpher(NumpyMorpher):
+    def __init__(self, obj, storage=None):
+        self.alt_topo = True
+        self.alt_topo_basis = charlib.get_basis(obj)
+        super().__init__(obj, storage)
+
+    def get_basis_alt_topo(self):
+        return self.alt_topo_basis
+
+
 def get_morpher(obj, storage = None):
-    if obj.data.get("cm_morpher") == "ext" or obj.data.get("cm_alt_topo"):
+    if utils.is_true(obj.data.get("cm_alt_topo")):
+        return AltTopoMorpher(obj, storage)
+    if obj.data.get("cm_morpher") == "ext":
         return NumpyMorpher(obj, storage)
     return ShapeKeysMorpher(obj)
