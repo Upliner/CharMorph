@@ -116,7 +116,7 @@ class Separator(Morph):
     name=""
 
 def json_to_morph(item):
-    if item["separator"]:
+    if item.get("separator"):
         return Separator
     return MinMaxMorphData(item.get("morph"), item.get("min", 0), item.get("max", 1))
 
@@ -199,7 +199,7 @@ class MorphImporter:
     def _import_to_sk(self, morph, basis, level, *names):
         sk = self._create_morph_sk("_".join((f"L{level}",) + names) + "_", morph)
         if not sk:
-            return None
+            return "--separator--", None
         names += (morph.name,)
         if level == 1:
             data = self.storage.get(level, *names)
@@ -248,7 +248,7 @@ class MorphImporter:
 
     def import_expressions(self, progress):
         basis = self._ensure_basis()
-        lst = self.storage.enum(3)
+        lst = list(self.storage.enum(3))
         self._counter_lev = 3
         self._counter_cnt = 1
         progress.enter_substeps(len(lst), "Importing expressions")
