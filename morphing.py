@@ -132,15 +132,17 @@ class OpResetChar(bpy.types.Operator):
         return context.mode == "OBJECT" and manager.morpher.core.char
 
     def execute(self, _):
-        obj = manager.morpher.core.obj
-        obj.data["cm_morpher"] = "ext"
-        new_morpher = morpher.get(obj)
+        mcore = manager.morpher.core
+        mcore.cleanup_asset_morphs()
+        mcore.obj.data["cm_morpher"] = "ext"
+
+        new_morpher = morpher.get(mcore.obj)
         if new_morpher.error or not new_morpher.core.has_morphs():
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
             else:
                 self.report({'ERROR'}, "Still no morphs found")
-            del obj.data["cm_morpher"]
+            del mcore.obj.data["cm_morpher"]
             return {"CANCELLED"}
         manager.update_morpher(new_morpher)
         return {"FINISHED"}

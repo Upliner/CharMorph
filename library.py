@@ -20,6 +20,7 @@
 
 import os, logging
 import bpy # pylint: disable=import-error
+from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
 from . import assets, morphing
 from .lib import charlib, morpher, materials, morphs, utils
@@ -35,6 +36,31 @@ class OpReloadLib(bpy.types.Operator):
         charlib.load_library()
         morphing.manager.recreate_charmorphs()
         return {"FINISHED"}
+
+def _import_moprhs(wm, obj, char):
+    ui = wm.charmorph_ui
+    if not ui.use_sk:
+        ui.import_morphs = False
+        ui.import_expressions = False
+
+    steps = int(ui.import_morphs) + int(ui.import_expressions)
+    if not steps:
+        return None
+
+    storage = morphs.MorphStorage(char)
+    importer = morphs.MorphImporter(storage, obj)
+
+    with ProgressReport(wm) as progress:
+        progress.enter_substeps(steps, "Importing shape keys...")
+        if ui.import_morphs:
+            importer.import_morphs(progress)
+            progress.step("Morphs imported")
+        if ui.import_expressions:
+            importer.import_expressions(progress)
+            progress.step("Expressions imported")
+        progress.leave_substeps("Shape keys done")
+
+    return storage
 
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
@@ -78,18 +104,10 @@ class OpImport(bpy.types.Operator):
                 self.report({'ERROR'}, "Import failed")
                 return {"CANCELLED"}
 
-            if not ui.use_sk:
-                ui.import_morphs = False
-                ui.import_expressions = False
+            storage = _import_moprhs(context.window_manager, obj, char)
 
-            storage = morphs.MorphStorage(char)
-            importer = morphs.MorphImporter(storage, obj)
-            if ui.import_morphs:
-                importer.import_morphs()
-            elif os.path.isdir(char.path("morphs")):
+            if not ui.import_morphs and os.path.isdir(char.path("morphs")):
                 obj.data["cm_morpher"] = "ext"
-            if ui.import_expressions:
-                importer.import_expressions()
 
             materials.init_materials(obj, char)
 

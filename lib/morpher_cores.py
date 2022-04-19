@@ -57,6 +57,8 @@ class MorpherCore:
         return self.obj.data.vertices[i].co
     def update(self):
         pass
+    def cleanup_asset_morphs(self):
+        pass
 
     ######
 
@@ -76,6 +78,25 @@ class MorpherCore:
 
     def get_basis_alt_topo(self):
         return self.full_basis
+
+    def add_asset_morph(self, name: str, _: morphs.Morph):
+        lst = self.obj.data.get("charmorph_asset_morphs")
+        if not isinstance(lst, list):
+            lst = []
+        if name not in lst:
+            lst.append(name)
+        self.obj.data["charmorph_asset_morphs"] = lst
+
+    def remove_asset_morph(self, name: str):
+        lst = self.obj.data.get("charmorph_asset_morphs")
+        if not isinstance(lst, list):
+            lst = []
+        else:
+            try:
+                lst.remove(name)
+            except ValueError:
+                return
+        self.obj.data["charmorph_asset_morphs"] = lst
 
 def get_combo_item_value(arr_idx, values):
     return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)
@@ -214,6 +235,29 @@ class ShapeKeysMorpher(MorpherCore):
         result -= self.full_basis
         return result
 
+    def _ensure_basis(self):
+        if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
+            self.obj.shape_key_add(name="Basis", from_mix=False)
+
+    def add_asset_morph(self, name: str, morph: morphs.Morph):
+        self._ensure_basis()
+        sk_name = "charmorph_asset_" + name
+        sk = self.obj.shape_keys.key_blocks.get(sk_name)
+        if not sk:
+            sk = self.obj.shape_key_add(name=sk_name, from_mix=False)
+        data = utils.get_basis_numpy(self.obj)
+        morph.apply(data)
+        sk.data.foreach_set("co", data.reshape(-1))
+        super().add_asset_morph(name, morph)
+
+    def remove_asset_morph(self, name: str):
+        if self.obj.data.shape_keys and self.obj.data.shape_keys.key_blocks:
+            sk_name = "charmorph_asset_" + name
+            sk = self.obj.shape_keys.key_blocks.get(sk_name)
+            if sk:
+                self.obj.shape_key_remove(sk)
+        super().remove_asset_morph(name)
+
 class NumpyMorpher(MorpherCore):
     storage: morphs.MorphStorage
     basis: numpy.ndarray = None
@@ -223,6 +267,7 @@ class NumpyMorpher(MorpherCore):
     def __init__(self, obj, storage=None):
         self.storage = storage
         super().__init__(obj)
+        self.asset_morphs = self._get_asset_morphs()
         if len(self.get_basis_alt_topo()) != len(obj.data.vertices):
             self.error = f"Vertex count mismatch {len(self.get_basis_alt_topo())} != {len(obj.data.vertices)}"
             if not self.alt_topo and self.char.faces is not None:
@@ -318,6 +363,51 @@ class NumpyMorpher(MorpherCore):
         if self.morphed is None:
             self._do_all_morphs()
         return self.morphed
+
+    def _del_asset_morphs(self):
+        try:
+            del self.obj.data.get["charmorph_asset_morphs"]
+        except KeyError:
+            pass
+
+    def cleanup_asset_morphs(self):
+        lst = self.obj.data.get("charmorph_asset_morphs")
+        if not isinstance(lst, list):
+            self._del_asset_morphs()
+            return
+        assets = self.char.assets
+        new_lst = [item for item in lst if assets.get(item, charlib.Asset).morph]
+        if new_lst:
+            self.obj.data.get["charmorph_asset_morphs"] = new_lst
+        else:
+            self._del_asset_morphs()
+
+    def _get_asset_morphs(self):
+        lst = self.obj.data.get("charmorph_asset_morphs")
+        if not isinstance(lst, list):
+            return {}
+        assets = self.char.assets
+        result = {}
+        for name in lst:
+            morph = assets.get(name, charlib.Asset).morph
+            if not morph:
+                self.error = f'Asset morph for "{name}" is not found'
+                return {}
+            result[name] = morph
+        return result
+
+    def add_asset_morph(self, name: str, morph: morphs.Morph):
+        self.asset_morphs[name] = morph
+        super().add_asset_morph(name, morph)
+        self._update_L1()
+
+    def remove_asset_morph(self, name: str):
+        super().remove_asset_morph(name)
+        try:
+            del self.asset_morphs[name]
+        except KeyError:
+            pass
+        self._update_L1()
 
 class AltTopoMorpher(NumpyMorpher):
     def __init__(self, obj, storage=None):
