@@ -80,7 +80,7 @@ def attach_scalp(char, obj):
     else:
         for c in collections:
             c.objects.link(obj)
-    assets.get_fitter(char).fit_new(obj)
+    assets.get_fitter(char).fit_new((obj,))
 
 def create_scalp(name, char, vgi):
     vmap = {}

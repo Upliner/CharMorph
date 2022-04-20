@@ -568,7 +568,7 @@ def objects_by_type(typ):
 
 rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
-class CMEditUIProps(bpy.types.PropertyGroup, file_io.UIProps, vg_calc.UIProps):
+class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps):
     rig_char: bpy.props.PointerProperty(
         name="Char",
         description="Character mesh for rigging",

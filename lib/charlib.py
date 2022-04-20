@@ -297,13 +297,14 @@ class Asset:
 
     @utils.lazyproperty
     def morph(self):
-        return morphs.load_morph_noext("morph")
+        return morphs.load_noext(self.path("morph"))
 
 def get_asset(asset_dir: str, name: str):
     path = os.path.join(asset_dir, name)
     if os.path.isdir(path):
         for fname in (name, "asset"):
-            if os.path.isfile(os.path.join(path, fname + ".blend")):
+            fname = os.path.join(path, fname + ".blend")
+            if os.path.isfile(fname):
                 return Asset(name, fname, path)
     elif name.endswith(".blend"):
         return Asset(name[:-6], path)

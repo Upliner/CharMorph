@@ -22,7 +22,7 @@ import os, logging
 import bpy # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
-from . import assets, morphing
+from . import morphing
 from .lib import charlib, morpher, materials, morphs, utils
 
 logger = logging.getLogger(__name__)
@@ -123,15 +123,9 @@ class OpImport(bpy.types.Operator):
 
         m = morpher.get(obj, storage)
         morphing.manager.update_morpher(m)
-        m.update()
 
         context.view_layer.objects.active = obj
         ui.fitting_char = obj
-
-        if char.randomize_incl_regex is not None:
-            ui.randomize_incl = char.randomize_incl_regex
-        if char.randomize_excl_regex is not None:
-            ui.randomize_excl = char.randomize_excl_regex
 
         if char.default_armature and ui.fin_rig == '-':
             ui.fin_rig = char.default_armature
@@ -143,7 +137,8 @@ class OpImport(bpy.types.Operator):
         if not utils.is_adult_mode():
             add_assets(char.underwear)
 
-        assets.fit_import(m.fitter, asset_list)
+        m.fitter.fit_import(asset_list)
+        m.update()
 
         return {"FINISHED"}
 

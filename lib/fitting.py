@@ -57,12 +57,12 @@ class EmptyAsset:
 
 class Fitter(fit_calc.MorpherFitCalculator):
     children: list = None
-    _lock_cm = False
     transfer_calc: fit_calc.ObjFitCalculator = None
     diff_arr: numpy.ndarray = None
 
-    def __init__(self, mcore):
+    def __init__(self, mcore, morpher=None):
         super().__init__(mcore)
+        self.morpher = morpher
         self.weights_cache = {}
 
     def add_mask_from_asset(self, asset):
@@ -194,17 +194,13 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.weights_cache[fit_id] = result
         return result
 
-    def get_diff_arr(self):
+    def get_diff_arr(self, morph):
         if self.diff_arr is None:
             self.diff_arr = self.mcore.get_diff()
-        return self.diff_arr
+        return morph.apply(self.diff_arr.copy(), -1) if morph else self.diff_arr
 
-    def calc_fit(self, weights_tuple, morph = None):
-        diff_arr = self.get_diff_arr()
-        if morph is not None:
-            diff_arr = diff_arr.copy()
-            diff_arr[morph[0]] -= morph[1]
-        return fit_calc.calc_fit(diff_arr, *weights_tuple)
+    def calc_fit(self, weights_tuple, morph=None):
+        return fit_calc.calc_fit(self.get_diff_arr(morph), *weights_tuple)
 
     def get_hair_data(self, psys):
         if not psys.is_edited:
@@ -257,7 +253,6 @@ class Fitter(fit_calc.MorpherFitCalculator):
                 m.show_viewport = True
 
         t.time("hair_fit_set")
-
         return True
 
     def fit_obj_hair(self, obj):
@@ -328,11 +323,12 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def get_target(self, asset):
         return utils.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
 
-    def fit(self, asset):
+    def fit(self, asset, morph=False):
         t = utils.Timer()
 
-        #asset = self.mcore.char.assets.get(asset.data.get("charmorph_asset"))
-        verts = self.calc_fit(self.get_weights(asset))
+        if morph is False:
+            morph = self._get_asset_morph(asset)
+        verts = self.calc_fit(self.get_weights(asset), morph)
         verts += self.get_verts(asset)
         self.get_target(asset).foreach_set("co", verts.reshape(-1))
         asset.data.update()
@@ -374,38 +370,71 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.add_mask(bvh_assets, "cm_mask_combined", bbox_min, bbox_max)
         t.time("comb_mask")
 
-    def lock_comb_mask(self):
-        self._lock_cm = True
-
-    def unlock_comb_mask(self):
-        self._lock_cm = False
-        self.transfer_calc = None
-        if bpy.context.window_manager.charmorph_ui.fitting_mask == "COMB":
-            self.recalc_comb_mask()
-
-    def fit_new(self, asset):
+    def _fit_new_item(self, asset):
         ui = bpy.context.window_manager.charmorph_ui
         if ui.fitting_transforms:
             utils.apply_transforms(asset)
-
-        self.fit(asset)
 
         if self.children is None:
             self.get_children()
         self.children.append(asset)
         asset.parent = self.obj
 
-        if masking_enabled(asset):
-            if ui.fitting_mask == "SEPR":
-                self.add_mask_from_asset(asset)
-            elif ui.fitting_mask == "COMB" and not self._lock_cm:
-                self.recalc_comb_mask()
-
         if ui.fitting_weights != "NONE":
             self._transfer_armature(asset)
 
-        if not self._lock_cm:
-            self.transfer_calc = None
+    def fit_new(self, assets):
+        ui = bpy.context.window_manager.charmorph_ui
+        comb_mask = False
+        has_morphs = False
+        for asset in assets:
+            self._fit_new_item(asset)
+            c = self._get_asset_conf(asset)
+            if c and c.morph:
+                self.mcore.add_asset_morph(c.name, c.morph)
+                has_morphs = True
+            if masking_enabled(asset):
+                if ui.fitting_mask == "SEPR":
+                    self.add_mask_from_asset(asset)
+                elif ui.fitting_mask == "COMB":
+                    comb_mask = True
+
+        if comb_mask:
+            self.recalc_comb_mask()
+
+        if has_morphs:
+            self.update_char()
+        else:
+            for asset in assets:
+                self.fit(asset, None)
+
+        self.transfer_calc = None
+
+    def update_char(self):
+        if self.morpher:
+            self.morpher.update()
+        else:
+            self.mcore.update()
+            self.refit_all()
+
+    def fit_import(self, lst):
+        result = True
+        objs = []
+        for asset in lst:
+            obj = utils.import_obj(asset.blend_file, asset.name)
+            if obj is None:
+                result = False
+                continue
+            if self.mcore.char.assets.get(asset.name) is asset:
+                obj.data["charmorph_asset"] = asset.name
+            objs.append(obj)
+        self.fit_new(objs)
+        ui = bpy.context.window_manager.charmorph_ui
+        # TODO: find the reason
+        #ui.fitting_char = self.mcore.obj # For some reason combo box value changes after importing, fix it
+        if len(lst) == 1:
+            ui.fitting_asset = obj
+        return result
 
     def get_children(self):
         if self.children is None:

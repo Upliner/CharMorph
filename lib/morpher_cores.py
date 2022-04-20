@@ -79,6 +79,12 @@ class MorpherCore:
     def get_basis_alt_topo(self):
         return self.full_basis
 
+    def _del_asset_morphs(self):
+        try:
+            del self.obj.data["charmorph_asset_morphs"]
+        except KeyError:
+            pass
+
     def add_asset_morph(self, name: str, _: morphs.Morph):
         lst = self.obj.data.get("charmorph_asset_morphs")
         if not isinstance(lst, list):
@@ -96,7 +102,10 @@ class MorpherCore:
                 lst.remove(name)
             except ValueError:
                 return
-        self.obj.data["charmorph_asset_morphs"] = lst
+        if lst:
+            self.obj.data["charmorph_asset_morphs"] = lst
+        else:
+            self._del_asset_morphs()
 
 def get_combo_item_value(arr_idx, values):
     return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)
@@ -290,6 +299,11 @@ class NumpyMorpher(MorpherCore):
         if self.basis is None:
             self.basis = self.full_basis
 
+        if self.asset_morphs:
+            self.basis = self.basis.copy()
+            for morph in self.asset_morphs.values():
+                morph.apply(self.basis)
+
     def get_L1(self):
         morphs_l1 = {morph.name: self.storage.get_lazy(1, morph.name) for morph in self.storage.enum(1)}
         L1 = self.obj.data.get("cmorph_L1", "")
@@ -364,21 +378,15 @@ class NumpyMorpher(MorpherCore):
             self._do_all_morphs()
         return self.morphed
 
-    def _del_asset_morphs(self):
-        try:
-            del self.obj.data.get["charmorph_asset_morphs"]
-        except KeyError:
-            pass
-
     def cleanup_asset_morphs(self):
         lst = self.obj.data.get("charmorph_asset_morphs")
         if not isinstance(lst, list):
             self._del_asset_morphs()
             return
         assets = self.char.assets
-        new_lst = [item for item in lst if assets.get(item, charlib.Asset).morph]
-        if new_lst:
-            self.obj.data.get["charmorph_asset_morphs"] = new_lst
+        lst = [item for item in lst if assets.get(item, charlib.Asset).morph]
+        if lst:
+            self.obj.data.get["charmorph_asset_morphs"] = lst
         else:
             self._del_asset_morphs()
 
@@ -399,7 +407,7 @@ class NumpyMorpher(MorpherCore):
     def add_asset_morph(self, name: str, morph: morphs.Morph):
         self.asset_morphs[name] = morph
         super().add_asset_morph(name, morph)
-        self._update_L1()
+        self.basis = None
 
     def remove_asset_morph(self, name: str):
         super().remove_asset_morph(name)
@@ -407,7 +415,7 @@ class NumpyMorpher(MorpherCore):
             del self.asset_morphs[name]
         except KeyError:
             pass
-        self._update_L1()
+        self.basis = None
 
 class AltTopoMorpher(NumpyMorpher):
     def __init__(self, obj, storage=None):

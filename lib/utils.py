@@ -60,6 +60,8 @@ class named_lazyprop:
         self.name = name
 
     def __get__(self, instance, owner):
+        if instance is None:
+            return None
         value = self.fn(instance)
         setattr(instance, self.name, value)
         return value
@@ -122,6 +124,8 @@ def kdtree_from_verts_enum(verts, cnt):
 
 def kdtree_from_verts(verts):
     return kdtree_from_verts_enum(((idx, vert.co) for idx, vert in enumerate(verts)), len(verts))
+def kdtree_from_np(verts):
+    return kdtree_from_verts_enum(enumerate(verts), len(verts))
 
 def get_basis_verts(data):
     if isinstance(data, bpy.types.Object):

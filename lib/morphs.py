@@ -59,7 +59,7 @@ def np_ro64(a):
     a.flags.writeable = False
     return a
 
-def load_morph(file):
+def load(file):
     if not os.path.isfile(file):
         return None
     data = numpy.load(file)
@@ -74,9 +74,9 @@ def detect_npy_npz(base):
             return path
     return None
 
-def load_morph_noext(basename):
+def load_noext(basename):
     file = detect_npy_npz(basename)
-    return load_morph(file) if file else None
+    return load(file) if file else None
 
 class MinMaxMorphData:
     __slots__ = "min", "max", "name"
@@ -95,7 +95,7 @@ class MinMaxMorph(MinMaxMorphData):
     def get_morph(self, idx) -> Morph:
         item = self.data[idx]
         if isinstance(item, str):
-            item = load_morph(item)
+            item = load(item)
             self.data[idx] = item
         return item
 
@@ -110,7 +110,6 @@ class MinMaxMorph(MinMaxMorphData):
                 self.get_morph(0).apply(verts, -value)
             else:
                 self.get_morph(1).apply(verts, value)
-
 
 class Separator(Morph):
     name=""
@@ -147,7 +146,7 @@ class MorphStorage:
     def resolve_lazy(data):
         if not isinstance(data, str):
             return data
-        return load_morph(data)
+        return load(data)
 
     def get(self, level, *names):
         lazy = self.get_lazy(level, *names)

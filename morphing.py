@@ -49,6 +49,11 @@ class Manager:
         if not m.core.L1 and c.default_type:
             m.set_L1(c.default_type)
 
+        if c.randomize_incl_regex is not None:
+            ui.randomize_incl = c.randomize_incl_regex
+        if c.randomize_excl_regex is not None:
+            ui.randomize_excl = c.randomize_excl_regex
+
         ui.morph_category = "<None>"
 
         m.create_charmorphs_L2()

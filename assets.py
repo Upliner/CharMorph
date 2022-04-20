@@ -19,11 +19,9 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, logging
-from typing import Iterable
+import bpy, bpy_extras # pylint: disable=import-error
 
-import bpy, bpy_extras  # pylint: disable=import-error
-
-from .lib import morpher_cores, charlib, fitting, utils
+from .lib import charlib, fitting, morpher_cores, utils
 from .morphing import manager as mm
 
 logger = logging.getLogger(__name__)
@@ -171,33 +169,11 @@ class OpFitLocal(bpy.types.Operator):
         return True
 
     def execute(self, context): #pylint: disable=no-self-use
-        fitter_from_ctx(context).fit_new(get_asset_obj(context))
+        fitter_from_ctx(context).fit_new((get_asset_obj(context),))
         return {"FINISHED"}
 
 def fitExtPoll(context):
     return context.mode == "OBJECT" and get_char(context)
-
-def fit_import(f: fitting.Fitter, lst: Iterable[charlib.Asset]):
-    if not f:
-        return False
-    if len(lst) == 0:
-        return True
-    result = True
-    f.lock_comb_mask()
-    try:
-        for asset in lst:
-            obj = utils.import_obj(asset.blend_file, asset.name)
-            if obj is None:
-                result = False
-            obj["charmorph_asset"] = asset.name
-            f.fit_new(obj)
-    finally:
-        f.unlock_comb_mask()
-    ui = bpy.context.window_manager.charmorph_ui
-    ui.fitting_char = f.obj # For some reason combo box value changes after importing, fix it
-    if len(lst) == 1:
-        ui.fitting_asset = obj
-    return result
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.fit_external"
@@ -214,7 +190,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        if fit_import(fitter_from_ctx(context), (charlib.Asset(name, self.filepath),)):
+        if fitter_from_ctx(context).fit_import((charlib.Asset(name, self.filepath),)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -234,7 +210,7 @@ class OpFitLibrary(bpy.types.Operator):
         if asset_data is None:
             self.report({'ERROR'}, "Asset is not found")
             return {"CANCELLED"}
-        if fit_import(fitter_from_ctx(context), (asset_data,)):
+        if fitter_from_ctx(context).fit_import((asset_data,)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
@@ -255,17 +231,22 @@ class OpUnfit(bpy.types.Operator):
 
         del asset.data['charmorph_fit_id']
         mask = fitting.mask_name(asset)
-        for char in [asset.parent, ui.fitting_char]:
+        for char in {asset.parent, ui.fitting_char}: # pylint: disable=use-sequence-for-iteration
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
             if mask in char.modifiers:
                 char.modifiers.remove(char.modifiers[mask])
             if mask in char.vertex_groups:
                 char.vertex_groups.remove(char.vertex_groups[mask])
+            f = get_fitter(char)
+            f.children = None
             if "cm_mask_combined" in char.modifiers:
-                f = get_fitter(char)
-                f.children = None
                 f.recalc_comb_mask()
+            if char.data.get("charmorph_asset_morphs"):
+                name = asset.data.get("charmorph_asset")
+                if name:
+                    f.mcore.remove_asset_morph(name)
+                    f.update_char()
         if asset.parent:
             asset.parent = asset.parent.parent
             if asset.parent and asset.parent.type == "ARMATURE":
