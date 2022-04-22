@@ -21,7 +21,7 @@
 import os, re, json, numpy
 import bpy, bpy_extras, bmesh, idprop # pylint: disable=import-error
 
-from ..lib import morphs, rigging, utils
+from ..lib import morphs, utils
 
 def np_particles_data(obj, particles, precision=numpy.float32):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
@@ -157,7 +157,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, context):
         r = re.compile(self.regex)
-        names, idx, weights = rigging.vg_weights_to_arrays(context.object, r.search)
+        names, idx, weights = utils.vg_weights_to_arrays(context.object, r.search)
         cnt = [len(i) for i in idx]
 
         numpy.savez_compressed(self.filepath,
@@ -202,7 +202,7 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         return context.object and context.object.type == "MESH" and context.mode == "OBJECT"
 
     def execute(self, context):
-        rigging.import_vg(context.object, self.filepath, self.overwrite)
+        utils.import_vg(context.object, self.filepath, self.overwrite)
         return {"FINISHED"}
 
 class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):

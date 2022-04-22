@@ -216,6 +216,28 @@ def reposition_modifier(obj, i):
         if bpy.ops.object.modifier_move_up.poll(override):
             bpy.ops.object.modifier_move_up(override, modifier=name)
 
+def reposition_armature_modifier(char):
+    for i, mod in enumerate(char.modifiers):
+        if mod.type != "ARMATURE":
+            reposition_modifier(char, i)
+            return
+
+def reposition_cs_modifier(char):
+    i = len(char.modifiers)-1
+    while i>=0:
+        if char.modifiers[i].type == "ARMATURE":
+            reposition_modifier(char, i+1)
+            return
+        i -= 1
+
+def reposition_subsurf_modifier(char):
+    i = len(char.modifiers)-1
+    while i>=0:
+        if char.modifiers[i].type in ["ARMATURE", "CORRECTIVE_SMOOTH", "MASK"]:
+            reposition_modifier(char, i+1)
+            return
+        i -= 1
+
 def import_obj(file, obj, typ="MESH", link=True):
     with bpy.data.libraries.load(file) as (data_from, data_to):
         if obj not in data_from.objects:
@@ -265,3 +287,109 @@ def set_hair_points(obj, cnts, morphed):
         bpy.ops.particle.connect_hair(override)
         t.time("connect")
     return True
+
+def get_vg_data(char, new, accumulate, verts=None):
+    if verts is None:
+        verts = char.data.vertices
+
+    if isinstance(verts, numpy.ndarray):
+        get_co = lambda i: mathutils.Vector(verts[i])
+    else:
+        get_co = lambda i: verts[i].co
+
+    data = {}
+    for v in char.data.vertices:
+        for gw in v.groups:
+            vg = char.vertex_groups[gw.group]
+            if not vg.name.startswith("joint_"):
+                continue
+            data_item = data.get(vg.name)
+            if not data_item:
+                data_item = new()
+                data[vg.name] = data_item
+            accumulate(data_item, v, get_co(v.index), gw)
+    return data
+
+def get_vg_avg(char, verts=None):
+    def accumulate(data_item, _, co, gw):
+        data_item[0] += gw.weight
+        data_item[1] += co*gw.weight
+    return get_vg_data(char, lambda: [0, mathutils.Vector()], accumulate, verts)
+
+def vg_weights_to_arrays(obj, name_filter):
+    m = {}
+    names = []
+    idx = []
+    weights = []
+    for vg in obj.vertex_groups:
+        if name_filter(vg.name):
+            m[vg.index] = len(idx)
+            names.append(vg.name)
+            idx.append([])
+            weights.append([])
+
+    if len(names) > 0:
+        for v in obj.data.vertices:
+            for g in v.groups:
+                i = m.get(g.group)
+                if i is None:
+                    continue
+                idx[i].append(v.index)
+                weights[i].append(g.weight)
+
+    return names, idx, weights
+
+def vg_names(file):
+    if isinstance(file, str):
+        file = numpy.load(file)
+    return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
+
+def vg_read_npz(z):
+    idx = z["idx"]
+    weights = z["weights"]
+    i = 0
+    for name, cnt in zip(vg_names(z), z["cnt"]):
+        i2 = i+cnt
+        yield name, idx[i:i2], weights[i:i2]
+        i = i2
+
+def vg_read(z):
+    if z is None:
+        return ()
+    if isinstance(z, str):
+        return vg_read_npz(numpy.load(z))
+    if hasattr(z, "__dict__"):
+        return vg_read_npz(z)
+    if hasattr(z, "__next__"):
+        return z
+    raise Exception("Invalid type for vg_read: " + z)
+
+def char_weights_npz(obj, char):
+    rig_type = obj.data.get("charmorph_rig_type")
+    if rig_type is None:
+        obj = obj.find_armature()
+        if obj:
+            rig_type = obj.data.get("charmorph_rig_type")
+    if rig_type is None:
+        return None
+    conf = char.armature.get(rig_type)
+    if conf is None:
+        return None
+    return conf.weights_npz
+
+def char_rig_vg_names(char, rig):
+    weights = char_weights_npz(rig, char)
+    if weights:
+        return vg_names(weights)
+    return []
+
+def import_vg(obj, file, overwrite):
+    for name, idx, weights in vg_read(file):
+        if name in obj.vertex_groups:
+            if overwrite:
+                obj.vertex_groups.remove(obj.vertex_groups[name])
+            else:
+                continue
+        vg = obj.vertex_groups.new(name=name)
+        for i, weight in zip(idx, weights):
+            vg.add([int(i)], weight, 'REPLACE')

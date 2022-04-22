@@ -22,7 +22,7 @@ import typing, logging, numpy
 
 import bpy, mathutils # pylint: disable=import-error
 
-from . import charlib, rigging, utils
+from . import charlib, utils
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ class FitCalculator(Geometry):
             self.tmp_buf = numpy.empty((len(self.verts)))
         positions, fit_idx, fit_weights = self.get_weights(asset)
         fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
-        for name, vg_idx, vg_weights in rigging.vg_read(vg_data):
+        for name, vg_idx, vg_weights in utils.vg_read(vg_data):
             self.tmp_buf.fill(0)
             self.tmp_buf.put(vg_idx, vg_weights)
             yield name, calc_fit(self.tmp_buf, positions, fit_idx, fit_weights)
@@ -192,7 +192,7 @@ class FitCalculator(Geometry):
                 yield name, idx, weights[idx]
 
     def transfer_weights(self, asset, vg_data):
-        rigging.import_vg(asset, self.transfer_weights_get(asset, vg_data),
+        utils.import_vg(asset, self.transfer_weights_get(asset, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
 class MorpherGeometry(Geometry):

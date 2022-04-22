@@ -51,7 +51,7 @@ def clear_old_weights(obj, char, rig):
             vg = vgs.get(bone.name)
             if vg:
                 vgs.remove(vg)
-    clear_vg_names(vgs, set(rigging.char_rig_vg_names(char, rig)))
+    clear_vg_names(vgs, set(utils.char_rig_vg_names(char, rig)))
 
 def clear_old_weights_with_assets(obj, char, rig):
     clear_old_weights(obj, char, rig)
@@ -90,7 +90,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if conf.joints:
             joints = conf.joints
             if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, rigging.vg_read(joints))
+                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, utils.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)
@@ -110,7 +110,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if m.alt_topo:
             assets.get_fitter(m).transfer_weights(obj, conf.weights_npz)
         else:
-            rigging.import_vg(obj, conf.weights_npz, False)
+            utils.import_vg(obj, conf.weights_npz, False)
 
         attach = True
         if rig_type == "rigify":
@@ -146,7 +146,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
     except:
         try:
             if conf and conf.weights_npz:
-                clear_vg_names(set(rigging.vg_names(conf.weights_npz)), new_vgs)
+                clear_vg_names(set(utils.vg_names(conf.weights_npz)), new_vgs)
             bpy.data.armatures.remove(rig.data)
         except:
             pass
@@ -163,7 +163,7 @@ def attach_rig(obj, rig):
     mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
     mod.use_vertex_groups = True
     mod.object = rig
-    rigging.reposition_armature_modifier(obj)
+    utils.reposition_armature_modifier(obj)
     if "preserve_volume" in obj.vertex_groups or "preserve_volume_inv" in obj.vertex_groups:
         mod2 = obj.modifiers.new("charmorph_rig_pv", "ARMATURE")
         mod2.use_vertex_groups = True
@@ -175,7 +175,7 @@ def attach_rig(obj, rig):
         else:
             mod2.vertex_group = "preserve_volume"
             mod2.invert_vertex_group = True
-        rigging.reposition_armature_modifier(obj)
+        utils.reposition_armature_modifier(obj)
     else:
         mod.use_deform_preserve_volume = True
 
@@ -282,7 +282,7 @@ def _add_modifiers(ui):
     def add_corrective_smooth(obj):
         if not ui.fin_csmooth:
             return
-        mod = add_modifier(obj, "CORRECTIVE_SMOOTH", rigging.reposition_cs_modifier)
+        mod = add_modifier(obj, "CORRECTIVE_SMOOTH", utils.reposition_cs_modifier)
         mod.smooth_type = "LENGTH_WEIGHTED" if ui.fin_cs_lenweight else "SIMPLE"
         if ui.fin_cs_limit:
             if "corrective_smooth" in obj.vertex_groups:
@@ -296,7 +296,7 @@ def _add_modifiers(ui):
     def add_subsurf(obj):
         if ui.fin_subdivision == "NO":
             return
-        mod = add_modifier(obj, "SUBSURF", rigging.reposition_subsurf_modifier)
+        mod = add_modifier(obj, "SUBSURF", utils.reposition_subsurf_modifier)
         mod.show_viewport = ui.fin_subdivision == "RV"
 
     add_corrective_smooth(obj)

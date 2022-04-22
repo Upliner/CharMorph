@@ -21,7 +21,7 @@
 import math
 import bpy, mathutils # pylint: disable=import-error
 
-from ..lib import rigging, utils
+from ..lib import utils
 
 def closest_point_on_face(face, co):
     if len(face) == 3:
@@ -136,11 +136,11 @@ class VGCalculator:
 
     @utils.lazyproperty
     def vg_full(self):
-        return rigging.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
+        return utils.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
 
     @utils.lazyproperty
     def vg_avg(self):
-        return rigging.get_vg_avg(self.char)
+        return utils.get_vg_avg(self.char)
 
     @utils.lazyproperty
     def kd_verts(self):

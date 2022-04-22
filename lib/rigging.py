@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, math, os, numpy
+import logging, math, os
 
 import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
@@ -52,112 +52,6 @@ def layer_joints(context, layer):
     return get_joints([bone for bone in context.object.data.edit_bones if bone.layers[layer]], True)
 def selected_joints(context):
     return get_joints(context.object.data.edit_bones, False)
-
-def get_vg_data(char, new, accumulate, verts=None):
-    if verts is None:
-        verts = char.data.vertices
-
-    if isinstance(verts, numpy.ndarray):
-        get_co = lambda i: Vector(verts[i])
-    else:
-        get_co = lambda i: verts[i].co
-
-    data = {}
-    for v in char.data.vertices:
-        for gw in v.groups:
-            vg = char.vertex_groups[gw.group]
-            if not vg.name.startswith("joint_"):
-                continue
-            data_item = data.get(vg.name)
-            if not data_item:
-                data_item = new()
-                data[vg.name] = data_item
-            accumulate(data_item, v, get_co(v.index), gw)
-    return data
-
-def get_vg_avg(char, verts=None):
-    def accumulate(data_item, _, co, gw):
-        data_item[0] += gw.weight
-        data_item[1] += co*gw.weight
-    return get_vg_data(char, lambda: [0, Vector()], accumulate, verts)
-
-def vg_weights_to_arrays(obj, name_filter):
-    m = {}
-    names = []
-    idx = []
-    weights = []
-    for vg in obj.vertex_groups:
-        if name_filter(vg.name):
-            m[vg.index] = len(idx)
-            names.append(vg.name)
-            idx.append([])
-            weights.append([])
-
-    if len(names) > 0:
-        for v in obj.data.vertices:
-            for g in v.groups:
-                i = m.get(g.group)
-                if i is None:
-                    continue
-                idx[i].append(v.index)
-                weights[i].append(g.weight)
-
-    return names, idx, weights
-
-def vg_names(file):
-    if isinstance(file, str):
-        file = numpy.load(file)
-    return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
-
-def vg_read_npz(z):
-    idx = z["idx"]
-    weights = z["weights"]
-    i = 0
-    for name, cnt in zip(vg_names(z), z["cnt"]):
-        i2 = i+cnt
-        yield name, idx[i:i2], weights[i:i2]
-        i = i2
-
-def vg_read(z):
-    if z is None:
-        return ()
-    if isinstance(z, str):
-        return vg_read_npz(numpy.load(z))
-    if hasattr(z, "__dict__"):
-        return vg_read_npz(z)
-    if hasattr(z, "__next__"):
-        return z
-    raise Exception("Invalid type for vg_read: " + z)
-
-def char_weights_npz(obj, char):
-    rig_type = obj.data.get("charmorph_rig_type")
-    if rig_type is None:
-        obj = obj.find_armature()
-        if obj:
-            rig_type = obj.data.get("charmorph_rig_type")
-    if rig_type is None:
-        return None
-    conf = char.armature.get(rig_type)
-    if conf is None:
-        return None
-    return conf.weights_npz
-
-def char_rig_vg_names(char, rig):
-    weights = char_weights_npz(rig, char)
-    if weights:
-        return vg_names(weights)
-    return []
-
-def import_vg(obj, file, overwrite):
-    for name, idx, weights in vg_read(file):
-        if name in obj.vertex_groups:
-            if overwrite:
-                obj.vertex_groups.remove(obj.vertex_groups[name])
-            else:
-                continue
-        vg = obj.vertex_groups.new(name=name)
-        for i, weight in zip(idx, weights):
-            vg.add([int(i)], weight, 'REPLACE')
 
 def bb_prev_roll(bone):
     if bone.use_endroll_as_inroll:
@@ -229,10 +123,10 @@ class Rigger:
         self._bones = None
 
     def joints_from_char(self, char, verts=None):
-        self.jdata = get_vg_avg(char, verts)
+        self.jdata = utils.get_vg_avg(char, verts)
 
     def joints_from_file(self, file, verts):
-        for name, idx, weights in vg_read(file):
+        for name, idx, weights in utils.vg_read(file):
             if not name.startswith("joint_"):
                 continue
             if name in self.jdata:
@@ -430,28 +324,6 @@ def rigify_finalize(rig, char):
                         def_bone.bbone_custom_handle_end = handles[1]
 
     # Set ease in/out for pose bones or not?
-
-def reposition_armature_modifier(char):
-    for i, mod in enumerate(char.modifiers):
-        if mod.type != "ARMATURE":
-            utils.reposition_modifier(char, i)
-            return
-
-def reposition_cs_modifier(char):
-    i = len(char.modifiers)-1
-    while i>=0:
-        if char.modifiers[i].type == "ARMATURE":
-            utils.reposition_modifier(char, i+1)
-            return
-        i -= 1
-
-def reposition_subsurf_modifier(char):
-    i = len(char.modifiers)-1
-    while i>=0:
-        if char.modifiers[i].type in ["ARMATURE", "CORRECTIVE_SMOOTH", "MASK"]:
-            utils.reposition_modifier(char, i+1)
-            return
-        i -= 1
 
 def unpack_tweaks(path, tweaks, stages=None, depth=0):
     if depth > 100:

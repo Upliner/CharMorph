@@ -22,7 +22,7 @@ import random, logging, numpy
 
 import bpy, bmesh, mathutils # pylint: disable=import-error
 
-from . import fit_calc, rigging, utils
+from . import fit_calc, utils
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +265,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         return has_fit
 
     def _transfer_weights_orig(self, asset):
-        self.transfer_weights(asset, rigging.char_weights_npz(self.mcore.obj, self.mcore.char))
+        self.transfer_weights(asset, utils.char_weights_npz(self.mcore.obj, self.mcore.char))
 
     def _transfer_weights_obj(self, asset, vgs):
         if asset.data is self.mesh:
@@ -276,7 +276,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             calc = self.transfer_calc
         else:
             calc = self
-        calc.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
+        calc.transfer_weights(asset, zip(*utils.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
 
     def _transfer_armature(self, asset):
         existing = set()
@@ -315,7 +315,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             newmod.use_vertex_groups = mod.use_vertex_groups
             newmod.use_multi_modifier = mod.use_multi_modifier
             newmod.vertex_group = mod.vertex_group
-            rigging.reposition_armature_modifier(asset)
+            utils.reposition_armature_modifier(asset)
 
     def transfer_new_armature(self):
         for asset in self.get_assets():
