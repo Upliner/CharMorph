@@ -57,7 +57,7 @@ class EmptyAsset:
 
 class Fitter(fit_calc.MorpherFitCalculator):
     children: list = None
-    transfer_calc: fit_calc.ObjFitCalculator = None
+    transfer_calc: fit_calc.FitCalculator = None
     diff_arr: numpy.ndarray = None
 
     def __init__(self, mcore, morpher=None):
@@ -67,13 +67,13 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def add_mask_from_asset(self, asset):
         vg_name = mask_name(asset)
-        if vg_name in self.obj.vertex_groups:
+        if vg_name in self.mcore.obj.vertex_groups:
             return
         bbox_min = mathutils.Vector(asset.bound_box[0])
         bbox_max = mathutils.Vector(asset.bound_box[0])
         update_bbox(bbox_min, bbox_max, asset)
 
-        self.add_mask(self.get_bvh(asset), vg_name, bbox_min, bbox_max)
+        self.add_mask(self.get_asset_geom(asset).bvh, vg_name, bbox_min, bbox_max)
 
     def add_mask(self, bvh_asset, vg_name, bbox_min, bbox_max):
         def bbox_match(co):
@@ -82,12 +82,12 @@ class Fitter(fit_calc.MorpherFitCalculator):
                     return False
             return True
 
-        bvh_char = self.get_bvh(self.obj)
+        bvh_char = self.bvh
 
         bbox_min2 = bbox_min
         bbox_max2 = bbox_max
 
-        update_bbox(bbox_min2, bbox_max2, self.obj)
+        update_bbox(bbox_min2, bbox_max2, self.mcore.obj)
 
         bbox_center = (bbox_min2+bbox_max2)/2
 
@@ -116,7 +116,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         covered_verts = set()
 
-        for i, cvert in enumerate(self.get_basis(self.obj)):
+        for i, cvert in enumerate(self.get_basis(self.mesh)):
             co = mathutils.Vector(cvert)
             if not bbox_match(co):
                 continue
@@ -156,7 +156,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         #vg.add(list(covered_verts), 1, 'REPLACE')
 
         boundary_verts = set()
-        for f in self.obj.data.polygons:
+        for f in self.mesh.polygons:
             for i in f.vertices:
                 if i not in covered_verts:
                     boundary_verts.update(f.vertices)
@@ -165,23 +165,26 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         if not covered_verts:
             return
-        vg = self.obj.vertex_groups.new(name=vg_name)
+        vg = self.mcore.obj.vertex_groups.new(name=vg_name)
         vg.add(list(covered_verts), 1, 'REPLACE')
-        for mod in self.obj.modifiers:
+        for mod in self.mcore.obj.modifiers:
             if mod.name == vg_name and mod.type == "MASK":
                 break
         else:
-            mod = self.obj.modifiers.new(vg_name, "MASK")
+            mod = self.mcore.obj.modifiers.new(vg_name, "MASK")
         mod.invert_vertex_group = True
         mod.vertex_group = vg.name
 
-    def _get_fit_id(self, asset):
-        if asset is self.obj:
+    def _get_fit_id(self, data):
+        if isinstance(data, bpy.types.Object):
+            data = data.data
+        if data is self.mesh:
             return 0
-        asset = asset.data
-        if "charmorph_fit_id" not in asset:
-            asset["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
-        return asset["charmorph_fit_id"]
+        result = data.get("charmorph_fit_id")
+        if not result:
+            result = f"{random.getrandbits(64):016x}"
+            data["charmorph_fit_id"] = result
+        return result
 
     def get_weights(self, asset):
         fit_id = self._get_fit_id(asset)
@@ -262,18 +265,18 @@ class Fitter(fit_calc.MorpherFitCalculator):
         return has_fit
 
     def _transfer_weights_orig(self, asset):
-        self.transfer_weights(asset, rigging.char_weights_npz(self.obj, self.mcore.char))
+        self.transfer_weights(asset, rigging.char_weights_npz(self.mcore.obj, self.mcore.char))
 
     def _transfer_weights_obj(self, asset, vgs):
-        if asset is self.obj:
+        if asset.data is self.mesh:
             raise Exception("Tried to self-transfer weights")
-        if self.alt_topo:
+        if self.mcore.alt_topo:
             if self.transfer_calc is None:
-                self.transfer_calc = fit_calc.ObjFitCalculator(self.obj, self.get_basis, self)
+                self.transfer_calc = fit_calc.FitCalculator(self.mesh, self)
             calc = self.transfer_calc
         else:
             calc = self
-        calc.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.obj, lambda name: name in vgs)))
+        calc.transfer_weights(asset, zip(*rigging.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
 
     def _transfer_armature(self, asset):
         existing = set()
@@ -285,7 +288,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         modifiers = []
 
-        for mod in self.obj.modifiers:
+        for mod in self.mcore.obj.modifiers:
             if mod.type == "ARMATURE" and mod.object:
                 if mod.object.name not in existing:
                     modifiers.append(mod)
@@ -321,7 +324,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.transfer_calc = None
 
     def get_target(self, asset):
-        return utils.get_target(asset) if asset is self.obj else get_fitting_shapekey(asset)
+        return utils.get_target(asset) if asset.data is self.mesh else get_fitting_shapekey(asset)
 
     def fit(self, asset, morph=False):
         t = utils.Timer()
@@ -329,7 +332,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if morph is False:
             morph = self._get_asset_morph(asset)
         verts = self.calc_fit(self.get_weights(asset), morph)
-        verts += self.get_verts(asset)
+        verts += self.get_asset_geom(asset).verts
         self.get_target(asset).foreach_set("co", verts.reshape(-1))
         asset.data.update()
 
@@ -338,16 +341,16 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def recalc_comb_mask(self):
         t = utils.Timer()
         # Cleanup old masks
-        for mod in self.obj.modifiers:
+        for mod in self.mcore.obj.modifiers:
             if mod.name == "cm_mask_combined":
                 # We preserve cm_mask_combined modifier to keep its position in case if user moved it
                 mod.vertex_group = ""
             elif mod.name.startswith("cm_mask_"):
-                self.obj.modifiers.remove(mod)
+                self.mcore.obj.modifiers.remove(mod)
 
-        for vg in self.obj.vertex_groups:
+        for vg in self.mcore.obj.vertex_groups:
             if vg.name.startswith("cm_mask_"):
-                self.obj.vertex_groups.remove(vg)
+                self.mcore.obj.vertex_groups.remove(vg)
 
         assets = [asset for asset in self.get_assets() if masking_enabled(asset)]
         if not assets:
@@ -355,7 +358,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         bbox_min = mathutils.Vector(assets[0].bound_box[0])
         bbox_max = mathutils.Vector(assets[0].bound_box[0])
         if len(assets) == 1:
-            bvh_assets = self.get_bvh(assets[0])
+            bvh_assets = self.get_asset_geom(assets[0]).bvh
             update_bbox(bbox_min, bbox_max, assets[0])
         else:
             try:
@@ -378,7 +381,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if self.children is None:
             self.get_children()
         self.children.append(asset)
-        asset.parent = self.obj
+        asset.parent = self.mcore.obj
 
         if ui.fitting_weights != "NONE":
             self._transfer_armature(asset)
@@ -438,7 +441,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def get_children(self):
         if self.children is None:
-            self.children = [obj for obj in self.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()]
+            self.children = [obj for obj in self.mcore.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()]
         return self.children
 
     def _get_assets(self):
@@ -453,11 +456,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def refit_all(self):
         self.diff_arr = None
-        if self.alt_topo:
-            self.fit(self.obj)
+        if self.mcore.alt_topo:
+            self.fit(self.mcore.obj)
         hair_deform = bpy.context.window_manager.charmorph_ui.hair_deform
         if hair_deform:
-            self.fit_obj_hair(self.obj)
+            self.fit_obj_hair(self.mcore.obj)
         for asset in self.get_assets():
             self.fit(asset)
             if hair_deform:

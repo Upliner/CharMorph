@@ -74,7 +74,7 @@ class MorpherCore:
 
     @utils.lazyproperty
     def full_basis(self):
-        return self.char.np_basis if self.char.np_basis is not None else charlib.get_basis(self.obj)
+        return self.char.np_basis if self.char.np_basis is not None else utils.get_basis_numpy(self.obj)
 
     def get_basis_alt_topo(self):
         return self.full_basis
@@ -427,7 +427,7 @@ class AltTopoMorpher(NumpyMorpher):
         return self.alt_topo_basis
 
 def get(obj, storage = None):
-    if utils.is_true(obj.data.get("cm_alt_topo")):
+    if obj.data.get("cm_alt_topo"):
         return AltTopoMorpher(obj, storage)
     if obj.data.get("cm_morpher") == "ext":
         return NumpyMorpher(obj, storage)

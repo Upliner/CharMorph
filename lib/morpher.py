@@ -74,7 +74,8 @@ class Morpher:
         self.error = core.error
         self.meta_prev = {}
         self.materials = materials.Materials(core.obj)
-        self.fitter = fitting.Fitter(self.core, self)
+        if self.core.obj:
+            self.fitter = fitting.Fitter(self.core, self)
 
         self.L1_list = [(name, core.char.types.get(name, {}).get("title", name), "") for name in sorted(core.morphs_l1.keys())]
         self.update_L1_idx()

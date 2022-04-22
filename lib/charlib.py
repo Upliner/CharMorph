@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data"))
 
-chars = {}
 char_aliases = {}
 additional_assets = {}
 hair_colors = {}
@@ -143,6 +142,10 @@ class Character:
     @utils.lazyproperty
     def fitting_subset(self):
         return self.get_np("fitting_subset.npz")
+
+    @utils.lazyproperty
+    def has_faces(self):
+        return os.path.isfile(self.path("faces.npy"))
 
     @utils.lazyproperty
     def faces(self):
@@ -336,6 +339,7 @@ def update_fitting_assets(ui, _):
         return
     additional_assets = load_assets_dir(path)
 
+chars: dict[str, Character] = {}
 empty_char = Character("")
 
 def char_by_name(name):
@@ -401,9 +405,7 @@ def get_basis(data, mcore = None, use_char=True):
 
     if char:
         if not alt_topo:
-            basis = char.np_basis
-            if basis is not None:
-                return basis.copy()
+            return char.np_basis
         elif isinstance(alt_topo, str):
             return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 

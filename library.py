@@ -81,7 +81,7 @@ class OpImport(bpy.types.Operator):
         char = charlib.chars[ui.base_model]
 
         if ui.alt_topo != "<Base>" and char.faces is None:
-            self.report({'ERROR'}, "Cannot use alternative topology when the character doesn't have faces.npy")
+            ui.alt_topo = "<Base>"
             return {"CANCELLED"}
 
         if ui.alt_topo == "<Custom>":
@@ -257,9 +257,11 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         c.enabled = ui.use_sk and ui.alt_topo == "<Base>"
         c.prop(ui, "import_morphs")
         c.prop(ui, "import_expressions")
-        l.prop(ui, "alt_topo")
+        c = l.column()
+        c.enabled = char and char.basis and char.has_faces
+        c.prop(ui, "alt_topo")
         if ui.alt_topo == "<Custom>":
-            l.prop(ui, "alt_topo_obj")
+            c.prop(ui, "alt_topo_obj")
 
         l.operator('charmorph.import_char', icon='ARMATURE_DATA')
 
