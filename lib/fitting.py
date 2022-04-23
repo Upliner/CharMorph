@@ -29,12 +29,6 @@ logger = logging.getLogger(__name__)
 def masking_enabled(asset):
     return utils.is_true(asset.data.get("charmorph_fit_mask", True))
 
-def update_bbox(bbox_min, bbox_max, obj):
-    for v in obj.bound_box:
-        for i in range(3):
-            bbox_min[i] = min(bbox_min[i], v[i])
-            bbox_max[i] = max(bbox_max[i], v[i])
-
 def get_fitting_shapekey(obj):
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
         obj.shape_key_add(name="Basis", from_mix=False)
@@ -47,6 +41,112 @@ def get_fitting_shapekey(obj):
 
 def mask_name(asset):
     return f"cm_mask_{asset.name}_{asset.data.get('charmorph_fit_id', 'xxx')[:3]}"
+
+def cleanup_masks(obj):
+    for mod in obj.modifiers:
+        if mod.name == "cm_mask_combined":
+            # We preserve cm_mask_combined modifier to keep its position in case if user moved it
+            mod.vertex_group = ""
+        elif mod.name.startswith("cm_mask_"):
+            obj.modifiers.remove(mod)
+
+    for vg in obj.vertex_groups:
+        if vg.name.startswith("cm_mask_"):
+            obj.vertex_groups.remove(vg)
+
+def shrink_vertex_set(vset: set, faces):
+    boundary_verts = set()
+    for f in faces:
+        for i in f:
+            if i not in vset:
+                boundary_verts.update(f)
+
+    vset.difference_update(boundary_verts)
+
+def get_cast_points(bmin: numpy.ndarray, bmax: numpy.ndarray):
+    center = (bmin+bmax)/2
+    size = (bmax-bmin).max()
+
+    points = numpy.vstack((center-size, center, center+size))
+    return [
+        mathutils.Vector((points[x][0], points[y][1], points[z][2]))
+        #numpy.choose((x,y,z), points)
+        for x in range(3) for y in range(3) for z in range(3)
+        if x != 1 or y != 1 or z != 1
+    ]
+
+def calculate_mask(char_geom: fit_calc.BaseGeometry, bvh_asset, match_func = lambda _idx, _co: True):
+    cast_points = get_cast_points(*char_geom.bbox)
+    bvh_char = char_geom.bvh
+
+    def cast_rays(co, direction, max_dist=1e30):
+        nonlocal has_cloth
+        _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
+        if idx is None:
+            # Vertex is not blocked by cloth. Maybe blocked by the body itself?
+            _, _, idx, _ = bvh_char.ray_cast(co, direction, max_dist*0.99)
+            if idx is None:
+                return False # No ray hit
+        else:
+            has_cloth = True
+        return True # Have ray hit
+
+    result = set()
+    for i, co in enumerate(char_geom.verts):
+        if not match_func(i, co):
+            continue
+        co = mathutils.Vector(co)
+        has_cloth = False
+        cnt = 0
+
+        #if vertex is too close to cloth, mark it as covered
+        _, _, idx, _ = bvh_asset.find_nearest(co, 0.001)
+        if idx is not None:
+            result.add(i)
+            continue
+
+        for cast_point in cast_points:
+            direction = co-cast_point
+            max_dist = direction.length#(direction ** 2).sum() ** 0.5 # direction.length#
+            if not cast_rays(cast_point, direction, max_dist):
+                cnt += 1
+                if cnt == 2:
+                    has_cloth = False
+                    break
+
+        if has_cloth:
+            result.add(i)
+
+    shrink_vertex_set(result, char_geom.faces)
+    return result
+
+def add_mask(obj, vg_name, verts):
+    if not verts:
+        return
+    vg = obj.vertex_groups.new(name=vg_name)
+    vg.add(list(verts), 1, 'REPLACE')
+    for mod in obj.modifiers:
+        if mod.name == vg_name and mod.type == "MASK":
+            break
+    else:
+        mod = obj.modifiers.new(vg_name, "MASK")
+    mod.invert_vertex_group = True
+    mod.vertex_group = vg.name
+
+def obj_bbox(obj):
+    bbox_min = mathutils.Vector((obj.bound_box[0]))
+    bbox_max = mathutils.Vector((obj.bound_box[0]))
+    for v in obj.bound_box[1:]:
+        for i in range(3):
+            bbox_min[i] = min(bbox_min[i], v[i])
+            bbox_max[i] = max(bbox_max[i], v[i])
+    return bbox_min, bbox_max
+
+def bbox_match(co, bbox_min, bbox_max):
+    for i in range(3):
+        if co[i] < bbox_min[i] or co[i] > bbox_max[i]:
+            return False
+    return True
 
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
@@ -67,113 +167,82 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def add_mask_from_asset(self, asset):
         vg_name = mask_name(asset)
-        if vg_name in self.mcore.obj.vertex_groups:
+        if vg_name not in self.mcore.obj.vertex_groups:
+            self._add_single_mask(vg_name, asset)
+
+    def _add_single_mask(self, vg_name, asset):
+        asset_geom = self.get_asset_geom(asset)
+        bbox_min, bbox_max = asset_geom.bbox
+        add_mask(self.mcore.obj, vg_name,
+            calculate_mask(self.get_char_geom(asset), asset_geom.bvh,
+                lambda _, co: bbox_match(co, bbox_min, bbox_max)))
+
+    def fit_to_bmesh(self, bm, asset, fitted_diff):
+        geom = self.get_asset_geom(asset)
+        try:
+            morphed = geom.verts + fitted_diff
+            asset.data.vertices.foreach_set("co", morphed)
+            bm.from_mesh(asset)
+        finally:
+            asset.data.vertices.foreach_set("co", geom.verts)
+        return morphed.min(axis=0), morphed.max(axis=0)
+
+    def recalc_comb_mask(self):
+        t = utils.Timer()
+        cleanup_masks(self.mcore.obj)
+
+        assets = [asset for asset in self.get_assets() if masking_enabled(asset)]
+        if not assets:
             return
-        bbox_min = mathutils.Vector(asset.bound_box[0])
-        bbox_max = mathutils.Vector(asset.bound_box[0])
-        update_bbox(bbox_min, bbox_max, asset)
-
-        self.add_mask(self.get_asset_geom(asset).bvh, vg_name, bbox_min, bbox_max)
-
-    def add_mask(self, bvh_asset, vg_name, bbox_min, bbox_max):
-        def bbox_match(co):
-            for i in range(3):
-                if co[i] < bbox_min[i] or co[i] > bbox_max[i]:
-                    return False
-            return True
-
-        bvh_char = self.bvh
-
-        bbox_min2 = bbox_min
-        bbox_max2 = bbox_max
-
-        update_bbox(bbox_min2, bbox_max2, self.mcore.obj)
-
-        bbox_center = (bbox_min2+bbox_max2)/2
-
-        cube_size = max(abs(v[coord]-bbox_center[coord]) for v in [bbox_min2, bbox_max2] for coord in range(3))*2
-        cube_vector = mathutils.Vector([cube_size] * 3)
-
-        bcube_min = bbox_center-cube_vector
-        bcube_max = bbox_center+cube_vector
-
-        bbox_points = [bcube_min, bbox_center, bcube_max]
-        cast_points = [mathutils.Vector((bbox_points[x][0], bbox_points[y][1], bbox_points[z][2])) for x in range(3) for y in range(3) for z in range(3) if x != 1 or y != 1 or z != 1]
-
-        def cast_rays(co, direction, max_dist=1e30):
-            nonlocal has_cloth
-            _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
-            if idx is None:
-                # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-                _, _, idx, _ = bvh_char.ray_cast(co, direction, max_dist*0.99)
-                if idx is None:
-                    #print(i, co, direction, max_dist, cvert.normal)
-                    return False # No ray hit
-            else:
-                has_cloth = True
-            return True # Have ray hit
-
-
-        covered_verts = set()
-
-        for i, cvert in enumerate(self.get_basis(self.mesh)):
-            co = mathutils.Vector(cvert)
-            if not bbox_match(co):
-                continue
-
-            has_cloth = False
-            cnt = 0
-
-            #if vertex is too close to cloth, mark it as covered
-            _, _, idx, _ = bvh_asset.find_nearest(co, 0.001)
-            if idx is not None:
-                #print(i, co, fhit, fdist, "too close")
-                covered_verts.add(i)
-                continue
-
-            # cast one ray along vertex normal and check is there a clothing nearby
-            # TODO: get new normals source
-            #if not cast_rays(co, norm):
-            #    continue
-
-            # cast rays out of 26 outside points to check whether the vertex is visible from any feasible angle
-            for cast_point in cast_points:
-                direction = co-cast_point
-                max_dist = direction.length
-                direction.normalize()
-                #if norm.dot(direction) > -0.5:
-                #    continue # skip back faces and very sharp view angles
-                if not cast_rays(cast_point, direction, max_dist):
-                    cnt += 1
-                    if cnt == 2:
-                        has_cloth = False
-                        break
-
-            if has_cloth:
-                covered_verts.add(i)
-
-        #vg = char.vertex_groups.new(name = "covered")
-        #vg.add(list(covered_verts), 1, 'REPLACE')
-
-        boundary_verts = set()
-        for f in self.mesh.polygons:
-            for i in f.vertices:
-                if i not in covered_verts:
-                    boundary_verts.update(f.vertices)
-
-        covered_verts.difference_update(boundary_verts)
-
-        if not covered_verts:
+        if len(assets) == 1:
+            self._add_single_mask("cm_mask_combined", assets[0])
+            t.time("comb_mask_single")
             return
-        vg = self.mcore.obj.vertex_groups.new(name=vg_name)
-        vg.add(list(covered_verts), 1, 'REPLACE')
-        for mod in self.mcore.obj.modifiers:
-            if mod.name == vg_name and mod.type == "MASK":
-                break
-        else:
-            mod = self.mcore.obj.modifiers.new(vg_name, "MASK")
-        mod.invert_vertex_group = True
-        mod.vertex_group = vg.name
+
+        asset_morphs = []
+        morph_cnt = 0
+        morph_asset = None
+        for asset in assets:
+            morph = self._get_asset_morph(asset)
+            asset_morphs.append(morph)
+            if morph:
+                morph_cnt += 1
+                morph_asset = asset
+        if morph_cnt > 1:
+            morph_asset = None
+
+        char_geom = self.geom
+        if morph_cnt > 0:
+            char_geom = fit_calc.MorphedGeometry(char_geom, *(morph for morph in asset_morphs if morph is not None))
+            diff = char_geom.verts - self.geom.verts
+
+        bboxes = []
+        try:
+            bm = bmesh.new()
+            for asset, morph in zip(assets, asset_morphs):
+                if morph_cnt > 0 and asset is not morph_asset:
+                    cur_diff = diff
+                    if morph:
+                        cur_diff = morph.apply(cur_diff.copy())
+                    fitted_diff = fit_calc.calc_fit(cur_diff, *self.get_weights(asset))
+                    if (fitted_diff ** 2).sum(1).max() > 0.001:
+                        bboxes.append(self.fit_to_bmesh(bm, asset, fitted_diff))
+                        continue
+
+                bm.from_mesh(asset.data)
+                bboxes.append(obj_bbox(asset))
+            bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
+        finally:
+            bm.free()
+
+        t.time("mask_bvh")
+        def check_bboxes(_, co):
+            for box in bboxes:
+                if bbox_match(co, *box):
+                    return True
+            return False
+        add_mask(self.mcore.obj, "cm_mask_combined", calculate_mask(char_geom, bvh_assets, check_bboxes))
+        t.time("comb_mask")
 
     def _get_fit_id(self, data):
         if isinstance(data, bpy.types.Object):
@@ -336,42 +405,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.get_target(asset).foreach_set("co", verts.reshape(-1))
         asset.data.update()
 
-        t.time("fit")
-
-    def recalc_comb_mask(self):
-        t = utils.Timer()
-        # Cleanup old masks
-        for mod in self.mcore.obj.modifiers:
-            if mod.name == "cm_mask_combined":
-                # We preserve cm_mask_combined modifier to keep its position in case if user moved it
-                mod.vertex_group = ""
-            elif mod.name.startswith("cm_mask_"):
-                self.mcore.obj.modifiers.remove(mod)
-
-        for vg in self.mcore.obj.vertex_groups:
-            if vg.name.startswith("cm_mask_"):
-                self.mcore.obj.vertex_groups.remove(vg)
-
-        assets = [asset for asset in self.get_assets() if masking_enabled(asset)]
-        if not assets:
-            return
-        bbox_min = mathutils.Vector(assets[0].bound_box[0])
-        bbox_max = mathutils.Vector(assets[0].bound_box[0])
-        if len(assets) == 1:
-            bvh_assets = self.get_asset_geom(assets[0]).bvh
-            update_bbox(bbox_min, bbox_max, assets[0])
-        else:
-            try:
-                bm = bmesh.new()
-                for asset in assets:
-                    bm.from_mesh(asset.data)
-                    update_bbox(bbox_min, bbox_max, asset)
-                bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
-            finally:
-                bm.free()
-
-        self.add_mask(bvh_assets, "cm_mask_combined", bbox_min, bbox_max)
-        t.time("comb_mask")
+        t.time("fit " + asset.name)
 
     def _fit_new_item(self, asset):
         ui = bpy.context.window_manager.charmorph_ui
@@ -465,3 +499,14 @@ class Fitter(fit_calc.MorpherFitCalculator):
             self.fit(asset)
             if hair_deform:
                 self.fit_obj_hair(asset)
+
+    def remove_cache(self, asset):
+        keys = [asset.name]
+        if "charmorph_fit_id" in asset.data:
+            keys.append(asset.data["charmorph_fit_id"])
+        for key in keys:
+            for cache in (self.weights_cache, self.geom_cache):
+                try:
+                    del cache[key]
+                except KeyError:
+                    pass

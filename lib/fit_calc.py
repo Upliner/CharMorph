@@ -59,7 +59,7 @@ def weights_normalize(positions, wresult):
 def calc_weights_kd(kd, verts, _epsilon, n):
     return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(v, n)} for v in verts]
 
-def calc_fit(arr, positions, idx, weights):
+def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
     return numpy.add.reduceat(arr[idx] * weights, positions)
 
 def mesh_faces(mesh):
@@ -77,6 +77,9 @@ class BaseGeometry:
     @utils.lazyproperty
     def bvh(self):
         return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.faces)
+    @utils.lazyproperty
+    def bbox(self):
+        return self.verts.min(axis=0), self.verts.max(axis=0)
 
 class Geometry(BaseGeometry):
     def __init__(self, mesh):
@@ -119,16 +122,14 @@ class FitCalculator(Geometry):
             self.geom_cache[data] = result
         return result
 
-    # These functions are performance-critical so disable pylint too-many-locals error for them
-
     # calculate weights based on distance from asset vertices to character faces
     @staticmethod
-    def _calc_weights_direct(char_geom, weights, asset_verts): # pylint: disable=too-many-locals
+    def _calc_weights_direct(char_geom, weights, asset_verts):
         verts = char_geom.verts
         faces = char_geom.faces
         bvh = char_geom.bvh
         for i, v in enumerate(asset_verts):
-            loc, _, idx, fdist = bvh.find_nearest(v, dist_thresh)
+            loc, _, idx, fdist = bvh.find_nearest(v.tolist(), dist_thresh)
             if loc is None:
                 continue
             face = faces[idx]
@@ -138,13 +139,13 @@ class FitCalculator(Geometry):
                 d[vi] = max(d.get(vi, 0), bw/fdist)
 
     # calculate weights based on distance from character vertices to assset faces
-    def _calc_weights_reverse(self, char_geom, weights, asset): # pylint: disable=too-many-locals
+    def _calc_weights_reverse(self, char_geom, weights, asset):
         asset_geom = self.get_asset_geom(asset)
         verts = asset_geom.verts
         faces = asset_geom.faces
         bvh = asset_geom.bvh
         for i, cvert in char_geom.verts_enum():
-            loc, _, idx, fdist = bvh.find_nearest(cvert, dist_thresh)
+            loc, _, idx, fdist = bvh.find_nearest(cvert.tolist(), dist_thresh)
             if idx is None:
                 continue
             face = faces[idx]
@@ -236,9 +237,11 @@ class SubsetGeometry(ChildGeometry):
         return [faces[i] for i in self.subset["faces"]]
 
 class MorphedGeometry(ChildGeometry):
-    def __init__(self, parent, morph):
+    def __init__(self, parent, *morphs):
         super().__init__(parent)
-        self.verts = morph.apply(self.verts.copy())
+        self.verts = self.verts.copy()
+        for morph in morphs:
+            morph.apply(self.verts)
 
 class MorpherFitCalculator(FitCalculator):
     def __init__(self, mcore):

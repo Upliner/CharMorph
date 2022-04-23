@@ -231,7 +231,7 @@ class MorphImporter:
         progress.enter_substeps(cnt, "Importing morphs")
 
         L1_data = []
-        for i, morph in enumerate(L1):
+        for morph in L1:
             name, data = self._import_to_sk(morph, None, 1)
             L1_data.append(data)
             progress.step(name)

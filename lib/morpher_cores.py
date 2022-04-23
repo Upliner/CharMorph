@@ -36,6 +36,9 @@ class MorpherCore:
         self._init_storage()
         self.L1, self.morphs_l1 = self.get_L1()
         self.update_morphs_L2()
+        self.rig = obj.find_armature() if obj else None
+        if self.rig:
+            self.error = "Character is rigged.\nLive rig deform is not supported"
 
     # these methods are overriden in subclass
     @staticmethod
@@ -249,9 +252,11 @@ class ShapeKeysMorpher(MorpherCore):
             self.obj.shape_key_add(name="Basis", from_mix=False)
 
     def add_asset_morph(self, name: str, morph: morphs.Morph):
+        if self.error:
+            return
         self._ensure_basis()
         sk_name = "charmorph_asset_" + name
-        sk = self.obj.shape_keys.key_blocks.get(sk_name)
+        sk = self.obj.data.shape_keys.key_blocks.get(sk_name)
         if not sk:
             sk = self.obj.shape_key_add(name=sk_name, from_mix=False)
         data = utils.get_basis_numpy(self.obj)
@@ -260,9 +265,11 @@ class ShapeKeysMorpher(MorpherCore):
         super().add_asset_morph(name, morph)
 
     def remove_asset_morph(self, name: str):
+        if self.error:
+            return
         if self.obj.data.shape_keys and self.obj.data.shape_keys.key_blocks:
             sk_name = "charmorph_asset_" + name
-            sk = self.obj.shape_keys.key_blocks.get(sk_name)
+            sk = self.obj.data.shape_keys.key_blocks.get(sk_name)
             if sk:
                 self.obj.shape_key_remove(sk)
         super().remove_asset_morph(name)

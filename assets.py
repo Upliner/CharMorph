@@ -169,7 +169,10 @@ class OpFitLocal(bpy.types.Operator):
         return True
 
     def execute(self, context): #pylint: disable=no-self-use
-        fitter_from_ctx(context).fit_new((get_asset_obj(context),))
+        obj = get_asset_obj(context)
+        if mm.morpher.core.obj is obj:
+            mm.create_charmorphs(get_char(context))
+        fitter_from_ctx(context).fit_new((obj,))
         return {"FINISHED"}
 
 def fitExtPoll(context):
@@ -229,16 +232,21 @@ class OpUnfit(bpy.types.Operator):
         ui = context.window_manager.charmorph_ui
         asset = get_asset_obj(context)
 
-        del asset.data['charmorph_fit_id']
+        if asset.parent:
+            asset.parent = asset.parent.parent
+            if asset.parent and asset.parent.type == "ARMATURE":
+                asset.parent = asset.parent.parent
+
         mask = fitting.mask_name(asset)
         for char in {asset.parent, ui.fitting_char}: # pylint: disable=use-sequence-for-iteration
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
+            f = get_fitter(char)
+            f.remove_cache(asset)
             if mask in char.modifiers:
                 char.modifiers.remove(char.modifiers[mask])
             if mask in char.vertex_groups:
                 char.vertex_groups.remove(char.vertex_groups[mask])
-            f = get_fitter(char)
             f.children = None
             if "cm_mask_combined" in char.modifiers:
                 f.recalc_comb_mask()
@@ -247,13 +255,15 @@ class OpUnfit(bpy.types.Operator):
                 if name:
                     f.mcore.remove_asset_morph(name)
                     f.update_char()
-        if asset.parent:
-            asset.parent = asset.parent.parent
-            if asset.parent and asset.parent.type == "ARMATURE":
-                asset.parent = asset.parent.parent
+        try:
+            del asset.data['charmorph_fit_id']
+        except KeyError:
+            pass
+
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
 
+        mm.last_object = asset # Prevent swithing morpher to asset object
         return {"FINISHED"}
 
 classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Assets]

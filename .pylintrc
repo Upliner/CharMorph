@@ -12,3 +12,6 @@ disable=c-extension-no-member,       # Suppress errors when using bpy imports
 
 [MASTER]
 ignore=lib/yaml
+
+[DESIGN]
+max-locals=20 # Such complex project with some performance-critical parts really needs max-locals to be raised a little bit

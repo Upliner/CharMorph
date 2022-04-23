@@ -33,7 +33,7 @@ class Manager:
     def get_basis(self, data):
         return charlib.get_basis(data, self.morpher, True)
 
-    def update_morpher(self, m : morpher.Morpher):
+    def update_morpher(self, m: morpher.Morpher):
         self.morpher = m
         self.last_object = m.core.obj
 

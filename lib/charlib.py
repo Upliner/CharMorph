@@ -65,7 +65,32 @@ def load_json_dir(path):
 
 _empty_dict = object()
 
-class Character:
+class DataDir:
+    def __init__(self, dirpath):
+        self.dirpath = dirpath
+
+    def path(self, file):
+        if not file or not self.dirpath:
+            return ""
+        return os.path.join(self.dirpath, file)
+
+    def get_yaml(self, file, default=_empty_dict):
+        if default is _empty_dict:
+            default = {}
+        if not self:
+            return default
+        return utils.parse_file(self.path(file), utils.load_yaml, default)
+
+    def get_np(self, file, readonly=True):
+        file = self.path(file)
+        if not os.path.isfile(file):
+            return None
+        result = numpy.load(file)
+        if readonly and isinstance(result, numpy.ndarray):
+            result.flags.writeable = False
+        return result
+
+class Character(DataDir):
     description = ""
     author = ""
     licence = ""
@@ -97,6 +122,7 @@ class Character:
     hair_shrinkwrap_offset = 0.0002
 
     def __init__(self, name):
+        super().__init__(os.path.join(data_dir, "characters", name) if name else "")
         self.title = name
         self.name = name
         self.__dict__.update(self.get_yaml("config.yaml"))
@@ -113,27 +139,8 @@ class Character:
     def __bool__(self):
         return bool(self.name)
 
-    def path(self, file):
-        return char_file(self.name, file)
-
     def blend_file(self):
         return self.path(self.char_file)
-
-    def get_np(self, file, readonly=True):
-        file = self.path(file)
-        if not os.path.isfile(file):
-            return None
-        result = numpy.load(file)
-        if readonly and isinstance(result, numpy.ndarray):
-            result.flags.writeable = False
-        return result
-
-    def get_yaml(self, file, default=_empty_dict):
-        if default is _empty_dict:
-            default = {}
-        if not self:
-            return default
-        return utils.parse_file(self.path(file), utils.load_yaml, default)
 
     @utils.lazyproperty
     def morphs_meta(self):
@@ -274,21 +281,15 @@ class Armature:
     def weights_npz(self):
         return self.char.get_np(self.weights)
 
-class Asset:
+class Asset(DataDir):
     def __init__(self, name, file, path = None):
+        super().__init__(path)
         self.name = name
         self.blend_file = file
-        self.dirpath = path
-
-    def path(self, name):
-        if self.dirpath:
-            return os.path.join(self.dirpath, name)
-        return ""
 
     @utils.lazyproperty
     def config(self):
-        file = self.path("config.yaml")
-        return utils.load_yaml(file) if os.path.isfile(file) else {}
+        return self.get_yaml("config.yaml")
 
     @utils.lazyproperty
     def author(self):
@@ -297,6 +298,10 @@ class Asset:
     @utils.lazyproperty
     def license(self):
         return self.config.get("license", "")
+
+    @utils.lazyproperty
+    def mask(self):
+        return self.get_np("mask.npy")
 
     @utils.lazyproperty
     def morph(self):

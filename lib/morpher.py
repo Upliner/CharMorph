@@ -62,7 +62,6 @@ def del_charmorphs_L2():
 
 class Morpher:
     version = 0
-    error = None
     categories = []
     L1_idx = 0
 
@@ -71,7 +70,6 @@ class Morpher:
 
     def __init__(self, core: morpher_cores.MorpherCore):
         self.core = core
-        self.error = core.error
         self.meta_prev = {}
         self.materials = materials.Materials(core.obj)
         if self.core.obj:
@@ -79,13 +77,13 @@ class Morpher:
 
         self.L1_list = [(name, core.char.types.get(name, {}).get("title", name), "") for name in sorted(core.morphs_l1.keys())]
         self.update_L1_idx()
-        rig = core.obj.find_armature() if core.obj else None
-        if rig:
-            self.error = "Character is rigged.\nLive rig deform is not supported"
-        self.sj_calc = sliding_joints.SJCalc(self.core.char, rig, self.core.get_co)
+        self.sj_calc = sliding_joints.SJCalc(self.core.char, self.core.rig, self.core.get_co)
 
     def __bool__(self):
         return self.core.obj is not None
+
+    def __getattr__(self, attr):
+        return getattr(self.core, attr)
 
     def update_L1_idx(self):
         try:
