@@ -2,7 +2,6 @@
 disable=c-extension-no-member,       # Suppress errors when using bpy imports
         invalid-name,                # Blender has its own naming conventions that doesn't match with pylint ones
         too-few-public-methods,      # Subclasses of Blender classes sometimes require too few public methods
-        line-too-long,               # It's strange to have such line length limitations in our era of wide screens
         too-many-ancestors,          # It's not my fault that yaml uses so many ancestors
         eval-used,                   # I believe I use eval() in very safe way
         multiple-imports,
@@ -14,4 +13,5 @@ disable=c-extension-no-member,       # Suppress errors when using bpy imports
 ignore=lib/yaml
 
 [DESIGN]
+max-line-length=120 # Let's raise line length limitations a little in our era of wide screens
 max-locals=20 # Such complex project with some performance-critical parts really needs max-locals to be raised a little bit

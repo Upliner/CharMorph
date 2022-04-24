@@ -528,7 +528,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
-    bl_order = 3
+    bl_order = 4
 
     def draw(self, _):
         l = self.layout

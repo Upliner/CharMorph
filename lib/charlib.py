@@ -411,7 +411,7 @@ def get_basis(data, mcore = None, use_char=True):
     if char:
         if not alt_topo:
             return char.np_basis
-        elif isinstance(alt_topo, str):
+        if isinstance(alt_topo, str):
             return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 
     return utils.verts_to_numpy(data.vertices)

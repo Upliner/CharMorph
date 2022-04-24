@@ -24,7 +24,7 @@ import bpy # pylint: disable=import-error
 
 from .lib import fit_calc, rigging, utils
 from .morphing import manager as mm
-from . import assets, rigify
+from . import rigify
 
 logger = logging.getLogger(__name__)
 
@@ -53,20 +53,21 @@ def clear_old_weights(obj, char, rig):
                 vgs.remove(vg)
     clear_vg_names(vgs, set(utils.char_rig_vg_names(char, rig)))
 
-def clear_old_weights_with_assets(obj, char, rig):
-    clear_old_weights(obj, char, rig)
-    for asset in assets.get_fitter(obj).get_assets():
+def clear_old_weights_with_assets(m, char, rig):
+    clear_old_weights(m.core.obj, char, rig)
+    for asset in m.fitter.get_assets():
         clear_old_weights(asset, char, rig)
 
-def delete_old_rig_with_assets(obj, rig):
-    delete_old_rig(obj, rig)
-    for asset in assets.get_fitter(obj).get_assets():
+def delete_old_rig_with_assets(m, rig):
+    delete_old_rig(m.core.obj, rig)
+    for asset in m.fitter.get_assets():
         remove_armature_modifiers(asset)
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
-    m = mm.morpher.core
-    obj = m.obj
-    char = m.char
+    m = mm.morpher
+    mc = m.core
+    obj = mc.obj
+    char = mc.char
     conf = char.armature.get(ui.fin_rig)
     if not conf:
         raise rigging.RigException("Rig is not found")
@@ -89,7 +90,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         rigger = rigging.Rigger(bpy.context)
         if conf.joints:
             joints = conf.joints
-            if m.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
+            if mc.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
                 joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, utils.vg_read(joints))
             rigger.joints_from_file(joints, verts)
         else:
@@ -105,10 +106,10 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
 
         old_rig = obj.find_armature()
         if old_rig:
-            clear_old_weights_with_assets(obj, char, old_rig)
+            clear_old_weights_with_assets(m, char, old_rig)
 
-        if m.alt_topo:
-            assets.get_fitter(m).transfer_weights(obj, conf.weights_npz)
+        if mc.alt_topo:
+            m.fitter.transfer_weights(obj, conf.weights_npz)
         else:
             utils.import_vg(obj, conf.weights_npz, False)
 
@@ -122,7 +123,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
                 utils.copy_transforms(rig, obj)
                 attach = False
             else:
-                rig = rigify.do_rig(mm.morpher, conf, rigger)
+                rig = rigify.do_rig(m, conf, rigger)
 
         if rig_type == "arp":
             if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
@@ -139,17 +140,14 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         obj.data["charmorph_rig_type"] = ui.fin_rig
 
         if old_rig:
-            delete_old_rig_with_assets(obj, old_rig)
+            delete_old_rig_with_assets(m, old_rig)
 
         if attach:
             attach_rig(obj, rig)
     except:
-        try:
-            if conf and conf.weights_npz:
-                clear_vg_names(set(utils.vg_names(conf.weights_npz)), new_vgs)
-            bpy.data.armatures.remove(rig.data)
-        except:
-            pass
+        if conf and conf.weights_npz:
+            clear_vg_names(set(utils.vg_names(conf.weights_npz)), new_vgs)
+        bpy.data.armatures.remove(rig.data)
         raise
     return err
 
@@ -180,7 +178,7 @@ def attach_rig(obj, rig):
         mod.use_deform_preserve_volume = True
 
     if bpy.context.window_manager.charmorph_ui.fitting_weights != "NONE":
-        assets.get_fitter(obj).transfer_new_armature()
+        mm.morpher.fitter.transfer_new_armature()
 
 def sk_to_verts(obj, sk):
     if isinstance(sk, str):
@@ -302,7 +300,7 @@ def _add_modifiers(ui):
     add_corrective_smooth(obj)
     add_subsurf(obj)
 
-    for asset in assets.get_fitter(obj).get_assets():
+    for asset in mm.morpher.fitter.get_assets():
         if ui.fin_csmooth_assets == "RO":
             sk_to_verts(asset, "charmorph_fitting")
         elif ui.fin_csmooth_assets == "FR":
@@ -409,9 +407,9 @@ class OpUnrig(bpy.types.Operator):
             if c.obj.parent is old_rig:
                 utils.copy_transforms(c.obj, old_rig)
                 utils.lock_obj(c.obj, False)
-            clear_old_weights_with_assets(c.obj, c.char, old_rig)
+            clear_old_weights_with_assets(mm.morpher, c.char, old_rig)
 
-        delete_old_rig_with_assets(c.obj, old_rig)
+        delete_old_rig_with_assets(mm.morpher, old_rig)
 
         if "charmorph_rig_type" in c.obj.data:
             del c.obj.data["charmorph_rig_type"]

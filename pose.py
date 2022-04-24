@@ -178,17 +178,19 @@ def apply_pose(ui, context):
     ik2fk_limbs = None
 
     if ui.pose_ik2fk:
-        try:
-            op = getattr(bpy.ops.pose, "rigify_limb_ik2fk_" + rig_id)
+        op_id = "rigify_limb_ik2fk_" + rig_id
+        if hasattr(bpy.ops.pose, op_id):
+            op = getattr(bpy.ops.pose, op_id)
             if op.poll():
                 ik2fk_operator = op
                 if rig_id not in ik2fk_map:
                     scan_rigify_modules()
-                ik2fk_limbs = ik2fk_map[rig_id]
+                ik2fk_limbs = ik2fk_map.get(rig_id)
                 if not ik2fk_limbs:
                     logger.error("CharMorph doesn't support IK2FK for your Rigify version")
-        except:
+        else:
             logger.error("Rigify UI doesn't seem to be available. IK2FK is disabled")
+
     if ik2fk_operator and ik2fk_limbs:
         fail = False
         for limb in ik2fk_limbs:

@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import typing, logging, numpy
+import logging, numpy
 
 import bpy, mathutils # pylint: disable=import-error
 
@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 dist_thresh = 0.1
 epsilon = 1e-30
+
+def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
+    return numpy.add.reduceat(arr[idx] * weights, positions)
 
 def weights_convert(weights, cut=True):
     positions = numpy.empty((len(weights)), dtype=numpy.uint32)
@@ -71,7 +74,7 @@ def calc_weights_direct(weights, char_geom, asset_verts):
             d[vi] = max(d.get(vi, 0), bw/fdist)
 
 # calculate weights based on distance from character vertices to assset faces
-def calc_weights_reverse(weights, char_geom, asset_geom):
+def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
     verts = asset_geom.verts
     faces = asset_geom.faces
     bvh = asset_geom.bvh
@@ -83,23 +86,24 @@ def calc_weights_reverse(weights, char_geom, asset_geom):
         fdist = max(fdist ** 2, 1e-15) # using lower epsilon to avoid some artifacts
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
             d = weights[vi]
-            d[i] = max(d.get(i, 0), bw/fdist)
+            d[i] = reduce_func(d.get(i, 0), bw/fdist)
 
 # calculate weights based on nearest vertices
 def calc_weights_kd(kd, verts, _epsilon, n):
     return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(v, n)} for v in verts]
 
-def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
-    return numpy.add.reduceat(arr[idx] * weights, positions)
+class Geometry:
+    def __init__(self, verts: numpy.ndarray, faces: list):
+        self.verts = verts
+        self.faces = faces
 
-def mesh_faces(mesh):
-    return [list(f.vertices) for f in mesh.polygons]
+    def copy(self):
+        return Geometry(self.verts, self.faces)
 
-class BaseGeometry:
-    verts: numpy.ndarray
-    faces: list
-    verts_enum: typing.Callable[[], typing.Iterable[tuple[int, list[int]]]]
-    verts_cnt: typing.Callable[[], int]
+    def verts_cnt(self):
+        return len(self.verts)
+    def verts_enum(self):
+        return enumerate(self.verts)
 
     @utils.lazyproperty
     def kd(self):
@@ -111,47 +115,66 @@ class BaseGeometry:
     def bbox(self):
         return self.verts.min(axis=0), self.verts.max(axis=0)
 
-class Geometry(BaseGeometry):
-    def __init__(self, mesh):
-        self.mesh = mesh
+def mesh_faces(mesh):
+    return [f.vertices for f in mesh.polygons]
+def geom_mesh(mesh):
+    return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
 
-    @staticmethod
-    def get_basis(mesh):
-        return charlib.get_basis(mesh, None, False)
-    @utils.lazyproperty
-    def verts(self):
-        return self.get_basis(self.mesh)
-    @utils.lazyproperty
-    def faces(self):
-        return mesh_faces(self.mesh)
+class SubsetGeometry(Geometry):
+    def __init__(self, verts, faces, subset):
+        super().__init__(verts, faces)
+        self.subset = subset
+
+    def copy(self):
+        return SubsetGeometry(self.verts, self.faces, self.subset)
 
     def verts_cnt(self):
-        return len(self.verts)
+        return len(self.subset)
     def verts_enum(self):
-        return enumerate(self.verts)
+        return ((i, self.verts[i]) for i in self.subset)
 
-class FitCalculator(Geometry):
+def morpher_faces(mcore):
+    faces = mcore.char.faces
+    return faces if faces is not None else mesh_faces(mcore.obj.data)
+
+def geom_morpher(mcore):
+    return Geometry(mcore.full_basis, morpher_faces(mcore))
+
+def geom_morpher_final(mcore):
+    return Geometry(mcore.get_final(), morpher_faces(mcore))
+
+def geom_shapekey(mesh, sk):
+    return Geometry(utils.verts_to_numpy(sk.data), mesh_faces(mesh))
+
+def geom_subset(geom, subset):
+    return SubsetGeometry(geom.verts, [geom.faces[i] for i in subset["faces"]], subset["verts"])
+
+def geom_morph(geom: Geometry, *morphs):
+    result = geom.copy()
+    result.verts = result.verts.copy()
+    for morph in morphs:
+        morph.apply(result.verts)
+    return result
+
+class FitCalculator:
     tmp_buf: numpy.ndarray = None
 
-    def __init__(self, mesh, parent=None):
-        super().__init__(mesh)
+    def __init__(self, geom: Geometry, parent=None):
+        self.geom = geom
         self.geom_cache = {} if parent is None else parent.geom_cache
 
     def get_char_geom(self, _asset):
-        return self
+        return self.geom
 
-    def get_asset_geom(self, data):
+    def get_asset_geom(self, data) -> Geometry:
         if isinstance(data, bpy.types.Object):
             data = data.data
-        if data is self.mesh:
-            return self
         key = data.get("charmorph_fit_id", data.name)
         result = self.geom_cache.get(key)
         if result is None:
-            result = Geometry(data)
+            result = geom_mesh(data)
             self.geom_cache[data] = result
         return result
-
 
     def _calc_weights_internal(self, asset_verts, asset=None):
         t = utils.Timer()
@@ -164,9 +187,8 @@ class FitCalculator(Geometry):
             calc_weights_reverse(weights, cg, self.get_asset_geom(asset))
             t.time("bvh reverse")
         positions, idx, wresult = weights_convert(weights)
-        t.time("convert")
         weights_normalize(positions, wresult)
-        t.time("normalize")
+        t.time("finalize")
         return positions, idx, wresult.reshape(-1,1)
 
     def get_weights(self, asset):
@@ -177,9 +199,10 @@ class FitCalculator(Geometry):
 
     def _transfer_weights_iter_arrays(self, asset, vg_data):
         if self.tmp_buf is None:
-            self.tmp_buf = numpy.empty((len(self.verts)))
+            self.tmp_buf = numpy.empty(len(self.geom.verts))
         positions, fit_idx, fit_weights = self.get_weights(asset)
-        fit_weights = fit_weights.reshape(-1) # While fitting we reduce 2D arrays, but for vertex groups we need 1 dimension
+        # Reshepe is needed because vertex arrays are 2D and weight arrays are 1D
+        fit_weights = fit_weights.reshape(-1)
         for name, vg_idx, vg_weights in utils.vg_read(vg_data):
             self.tmp_buf.fill(0)
             self.tmp_buf.put(vg_idx, vg_weights)
@@ -195,64 +218,14 @@ class FitCalculator(Geometry):
         utils.import_vg(asset, self.transfer_weights_get(asset, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
-class MorpherGeometry(Geometry):
-    def __init__(self, mcore):
-        super().__init__(mcore.obj.data)
-        self.mcore = mcore
-
-    @utils.lazyproperty
-    def verts(self):
-        return self.mcore.full_basis
-
-    @utils.lazyproperty
-    def faces(self):
-        return self.mcore.char.faces if self.mcore.char.faces is not None else mesh_faces(self.mesh)
-
-class MorpherFinalGeometry(MorpherGeometry):
-    @utils.lazyproperty
-    def verts(self):
-        return self.mcore.get_final()
-
-class ChildGeometry(BaseGeometry):
-    def __init__(self, parent):
-        self.parent = parent
-    def __getattr__(self, attr):
-        return getattr(self.parent, attr)
-
-class SubsetGeometry(ChildGeometry):
-    def __init__(self, parent, subset):
-        super().__init__(parent)
-        self.subset = subset
-
-    def verts_cnt(self):
-        return len(self.subset["verts"])
-    def verts_enum(self):
-        return ((i, self.verts[i]) for i in self.subset["verts"])
-    @utils.lazyproperty
-    def subset_faces(self):
-        if self.subset is None:
-            return self.faces
-        faces = self.faces
-        return [faces[i] for i in self.subset["faces"]]
-
-class MorphedGeometry(ChildGeometry):
-    def __init__(self, parent, *morphs):
-        super().__init__(parent)
-        self.verts = self.verts.copy()
-        for morph in morphs:
-            morph.apply(self.verts)
-
 class MorpherFitCalculator(FitCalculator):
     def __init__(self, mcore):
-        super().__init__(mcore.obj.data)
         self.mcore = mcore
-        self.geom = MorpherGeometry(mcore)
+        geom = geom_morpher(mcore)
         subset = mcore.char.fitting_subset
-        if subset is not None:
-            self.geom = SubsetGeometry(self, self.geom)
-
-    def get_basis(self, mesh):
-        return charlib.get_basis(mesh, self.mcore)
+        if subset:
+            geom = geom_subset(geom, subset)
+        super().__init__(geom)
 
     def _get_asset_conf(self, data):
         if isinstance(data, bpy.types.Object):
@@ -261,60 +234,38 @@ class MorpherFitCalculator(FitCalculator):
             return charlib.Asset
         return self.mcore.char.assets.get(data.get("charmorph_asset"), charlib.Asset)
 
-    def _get_asset_morph(self, asset):
+    def _get_asset_morph(self, asset) -> Geometry:
         return self._get_asset_conf(asset).morph
 
-    def get_char_geom(self, asset):
+    def get_char_geom(self, asset) -> Geometry:
         morph = self._get_asset_morph(asset)
         if morph:
-            return MorphedGeometry(self.geom, morph)
+            return geom_morph(self.geom, morph)
         return self.geom
 
 repsilon = 1e-5
 
-class RiggerFitCalculator(MorpherFitCalculator):
-    def __init__(self, mcore):
-        super().__init__(mcore)
-        self.subset = None
+class RiggerFitCalculator(FitCalculator):
+    def __init__(self, morpher):
+        super().__init__(geom_morpher(morpher.core), morpher.fitter)
 
     # when transferring joints to another geometry, we need to make sure
     # that every original vertex will be mapped to new topology
-    # calculate weights based on distance from character vertices to assset faces
-    def _calc_weights_reverse(self, char_geom, weights, asset): # pylint: disable=too-many-locals
-        asset_geom = self.get_asset_geom(asset)
-        for i, cvert in char_geom.verts_enum():
-            loc, _, idx, fdist = asset_geom.bvh.find_nearest(cvert)
-            if idx is None:
-                continue
-            face = asset_geom.faces[idx]
-            fdist = max(fdist ** 2, repsilon)
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([asset_geom.verts[i] for i in face], loc)):
-                d = weights[vi]
-                d[i] = d.get(i, 0) + bw/fdist
-
-    def _calc_weights_kd_reverse(self, weights, verts):
-        kd = utils.kdtree_from_verts(verts)
-        for i, vert in enumerate(self.verts):
+    def _calc_weights_kd_reverse(self, weights, asset_verts):
+        kd = utils.kdtree_from_verts(asset_verts)
+        for i, vert in self.geom.verts_enum():
             for _, vi, dist in kd.find_n(vert, 4):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1/max(dist**2, repsilon)
 
     def get_weights(self, asset):
         t = utils.Timer()
+        cg = self.get_char_geom(asset)
         verts = self.get_asset_geom(asset).verts
         # calculate weights based on nearest vertices
-        weights = calc_weights_kd(utils.kdtree_from_verts_enum(((idx, vert) for idx, vert in enumerate(self.verts)), len(self.verts)),
-             verts, repsilon, 16)
-        self._calc_weights_kd_reverse(weights, verts)
-        self._calc_weights_reverse(weights, self.verts, asset)
+        weights = calc_weights_kd(cg.kd, verts, repsilon, 16)
+        self._calc_weights_kd_reverse(weights,  verts)
+        calc_weights_reverse(weights, cg.verts, asset, lambda a, b: a+b)
         result = weights_convert(weights, False)
         t.time("rigger calc time")
         return result
-
-class ReverseFitCalculator(FitCalculator):
-    def __init__(self, mcore):
-        super().__init__(mcore.obj.data)
-        self.mcore = mcore
-
-    def get_char_geom(self, _asset):
-        return MorpherFinalGeometry(self.mcore)

@@ -32,10 +32,11 @@ from .morphing import manager as mm
 
 def remove_rig(rig):
     try:
-        bpy.data.texts.remove(rig["rig_ui"])
-    except:
-        pass
-    bpy.data.armatures.remove(rig.data)
+        ui = rig.get("rig_ui")
+        if ui:
+            bpy.data.texts.remove(ui)
+    finally:
+        bpy.data.armatures.remove(rig.data)
 
 def apply_metarig_parameters(metarig):
     if not hasattr(bpy.types.PoseBone, "rigify_type"):
@@ -51,7 +52,8 @@ def apply_metarig_parameters(metarig):
             bone.rigify_parameters.make_custom_pivot = True
         elif bone.rigify_type == "limbs.super_finger" and ui.rigify_finger_ik:
             bone.rigify_parameters.make_extra_ik_control = True
-        elif bone.rigify_type == "basic.super_copy" and bone.name.startswith("shoulder.") and hasattr(bone.rigify_parameters, "super_copy_widget_type"):
+        elif bone.rigify_type == "basic.super_copy" and bone.name.startswith("shoulder.") and\
+                hasattr(bone.rigify_parameters, "super_copy_widget_type"):
             # Special widget for shoulders is supported in new Rigify versions.
             # But for compatibility it isn't enabled in metarig by default
             params = bone.rigify_parameters
@@ -172,10 +174,7 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
                     if c.type == "STRETCH_TO":
                         c.rest_length = bone.length
     except:
-        try:
-            remove_rig(rig)
-        except:
-            pass
+        remove_rig(rig)
         raise
     return rig
 

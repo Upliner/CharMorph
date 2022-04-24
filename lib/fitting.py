@@ -75,7 +75,7 @@ def get_cast_points(bmin: numpy.ndarray, bmax: numpy.ndarray):
         if x != 1 or y != 1 or z != 1
     ]
 
-def calculate_mask(char_geom: fit_calc.BaseGeometry, bvh_asset, match_func = lambda _idx, _co: True):
+def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func = lambda _idx, _co: True):
     cast_points = get_cast_points(*char_geom.bbox)
     bvh_char = char_geom.bvh
 
@@ -142,9 +142,9 @@ def obj_bbox(obj):
             bbox_max[i] = max(bbox_max[i], v[i])
     return bbox_min, bbox_max
 
-def bbox_match(co, bbox_min, bbox_max):
+def bbox_match(co, bbox):
     for i in range(3):
-        if co[i] < bbox_min[i] or co[i] > bbox_max[i]:
+        if co[i] < bbox[0][i] or co[i] > bbox[1][i]:
             return False
     return True
 
@@ -172,10 +172,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def _add_single_mask(self, vg_name, asset):
         asset_geom = self.get_asset_geom(asset)
-        bbox_min, bbox_max = asset_geom.bbox
+        bbox = asset_geom.bbox
         add_mask(self.mcore.obj, vg_name,
             calculate_mask(self.get_char_geom(asset), asset_geom.bvh,
-                lambda _, co: bbox_match(co, bbox_min, bbox_max)))
+                lambda _, co: bbox_match(co, bbox)))
 
     def fit_to_bmesh(self, bm, asset, fitted_diff):
         geom = self.get_asset_geom(asset)
@@ -213,7 +213,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         char_geom = self.geom
         if morph_cnt > 0:
-            char_geom = fit_calc.MorphedGeometry(char_geom, *(morph for morph in asset_morphs if morph is not None))
+            char_geom = fit_calc.geom_morph(char_geom, *(morph for morph in asset_morphs if morph is not None))
             diff = char_geom.verts - self.geom.verts
 
         bboxes = []
@@ -238,7 +238,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         t.time("mask_bvh")
         def check_bboxes(_, co):
             for box in bboxes:
-                if bbox_match(co, *box):
+                if bbox_match(co, box):
                     return True
             return False
         add_mask(self.mcore.obj, "cm_mask_combined", calculate_mask(char_geom, bvh_assets, check_bboxes))
@@ -247,7 +247,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def _get_fit_id(self, data):
         if isinstance(data, bpy.types.Object):
             data = data.data
-        if data is self.mesh:
+        if data is self.mcore.obj.data:
             return 0
         result = data.get("charmorph_fit_id")
         if not result:
@@ -299,6 +299,30 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.weights_cache[fit_id] = (cnts, data, weights)
         return cnts, data, weights
 
+    #use separate get_diff function to support hair fitting for posed characters
+    def get_diff_hair(self):
+        char = self.mcore.obj
+        if not char.find_armature():
+            return self.get_diff_arr(None)
+
+        restore_modifiers = utils.disable_modifiers(char)
+        echar = char.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        try:
+            deformed = echar.to_mesh()
+            basis = self.mcore.get_basis_alt_topo()
+            if len(deformed.vertices) != len(basis):
+                logger.error("Can't fit posed hair: vertex count mismatch")
+                return self.get_diff_arr(None)
+            result = numpy.empty(len(basis) * 3)
+            deformed.vertices.foreach_get("co", result)
+            result = result.reshape(-1, 3)
+            result -= basis
+            return result
+        finally:
+            echar.to_mesh_clear()
+            for m in restore_modifiers:
+                m.show_viewport = True
+
     def fit_hair(self, obj, idx):
         t = utils.Timer()
         psys = obj.particle_systems[idx]
@@ -307,7 +331,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             return False
 
         morphed = numpy.empty((len(data)+1, 3))
-        morphed[1:] = self.calc_fit(weights)
+        morphed[1:] = fit_calc.calc_fit(self.get_diff_hair(), *weights)
         morphed[1:] += data
 
         obj.particle_systems.active_index = idx
@@ -337,11 +361,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.transfer_weights(asset, utils.char_weights_npz(self.mcore.obj, self.mcore.char))
 
     def _transfer_weights_obj(self, asset, vgs):
-        if asset.data is self.mesh:
+        if asset.data is self.mcore.obj.data:
             raise Exception("Tried to self-transfer weights")
         if self.mcore.alt_topo:
             if self.transfer_calc is None:
-                self.transfer_calc = fit_calc.FitCalculator(self.mesh, self)
+                self.transfer_calc = fit_calc.FitCalculator(fit_calc.geom_mesh(self.mcore.obj.data), self)
             calc = self.transfer_calc
         else:
             calc = self
@@ -393,7 +417,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.transfer_calc = None
 
     def get_target(self, asset):
-        return utils.get_target(asset) if asset.data is self.mesh else get_fitting_shapekey(asset)
+        return utils.get_target(asset) if asset.data is self.mcore.obj.data else get_fitting_shapekey(asset)
 
     def fit(self, asset, morph=False):
         t = utils.Timer()
@@ -467,8 +491,6 @@ class Fitter(fit_calc.MorpherFitCalculator):
             objs.append(obj)
         self.fit_new(objs)
         ui = bpy.context.window_manager.charmorph_ui
-        # TODO: find the reason
-        #ui.fitting_char = self.mcore.obj # For some reason combo box value changes after importing, fix it
         if len(lst) == 1:
             ui.fitting_asset = obj
         return result

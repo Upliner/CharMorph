@@ -22,7 +22,7 @@ import logging, os
 import bpy, mathutils # pylint: disable=import-error
 
 from . import file_io, vg_calc
-from ..lib import rigging, utils
+from ..lib import morpher_cores, fit_calc, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
     def draw(self, context):
         ui = context.window_manager.cmedit_ui
         l = self.layout
-        l.prop(ui, "rig_char")
+        l.prop(ui, "char_obj")
         l.operator("cmedit.symmetrize_joints")
         l.operator("cmedit.symmetrize_offsets")
         l.operator("cmedit.store_roll_x")
@@ -76,8 +76,70 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
         l.operator("cmedit.symmetrize_weights")
         l.operator("cmedit.symmetrize_vg")
 
+class CMEDIT_PT_Assets(bpy.types.Panel):
+    bl_label = "Assets"
+    bl_parent_id = "VIEW3D_PT_CMEdit"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "CharMorph"
+    bl_order = 3
+
+    def draw(self, context):
+        ui = context.window_manager.cmedit_ui
+        l = self.layout
+        l.prop(ui, "char_obj")
+        l.prop(ui, "asset_obj")
+        l.prop(ui, "retarg_sk_src")
+        l.prop(ui, "retarg_sk_dst")
+        l.operator("cmedit.retarget")
+
+def retarg_get_geom(obj, name):
+    if name.startswith("m_"):
+        mcore = morpher_cores.get(obj)
+        if name == "m_b":
+            return fit_calc.geom_morpher(mcore)
+        if name == "m_f":
+            return fit_calc.geom_morpher_final(mcore)
+    if name.startswith("sk_"):
+        return fit_calc.geom_shapekey(obj.data, obj.data.shape_keys.key_blocks[name[3:]])
+    raise ValueError("Invalid retarget geom name: " + name)
+
+class OpRetarget(bpy.types.Operator):
+    bl_idname = "cmedit.retarget"
+    bl_label = "Retarget asset"
+    bl_description = "Refit asset from selected source shape key to destination one"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        ui = context.window_manager.cmedit_ui
+        return get_char(context) and ui.asset_obj
+
+    def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        char = get_char(context)
+
+        geom_src = retarg_get_geom(char, ui.retarg_sk_src)
+        geom_dst = retarg_get_geom(char, ui.retarg_sk_dst)
+        if len(geom_src.verts) != len(geom_dst.verts):
+            self.report({"ERROR"}, f"Vertex count mismatch: {len(geom_src.verts)} != {len(geom_dst.verts)}. "\
+               "Can't retarget alt_topo morpher states with shape keys.")
+            return {"FINISHED"}
+
+        if not ui.asset_obj.data.shape_keys:
+            ui.asset_obj.shape_key_add(name="Basis", from_mix=False)
+        sk = ui.asset_obj.shape_key_add(name="retarget", from_mix=False)
+        sk.value = 1
+
+        f = fit_calc.FitCalculator(geom_src)
+        fit = fit_calc.calc_fit(geom_dst.verts-geom_src.verts, *f.get_weights(ui.asset_obj))
+        fit += utils.get_basis_numpy(ui.asset_obj)
+        sk.data.foreach_set("co", fit.reshape(-1))
+
+        return {"FINISHED"}
+
 def get_char(context):
-    result = context.window_manager.cmedit_ui.rig_char
+    result = context.window_manager.cmedit_ui.char_obj
     if result is None or result.type != "MESH":
         return None
     return result
@@ -225,7 +287,6 @@ class OpRigifyTweaks(bpy.types.Operator):
                 rigging.apply_tweak(context.object, tweak)
         bpy.ops.object.mode_set(override, mode=old_mode)
         return {"FINISHED"}
-
 
 def is_deform(group_name):
     return group_name.startswith("DEF-") or group_name.startswith("MCH-") or group_name.startswith("ORG-")
@@ -568,12 +629,36 @@ def objects_by_type(typ):
 
 rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
+def get_shape_keys(ui, _):
+    result = [("m_b", "(morpher basis)",""), ("m_f", "(morpher final)","")]
+    if ui.char_obj:
+        sk = ui.char_obj.data.shape_keys
+        if sk and sk.key_blocks:
+            result.extend((("sk_" + sk.name, sk.name, '') for sk in sk.key_blocks))
+    return result
+
 class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps):
-    rig_char: bpy.props.PointerProperty(
+    char_obj: bpy.props.PointerProperty(
         name="Char",
-        description="Character mesh for rigging",
+        description="Character mesh for rigging and asset fitting",
         type=bpy.types.Object,
         poll=utils.visible_mesh_poll,
+    )
+    asset_obj: bpy.props.PointerProperty(
+        name="Asset",
+        description="Asset mesh for retargetting",
+        type=bpy.types.Object,
+        poll=utils.visible_mesh_poll,
+    )
+    retarg_sk_src: bpy.props.EnumProperty(
+        name="Source shape key",
+        description="Source shape key for retarget",
+        items=get_shape_keys,
+    )
+    retarg_sk_dst: bpy.props.EnumProperty(
+        name="Destination shape key",
+        description="Target shape key for retarget",
+        items=get_shape_keys,
     )
     rig_tweaks_file: bpy.props.StringProperty(
         name="Tweaks file",
@@ -584,7 +669,8 @@ class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps):
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpStoreRollX, OpStoreRollZ,
-    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils]
+    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils,
+    OpRetarget, CMEDIT_PT_Assets]
 
 classes.extend(file_io.classes)
 classes.extend(vg_calc.classes)
