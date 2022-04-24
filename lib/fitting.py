@@ -81,10 +81,10 @@ def calculate_mask(char_geom: fit_calc.BaseGeometry, bvh_asset, match_func = lam
 
     def cast_rays(co, direction, max_dist=1e30):
         nonlocal has_cloth
-        _, _, idx, _ = bvh_asset.ray_cast(co, direction, max_dist)
+        idx = bvh_asset.ray_cast(co, direction, max_dist)[2]
         if idx is None:
             # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-            _, _, idx, _ = bvh_char.ray_cast(co, direction, max_dist*0.99)
+            idx = bvh_char.ray_cast(co, direction, max_dist*0.99)[2]
             if idx is None:
                 return False # No ray hit
         else:
@@ -100,7 +100,7 @@ def calculate_mask(char_geom: fit_calc.BaseGeometry, bvh_asset, match_func = lam
         cnt = 0
 
         #if vertex is too close to cloth, mark it as covered
-        _, _, idx, _ = bvh_asset.find_nearest(co, 0.001)
+        idx = bvh_asset.find_nearest(co, 0.001)[2]
         if idx is not None:
             result.add(i)
             continue
@@ -181,10 +181,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
         geom = self.get_asset_geom(asset)
         try:
             morphed = geom.verts + fitted_diff
-            asset.data.vertices.foreach_set("co", morphed)
-            bm.from_mesh(asset)
+            asset.data.vertices.foreach_set("co", morphed.reshape(-1))
+            bm.from_mesh(asset.data)
         finally:
-            asset.data.vertices.foreach_set("co", geom.verts)
+            asset.data.vertices.foreach_set("co", geom.verts.reshape(-1))
         return morphed.min(axis=0), morphed.max(axis=0)
 
     def recalc_comb_mask(self):

@@ -55,6 +55,36 @@ def weights_normalize(positions, wresult):
     cnt[-1]=len(wresult)-positions[-1]
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
 
+# calculate weights based on distance from asset vertices to character faces
+def calc_weights_direct(weights, char_geom, asset_verts):
+    verts = char_geom.verts
+    faces = char_geom.faces
+    bvh = char_geom.bvh
+    for i, v in enumerate(asset_verts):
+        loc, _, idx, fdist = bvh.find_nearest(v.tolist(), dist_thresh)
+        if loc is None:
+            continue
+        face = faces[idx]
+        d = weights[i]
+        fdist = max(fdist ** 2, epsilon)
+        for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
+            d[vi] = max(d.get(vi, 0), bw/fdist)
+
+# calculate weights based on distance from character vertices to assset faces
+def calc_weights_reverse(weights, char_geom, asset_geom):
+    verts = asset_geom.verts
+    faces = asset_geom.faces
+    bvh = asset_geom.bvh
+    for i, cvert in char_geom.verts_enum():
+        loc, _, idx, fdist = bvh.find_nearest(cvert.tolist(), dist_thresh)
+        if idx is None:
+            continue
+        face = faces[idx]
+        fdist = max(fdist ** 2, 1e-15) # using lower epsilon to avoid some artifacts
+        for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
+            d = weights[vi]
+            d[i] = max(d.get(i, 0), bw/fdist)
+
 # calculate weights based on nearest vertices
 def calc_weights_kd(kd, verts, _epsilon, n):
     return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(v, n)} for v in verts]
@@ -122,47 +152,16 @@ class FitCalculator(Geometry):
             self.geom_cache[data] = result
         return result
 
-    # calculate weights based on distance from asset vertices to character faces
-    @staticmethod
-    def _calc_weights_direct(char_geom, weights, asset_verts):
-        verts = char_geom.verts
-        faces = char_geom.faces
-        bvh = char_geom.bvh
-        for i, v in enumerate(asset_verts):
-            loc, _, idx, fdist = bvh.find_nearest(v.tolist(), dist_thresh)
-            if loc is None:
-                continue
-            face = faces[idx]
-            d = weights[i]
-            fdist = max(fdist ** 2, epsilon)
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-                d[vi] = max(d.get(vi, 0), bw/fdist)
-
-    # calculate weights based on distance from character vertices to assset faces
-    def _calc_weights_reverse(self, char_geom, weights, asset):
-        asset_geom = self.get_asset_geom(asset)
-        verts = asset_geom.verts
-        faces = asset_geom.faces
-        bvh = asset_geom.bvh
-        for i, cvert in char_geom.verts_enum():
-            loc, _, idx, fdist = bvh.find_nearest(cvert.tolist(), dist_thresh)
-            if idx is None:
-                continue
-            face = faces[idx]
-            fdist = max(fdist ** 2, 1e-15) # using lower epsilon to avoid some artifacts
-            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
-                d = weights[vi]
-                d[i] = max(d.get(i, 0), bw/fdist)
 
     def _calc_weights_internal(self, asset_verts, asset=None):
         t = utils.Timer()
         cg = self.get_char_geom(asset)
         weights = calc_weights_kd(cg.kd, asset_verts, epsilon, 16)
         t.time("kdtree")
-        self._calc_weights_direct(cg, weights, asset_verts)
+        calc_weights_direct(weights, cg, asset_verts)
         t.time("bvh direct")
         if asset:
-            self._calc_weights_reverse(cg, weights, asset)
+            calc_weights_reverse(weights, cg, self.get_asset_geom(asset))
             t.time("bvh reverse")
         positions, idx, wresult = weights_convert(weights)
         t.time("convert")
