@@ -1,0 +1,13 @@
+[flake8]
+ignore=
+    F722, # flake8 doesn't understand Blender's property annotations
+    W503, # WTF W503 and W504 contradict each other
+    F821, # Very strange
+    E226, # We'll return to this later
+    E302,
+    E305,
+    E741,
+    E401,
+    E501
+exclude=lib/yaml, tmp, dev, demo, backups
+

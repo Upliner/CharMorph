@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import json
-import bpy, bpy_extras # pylint: disable=import-error
+import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import morphs, utils
 from .morphing import manager as mm
@@ -70,9 +70,9 @@ def morphs_to_data():
             typ.append(alt_name)
 
     return {
-        "type":   typ,
+        "type": typ,
         "morphs": {m.name: m.core.prop_get(m.name) for m in m.core.morphs_l2 if m.name},
-        "meta":   {k: m.meta_get(k) for k in m.core.char.morphs_meta},
+        "meta": {k: m.meta_get(k) for k in m.core.char.morphs_meta},
         "materials": m.materials.as_dict()
     }
 
@@ -133,7 +133,7 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             typenames = [typenames]
 
         m = mm.morpher
-        typemap = {v["title"]:k for k, v in m.core.char.types.items() if "title" in v}
+        typemap = {v["title"]: k for k, v in m.core.char.types.items() if "title" in v}
         for name in (name for sublist in ([name, typemap.get(name)] for name in typenames) for name in sublist):
             if not name:
                 continue

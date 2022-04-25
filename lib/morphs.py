@@ -26,29 +26,32 @@ logger = logging.getLogger(__name__)
 
 class Morph:
     __slots__ = ()
+
     @staticmethod
-    def apply(verts: numpy.ndarray, _ = None):
+    def apply(verts: numpy.ndarray, _=None):
         return verts
 
 class FullMorph(Morph):
     __slots__ = ("delta",)
+
     def __init__(self, delta):
         self.delta = delta
 
     def get_delta(self, value):
         return self.delta if value is None else self.delta * value
 
-    def apply(self, verts, value = None):
+    def apply(self, verts, value=None):
         verts += self.get_delta(value)
         return verts
 
 class PartialMorph(FullMorph):
     __slots__ = "delta", "idx"
+
     def __init__(self, idx, delta):
         super().__init__(delta)
         self.idx = idx
 
-    def apply(self, verts, value = None):
+    def apply(self, verts, value=None):
         verts[self.idx] += self.get_delta(value)
         return verts
 
@@ -80,6 +83,7 @@ def load_noext(basename):
 
 class MinMaxMorphData:
     __slots__ = "min", "max", "name"
+
     def __init__(self, name, minval=0, maxval=0):
         self.min = minval
         self.max = maxval
@@ -112,7 +116,7 @@ class MinMaxMorph(MinMaxMorphData):
                 self.get_morph(1).apply(verts, value)
 
 class Separator(Morph):
-    name=""
+    name = ""
 
 def json_to_morph(item):
     if item.get("separator"):
@@ -162,7 +166,8 @@ class MorphStorage:
         if jslist is not None:
             return (json_to_morph(item) for item in jslist)
 
-        return (MinMaxMorphData(name[:-4], 0, 1) for name in sorted(os.listdir(path))
+        return (
+            MinMaxMorphData(name[:-4], 0, 1) for name in sorted(os.listdir(path))
             if (name.endswith(".npz") or name.endswith(".npy")) and os.path.isfile(os.path.join(path, name)))
 
 class MorphImporter:
@@ -330,16 +335,16 @@ class MorphCombiner:
 
 def mblab_to_charmorph(data):
     return {
-        "morphs": {k:v*2-1 for k, v in data.get("structural", {}).items()},
+        "morphs": {k: v*2-1 for k, v in data.get("structural", {}).items()},
         "materials": data.get("materialproperties", {}),
-        "meta": {(k[10:] if k.startswith("character_") else k):v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
+        "meta": {(k[10:] if k.startswith("character_") else k): v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
         "type": data.get("type", ()),
     }
 
 def charmorph_to_mblab(data):
     return {
-        "structural": {k:(v+1)/2 for k, v in data.get("morphs", {}).items()},
-        "metaproperties": {k:v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
+        "structural": {k: (v+1)/2 for k, v in data.get("morphs", {}).items()},
+        "metaproperties": {k: v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
         "materialproperties": data.get("materials"),
         "type": data.get("type", ()),
     }

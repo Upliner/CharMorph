@@ -20,7 +20,7 @@
 
 import random, logging, numpy
 
-import bpy, bmesh, mathutils # pylint: disable=import-error
+import bpy, bmesh, mathutils  # pylint: disable=import-error
 
 from . import fit_calc, utils
 
@@ -70,12 +70,11 @@ def get_cast_points(bmin: numpy.ndarray, bmax: numpy.ndarray):
     points = numpy.vstack((center-size, center, center+size))
     return [
         mathutils.Vector((points[x][0], points[y][1], points[z][2]))
-        #numpy.choose((x,y,z), points)
         for x in range(3) for y in range(3) for z in range(3)
         if x != 1 or y != 1 or z != 1
     ]
 
-def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func = lambda _idx, _co: True):
+def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func=lambda _idx, _co: True):
     cast_points = get_cast_points(*char_geom.bbox)
     bvh_char = char_geom.bvh
 
@@ -86,10 +85,10 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func = lambda 
             # Vertex is not blocked by cloth. Maybe blocked by the body itself?
             idx = bvh_char.ray_cast(co, direction, max_dist*0.99)[2]
             if idx is None:
-                return False # No ray hit
+                return False  # No ray hit
         else:
             has_cloth = True
-        return True # Have ray hit
+        return True  # Have ray hit
 
     result = set()
     for i, co in enumerate(char_geom.verts):
@@ -99,7 +98,7 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func = lambda 
         has_cloth = False
         cnt = 0
 
-        #if vertex is too close to cloth, mark it as covered
+        # if vertex is too close to cloth, mark it as covered
         idx = bvh_asset.find_nearest(co, 0.001)[2]
         if idx is not None:
             result.add(i)
@@ -107,7 +106,7 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func = lambda 
 
         for cast_point in cast_points:
             direction = co-cast_point
-            max_dist = direction.length#(direction ** 2).sum() ** 0.5 # direction.length#
+            max_dist = direction.length
             if not cast_rays(cast_point, direction, max_dist):
                 cnt += 1
                 if cnt == 2:
@@ -173,8 +172,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def _add_single_mask(self, vg_name, asset):
         asset_geom = self.get_asset_geom(asset)
         bbox = asset_geom.bbox
-        add_mask(self.mcore.obj, vg_name,
-            calculate_mask(self.get_char_geom(asset), asset_geom.bvh,
+        add_mask(
+            self.mcore.obj, vg_name,
+            calculate_mask(
+                self.get_char_geom(asset), asset_geom.bvh,
                 lambda _, co: bbox_match(co, bbox)))
 
     def fit_to_bmesh(self, bm, asset, fitted_diff):
@@ -236,6 +237,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             bm.free()
 
         t.time("mask_bvh")
+
         def check_bboxes(_, co):
             for box in bboxes:
                 if bbox_match(co, box):
@@ -299,7 +301,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.weights_cache[fit_id] = (cnts, data, weights)
         return cnts, data, weights
 
-    #use separate get_diff function to support hair fitting for posed characters
+    # use separate get_diff function to support hair fitting for posed characters
     def get_diff_hair(self):
         char = self.mcore.obj
         if not char.find_armature():
@@ -338,7 +340,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         t.time("hair_fit_calc")
 
-        restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type=="SHRINKWRAP")
+        restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type == "SHRINKWRAP")
         try:
             utils.set_hair_points(obj, cnts, morphed)
         except Exception as e:
@@ -506,7 +508,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def get_assets(self):
         try:
             return self._get_assets()
-        except ReferenceError: # can happen if some of the assets were deleted
+        except ReferenceError:  # can happen if some of the assets were deleted
             self.children = None
             return self._get_assets()
 

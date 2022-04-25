@@ -20,7 +20,7 @@
 
 import re, logging
 
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from . import morpher_cores, materials, fitting, sliding_joints
 
@@ -152,8 +152,10 @@ class Morpher:
                 del d[pname]
 
     def _calc_meta_abs_val(self, prop):
-        return sum(calc_meta_val(self.core.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
-            for meta_prop, val in self.meta_prev.items())
+        return sum(
+            calc_meta_val(self.core.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
+            for meta_prop, val in self.meta_prev.items()
+        )
 
     def meta_get(self, name):
         return self.core.obj.data.get("cmorph_meta_" + name, 0.0)
@@ -258,7 +260,7 @@ class Morpher:
         if not props:
             return
 
-        propGroup = type("CharMorpher_Dyn_PropGroup",(bpy.types.PropertyGroup,), {"__annotations__": props})
+        propGroup = type("CharMorpher_Dyn_PropGroup", (bpy.types.PropertyGroup,), {"__annotations__": props})
         bpy.utils.register_class(propGroup)
         bpy.types.WindowManager.charmorphs = bpy.props.PointerProperty(
             type=propGroup, options={"SKIP_SAVE"})

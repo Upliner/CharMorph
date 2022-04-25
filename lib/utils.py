@@ -19,11 +19,11 @@
 # Copyright (C) 2021-2022 Michael Vigovsky
 
 import os, time, logging, numpy
-import bpy, mathutils # pylint: disable=import-error
+import bpy, mathutils  # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
 
-#### YAML stuff
+# YAML stuff
 
 try:
     from yaml import load as yload, dump as ydump, CSafeLoader as SafeLoader, Dumper
@@ -48,6 +48,7 @@ def dump_yaml(data, f):
 class Timer:
     def __init__(self):
         self.t = time.perf_counter()
+
     def time(self, name):
         t2 = time.perf_counter()
         logger.debug("%s: %s", name, t2-self.t)
@@ -55,6 +56,7 @@ class Timer:
 
 class named_lazyprop:
     __slots__ = ("fn", "name")
+
     def __init__(self, name, fn):
         self.fn = fn
         self.name = name
@@ -68,6 +70,7 @@ class named_lazyprop:
 
 class lazyproperty(named_lazyprop):
     __slots__ = ()
+
     def __init__(self, fn):
         super().__init__(fn.__name__, fn)
 
@@ -224,7 +227,7 @@ def reposition_armature_modifier(char):
 
 def reposition_cs_modifier(char):
     i = len(char.modifiers)-1
-    while i>=0:
+    while i >= 0:
         if char.modifiers[i].type == "ARMATURE":
             reposition_modifier(char, i+1)
             return
@@ -232,7 +235,7 @@ def reposition_cs_modifier(char):
 
 def reposition_subsurf_modifier(char):
     i = len(char.modifiers)-1
-    while i>=0:
+    while i >= 0:
         if char.modifiers[i].type in ["ARMATURE", "CORRECTIVE_SMOOTH", "MASK"]:
             reposition_modifier(char, i+1)
             return
@@ -293,9 +296,11 @@ def get_vg_data(char, new, accumulate, verts=None):
         verts = char.data.vertices
 
     if isinstance(verts, numpy.ndarray):
-        get_co = lambda i: mathutils.Vector(verts[i])
+        def get_co(i):
+            mathutils.Vector(verts[i])
     else:
-        get_co = lambda i: verts[i].co
+        def get_co(i):
+            verts[i].co
 
     data = {}
     for v in char.data.vertices:

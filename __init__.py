@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from . import assets, library, morphing, randomize, file_io, hair, finalize, rigify, pose, cmedit
 from .lib import charlib
@@ -96,7 +96,7 @@ def register():
         owner=owner,
         key=(bpy.types.LayerObjects, "active"),
         args=(),
-        notify=lambda: morphing.manager.on_select()) # pylint: disable=unnecessary-lambda # this thing really doesn't work without lambda
+        notify=lambda: morphing.manager.on_select())  # pylint: disable=unnecessary-lambda  # this thing really doesn't work without lambda
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)

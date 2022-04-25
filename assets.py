@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, logging
-import bpy, bpy_extras # pylint: disable=import-error
+import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import charlib, fitting, morpher_cores, utils
 from .morphing import manager as mm
@@ -73,7 +73,7 @@ class UIProps:
     fitting_weights: bpy.props.EnumProperty(
         name="Weights",
         default="ORIG",
-        items= [
+        items=[
             ("NONE", "None", "Don't transfer weights and armature modifiers to the asset"),
             ("ORIG", "Original", "Use original weights from character library"),
             ("OBJ", "Object", "Use weights directly from object (use it if you manually weight-painted the character before fitting the asset)"),
@@ -103,7 +103,7 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" # is it neccesary?
+        return context.mode == "OBJECT"  # is it neccesary?
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
@@ -168,7 +168,7 @@ class OpFitLocal(bpy.types.Operator):
             return False
         return True
 
-    def execute(self, context): #pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         obj = get_asset_obj(context)
         if mm.morpher.core.obj is obj:
             mm.create_charmorphs(get_char(context))
@@ -228,7 +228,7 @@ class OpUnfit(bpy.types.Operator):
         asset = get_asset_obj(context)
         return context.mode == "OBJECT" and asset and 'charmorph_fit_id' in asset.data
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
         asset = get_asset_obj(context)
 
@@ -238,7 +238,7 @@ class OpUnfit(bpy.types.Operator):
                 asset.parent = asset.parent.parent
 
         mask = fitting.mask_name(asset)
-        for char in {asset.parent, ui.fitting_char}: # pylint: disable=use-sequence-for-iteration
+        for char in {asset.parent, ui.fitting_char}:  # pylint: disable=use-sequence-for-iteration
             if not char or char == asset or 'charmorph_fit_id' in char.data:
                 continue
             f = get_fitter(char)
@@ -263,7 +263,7 @@ class OpUnfit(bpy.types.Operator):
         if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
             asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
 
-        mm.last_object = asset # Prevent swithing morpher to asset object
+        mm.last_object = asset  # Prevent swithing morpher to asset object
         return {"FINISHED"}
 
 classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Assets]

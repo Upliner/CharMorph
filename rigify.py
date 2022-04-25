@@ -94,7 +94,7 @@ def apply_rig_parameters(rig, conf):
             set_ik_limits(bone, lim_default_min, lim_default_max)
         if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
             bone["IK_Stretch"] = 0
-            if hasattr(rna_prop_ui,"rna_idprop_ui_prop_get"):
+            if hasattr(rna_prop_ui, "rna_idprop_ui_prop_get"):
                 # Blender < 3.0
                 idprop = rna_prop_ui.rna_idprop_ui_prop_get(bone, "IK_Stretch")
                 for attr in ("min", "max", "soft_min", "soft_max", "default"):
@@ -173,13 +173,13 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
                 for c in bone.constraints:
                     if c.type == "STRETCH_TO":
                         c.rest_length = bone.length
-    except:
+    except Exception:
         remove_rig(rig)
         raise
     return rig
 
 class UIProps:
-    #TODO: Head pivot shift
+    # TODO: Head pivot shift
     rigify_metarig_only: bpy.props.BoolProperty(
         name="Metarig only",
         description="Generate only metarig for development purposes")
@@ -250,7 +250,7 @@ class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
         return result
 
     def draw(self, context):
-        for prop in UIProps.__annotations__: # pylint: disable=no-member
+        for prop in UIProps.__annotations__:  # pylint: disable=no-member
             self.layout.prop(context.window_manager.charmorph_ui, prop)
 
 classes = [CHARMORPH_PT_SlidingJoints, CHARMORPH_PT_RigifySettings]

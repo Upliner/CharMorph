@@ -19,9 +19,9 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, re
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
-from mathutils import Matrix, Vector # pylint: disable=import-error
+from mathutils import Matrix, Vector  # pylint: disable=import-error
 
 from .lib import charlib
 
@@ -32,8 +32,8 @@ m2 = m1.copy()
 m2[1][1] = -1
 m2[3][3] = -1
 flip_x_z = {
-    "L":Matrix(((1, 0, 0, 0), (0, 0, 0, 1), (0, 0,-1, 0), (0,-1, 0, 0))),
-    "R":Matrix(((1, 0, 0, 0), (0, 0, 0,-1), (0, 0, 1, 0), (0, 1, 0, 0))),
+    "L": Matrix(((1, 0, 0, 0), (0, 0, 0, 1), (0, 0,-1, 0), (0,-1, 0, 0))),
+    "R": Matrix(((1, 0, 0, 0), (0, 0, 0,-1), (0, 0, 1, 0), (0, 1, 0, 0))),
 }
 def qrotation(mat):
     def rot(v):
@@ -42,8 +42,8 @@ def qrotation(mat):
 
 shoulder_angle = 1.3960005939006805
 shoulder_rot = {
-    "L":qrotation(Matrix.Rotation( shoulder_angle, 4, (0, 1, 0))),
-    "R":qrotation(Matrix.Rotation(-shoulder_angle, 4, (0, 1, 0))),
+    "L": qrotation(Matrix.Rotation( shoulder_angle, 4, (0, 1, 0))),
+    "R": qrotation(Matrix.Rotation(-shoulder_angle, 4, (0, 1, 0))),
 }
 
 bone_map = {
@@ -205,9 +205,9 @@ def apply_pose(ui, context):
                 rig.pose.bones[k]["IK_FK"] = v
 
 def poll(context):
-    if not (context.mode in ["OBJECT", "POSE"] and context.active_object and
-            context.active_object.type == "ARMATURE" and
-            context.active_object.data.get("rig_id")):
+    if not (context.mode in ["OBJECT", "POSE"] and context.active_object
+            and context.active_object.type == "ARMATURE"
+            and context.active_object.data.get("rig_id")):
         return False
     char = charlib.obj_char(context.active_object)
     return len(char.poses) > 0
@@ -222,7 +222,7 @@ class OpApplyPose(bpy.types.Operator):
     def poll(cls, context):
         return poll(context)
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         apply_pose(context.window_manager.charmorph_ui, context)
         return {"FINISHED"}
 
@@ -252,7 +252,7 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
 
     def draw(self, context):
         l = self.layout
-        for prop in UIProps.__annotations__: # pylint: disable=no-member
+        for prop in UIProps.__annotations__:  # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.apply_pose")
 

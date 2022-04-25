@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging, os
-import bpy, mathutils # pylint: disable=import-error
+import bpy, mathutils  # pylint: disable=import-error
 
 from . import file_io, vg_calc
 from ..lib import morpher_cores, fit_calc, rigging, utils
@@ -35,7 +35,7 @@ class VIEW3D_PT_CMEdit(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
     bl_order = 2
 
-    def draw(self, _): # pylint: disable=no-self-use
+    def draw(self, _):  # pylint: disable=no-self-use
         pass
 
 class CMEDIT_PT_Rigging(bpy.types.Panel):
@@ -122,8 +122,8 @@ class OpRetarget(bpy.types.Operator):
         geom_src = retarg_get_geom(char, ui.retarg_sk_src)
         geom_dst = retarg_get_geom(char, ui.retarg_sk_dst)
         if len(geom_src.verts) != len(geom_dst.verts):
-            self.report({"ERROR"}, f"Vertex count mismatch: {len(geom_src.verts)} != {len(geom_dst.verts)}. "\
-               "Can't retarget alt_topo morpher states with shape keys.")
+            self.report({"ERROR"}, f"Vertex count mismatch: {len(geom_src.verts)} != {len(geom_dst.verts)}. "
+                                   "Can't retarget alt_topo morpher states with shape keys.")
             return {"FINISHED"}
 
         if not ui.asset_obj.data.shape_keys:
@@ -184,7 +184,7 @@ class OpStoreRoll(bpy.types.Operator):
 
     def execute(self, context):
         for bone in context.selected_editable_bones:
-            for axis in ('x','z'):
+            for axis in ('x', 'z'):
                 if axis != self.axis and "charmorph_axis_" + axis in bone:
                     del bone["charmorph_axis_" + axis]
             bone["charmorph_axis_" + self.axis] = list(getattr(bone, self.axis + "_axis"))
@@ -210,7 +210,7 @@ class OpJointsToVG(bpy.types.Operator):
     def poll(cls, context):
         return editable_bones_poll(context)
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         r = rigging.Rigger(context)
         r.joints_from_char(get_char(context))
         r.run(joint_list_extended(context, False))
@@ -226,7 +226,7 @@ class OpCalcVg(bpy.types.Operator):
     def poll(cls, context):
         return editable_bones_poll(context)
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.cmedit_ui
         joints = joint_list_extended(context, ui.vg_xmirror)
 
@@ -248,7 +248,7 @@ class OpRigifyFinalize(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "ARMATURE" and get_char(context)
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         rigging.rigify_finalize(context.object, get_char(context))
         return {"FINISHED"}
 
@@ -262,7 +262,7 @@ class OpRigifyTweaks(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "ARMATURE"
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         file = context.window_manager.cmedit_ui.rig_tweaks_file
         with open(file, "r", encoding="utf-8") as f:
             tweaks = utils.load_yaml(f)
@@ -300,7 +300,7 @@ def swap_l_r(name):
 def counterpart_vertex(verts, kd, v):
     counterparts = kd.find_range(mathutils.Vector((-v.co[0], v.co[1], v.co[2])), 0.00001)
     if len(counterparts) == 0:
-        #print(v.index, v.co, "no counterpart")
+        print(v.index, v.co, "no counterpart")
         return None
     if len(counterparts) > 1:
         print(v.index, v.co, "multiple counterparts:", counterparts)
@@ -311,14 +311,16 @@ class OpCheckSymmetry(bpy.types.Operator):
     bl_idname = "cmedit.check_symmetry"
     bl_label = "Check symmetry"
     bl_description = "Check X axis symmetry and print results to system console"
+
     @classmethod
     def poll(cls, context):
         return context.object and context.object.type == "MESH"
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         obj = context.object
         mesh = obj.data
         kd = utils.kdtree_from_verts(mesh.vertices)
+
         def groups_to_list(group):
             return [(obj.vertex_groups[g.group].name, g.weight) for g in group]
         for v in mesh.vertices:
@@ -368,7 +370,7 @@ class OpSymmetrizeVG(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "MESH" and context.object.vertex_groups.active
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         obj = context.object
         vg = obj.vertex_groups.active
         idx = vg.index
@@ -381,7 +383,7 @@ class OpSymmetrizeVG(bpy.types.Operator):
             if v2 is None:
                 continue
             w = (get_group_weight(v, idx)+get_group_weight(v2, idx))/2
-            if w>=1e-5:
+            if w >= 1e-5:
                 vg.add([v.index, v2.index], w, "REPLACE")
             else:
                 vg.remove([v.index, v2.index])
@@ -427,7 +429,7 @@ class OpSymmetrizeWeights(bpy.types.Operator):
             gdict = {obj.vertex_groups[g.group].name: g for g in v2.groups}
 
             wgt2 = 0
-            #cleanup groups without counterparts before normalizing
+            # cleanup groups without counterparts before normalizing
             for g in v.groups:
                 if g.group > len(obj.vertex_groups) or g.group < 0:
                     print("bad vg id", v.index, g.group)
@@ -465,9 +467,6 @@ class OpSymmetrizeWeights(bpy.types.Operator):
                     return {"FINISHED"}
 
                 if abs(g1e.weight-g2w) >= 0.00001:
-                    #if not is_deform(g2name):
-                    #    print("Normalizing non-deform", v.index, v2.index, g2name)
-                    #print("Normalizing", v.index, v2.index, g1e.weight, g2w, wgt2, g2name)
                     if v2.select:
                         wgt = (g1e.weight+g2w)/2
                         g1e.weight = wgt
@@ -488,7 +487,7 @@ class OpSymmetrizeJoints(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "MESH" and context.mode == "OBJECT"
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         obj = context.object
         mesh = obj.data
         kd = utils.kdtree_from_verts(mesh.vertices)
@@ -537,7 +536,7 @@ class OpSymmetrizeOffsets(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.type == "ARMATURE"
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         if context.mode == "EDIT_ARMATURE":
             bones = context.object.data.edit_bones
         else:
@@ -630,7 +629,7 @@ def objects_by_type(typ):
 rigify_tweaks_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data/tweaks/rigify_default.yaml")
 
 def get_shape_keys(ui, _):
-    result = [("m_b", "(morpher basis)",""), ("m_f", "(morpher final)","")]
+    result = [("m_b", "(morpher basis)", ""), ("m_f", "(morpher final)", "")]
     if ui.char_obj:
         sk = ui.char_obj.data.shape_keys
         if sk and sk.key_blocks:

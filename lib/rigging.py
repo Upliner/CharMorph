@@ -102,7 +102,7 @@ def bb_align_roll(bone, vec, axis, inout):
 
     roll = math.asin(max(min(vec.dot(axis1), 1), -1))
     if vec.dot(axis2) < 0:
-        if roll<0:
+        if roll < 0:
             roll = -math.pi - roll
         else:
             roll = math.pi - roll
@@ -142,13 +142,13 @@ class Rigger:
             return
         self.opts.clear()
         if "bones" not in opts and "groups" not in opts and "default" not in opts:
-            self.opts.update(opts) # Legacy bones format
+            self.opts.update(opts)  # Legacy bones format
             return
         self.default_opts.update(opts.get("default", ""))
         self.opts.update(opts.get("bones", ""))
         for g in opts.get("groups", ""):
             g_opts = g.get("opts", {})
-            for b in g.get("bones",""):
+            for b in g.get("bones", ""):
                 self.opts[b] = g_opts.copy()
 
     def get_opt(self, bone, opt):
@@ -285,7 +285,7 @@ bbone_attributes = [
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
 ]
 
-ATTR_CHECKED=False
+ATTR_CHECKED = False
 
 def check_attributes(bone):
     # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0

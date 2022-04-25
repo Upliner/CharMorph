@@ -20,7 +20,7 @@
 
 import logging, traceback, numpy
 
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from .lib import fit_calc, rigging, utils
 from .morphing import manager as mm
@@ -144,7 +144,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
 
         if attach:
             attach_rig(obj, rig)
-    except:
+    except Exception:
         if conf and conf.weights_npz:
             clear_vg_names(set(utils.vg_names(conf.weights_npz)), new_vgs)
         bpy.data.armatures.remove(rig.data)
@@ -269,6 +269,7 @@ def apply_morphs(ui):
 
 def _add_modifiers(ui):
     obj = mm.morpher.core.obj
+
     def add_modifier(obj, typ, reposition):
         for mod in obj.modifiers:
             if mod.type == typ:
@@ -399,7 +400,7 @@ class OpUnrig(bpy.types.Operator):
         obj = mm.morpher.core.obj
         return obj and obj.find_armature()
 
-    def execute(self, _): # pylint: disable=no-self-use
+    def execute(self, _):  # pylint: disable=no-self-use
         c = mm.morpher.core
 
         old_rig = c.obj.find_armature()
@@ -456,26 +457,26 @@ class UIProps:
             ("RO", "Rig only", "Allow to smooth only artifacts caused by armature deform"),
             ("NC", "No change", "Apply corrective smooth to assets but don't change its parameters"),
         ],
-        )
+    )
     fin_csmooth: bpy.props.BoolProperty(
         name="Corrective smooth",
         description="Use corrective smooth to fix deform artifacts",
-        default = True,
+        default=True,
     )
     fin_cs_limit: bpy.props.BoolProperty(
         name="Limit smooth",
         description="Use rig-defined vertex group to limit corrective smooth where it causes undesirable effects",
-        default = True,
+        default=True,
     )
     fin_cs_lenweight: bpy.props.BoolProperty(
         name="Length weighted smooth",
         description="Use length weighted smooth instead of simple",
-        default = False,
+        default=False,
     )
     fin_cs_morphing: bpy.props.BoolProperty(
         name="Smooth morphing",
         description="Use corrective smooth to smooth morphing artifacts (requires shape keys to be enabled)",
-        default = False,
+        default=False,
     )
     fin_manual_sculpt: bpy.props.BoolProperty(
         name="Manual edit/sculpt",
@@ -505,7 +506,7 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         l = self.layout
         ui = context.window_manager.charmorph_ui
         ll = l
-        for prop in UIProps.__annotations__: # pylint: disable=no-member
+        for prop in UIProps.__annotations__:  # pylint: disable=no-member
             if prop.startswith("fin_cs_"):
                 if ll == l:
                     ll = l.column()

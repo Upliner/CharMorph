@@ -20,7 +20,7 @@
 
 import logging, numpy
 
-import bpy, mathutils # pylint: disable=import-error
+import bpy, mathutils  # pylint: disable=import-error
 
 from . import charlib, utils
 
@@ -37,12 +37,12 @@ def weights_convert(weights, cut=True):
     pos = 0
     idx = []
     wresult = []
-    thresh=0
+    thresh = 0
     for i, d in enumerate(weights):
         if cut:
             thresh = max(d.values())/32
         positions[i] = pos
-        for k,v in d.items():
+        for k, v in d.items():
             if v >= thresh:
                 idx.append(k)
                 wresult.append(v)
@@ -55,7 +55,7 @@ def weights_normalize(positions, wresult):
     cnt = numpy.empty((len(positions)), dtype=numpy.uint32)
     cnt[:-1] = positions[1:]
     cnt[:-1] -= positions[:-1]
-    cnt[-1]=len(wresult)-positions[-1]
+    cnt[-1] = len(wresult)-positions[-1]
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
 
 # calculate weights based on distance from asset vertices to character faces
@@ -83,7 +83,7 @@ def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
         if idx is None:
             continue
         face = faces[idx]
-        fdist = max(fdist ** 2, 1e-15) # using lower epsilon to avoid some artifacts
+        fdist = max(fdist ** 2, 1e-15)  # using lower epsilon to avoid some artifacts
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
             d = weights[vi]
             d[i] = reduce_func(d.get(i, 0), bw/fdist)
@@ -189,7 +189,7 @@ class FitCalculator:
         positions, idx, wresult = weights_convert(weights)
         weights_normalize(positions, wresult)
         t.time("finalize")
-        return positions, idx, wresult.reshape(-1,1)
+        return positions, idx, wresult.reshape(-1, 1)
 
     def get_weights(self, asset):
         return self._calc_weights_internal(self.get_asset_geom(asset).verts, asset)
@@ -215,7 +215,8 @@ class FitCalculator:
                 yield name, idx, weights[idx]
 
     def transfer_weights(self, asset, vg_data):
-        utils.import_vg(asset, self.transfer_weights_get(asset, vg_data),
+        utils.import_vg(
+            asset, self.transfer_weights_get(asset, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
 class MorpherFitCalculator(FitCalculator):
@@ -264,7 +265,7 @@ class RiggerFitCalculator(FitCalculator):
         verts = self.get_asset_geom(asset).verts
         # calculate weights based on nearest vertices
         weights = calc_weights_kd(cg.kd, verts, repsilon, 16)
-        self._calc_weights_kd_reverse(weights,  verts)
+        self._calc_weights_kd_reverse(weights, verts)
         calc_weights_reverse(weights, cg.verts, asset, lambda a, b: a+b)
         result = weights_convert(weights, False)
         t.time("rigger calc time")

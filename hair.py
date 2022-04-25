@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random
-import bpy, bmesh # pylint: disable=import-error
+import bpy, bmesh  # pylint: disable=import-error
 
 from .lib import charlib, utils
 from . import assets, morphing
@@ -156,7 +156,7 @@ def make_scalp(obj, name):
     if not vg:
         vg = obj.vertex_groups.get("scalp")
     if not vg:
-        #logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
+        logger.error("Scalp vertex group is not found! Using full object as scalp mesh")
         return
     vgi = vg.index
     bm = bmesh.new()
@@ -173,6 +173,7 @@ class OpRefitHair(bpy.types.Operator):
     bl_label = "Refit hair"
     bl_description = "Refit hair to match changed character geometry (discards manual combing, won't work if you added/removed particles)"
     bl_options = {"UNDO"}
+
     @classmethod
     def poll(cls, context):
         obj = context.object
@@ -207,6 +208,7 @@ class OpCreateHair(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         return context.mode == "OBJECT" and context.object and context.object.type == "MESH"
+
     def execute(self, context):
         ui = context.window_manager.charmorph_ui
         style = ui.hair_style
@@ -260,7 +262,7 @@ class OpCreateHair(bpy.types.Operator):
                 continue
             val = getattr(src_psys, attr)
             if val:
-                if not val in dst_obj.vertex_groups:
+                if val not in dst_obj.vertex_groups:
                     val = ""
                 setattr(dst_psys, attr, val)
         bpy.data.objects.remove(obj)
@@ -289,7 +291,7 @@ class OpCreateHair(bpy.types.Operator):
 
         if do_shrinkwrap and dst_obj is not char:
             mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
-            mod.wrap_method="TARGET_PROJECT"
+            mod.wrap_method = "TARGET_PROJECT"
             mod.target = char
             mod.wrap_mode = "OUTSIDE_SURFACE"
             mod.offset = char_conf.hair_shrinkwrap_offset
@@ -307,7 +309,7 @@ class OpRecolorHair(bpy.types.Operator):
     def poll(cls, context):
         return context.object and context.object.particle_systems.active
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         obj = context.object
         s = obj.particle_systems.active.settings
         slot = s.material
@@ -362,9 +364,9 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         if not char:
             char = charlib.empty_char
         l = self.layout
-        for prop in UIProps.__annotations__: # pylint: disable=no-member
+        for prop in UIProps.__annotations__:  # pylint: disable=no-member
             if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (
-                prop == "hair_scalp" and char.force_hair_scalp):
+                    prop == "hair_scalp" and char.force_hair_scalp):
                 continue
             l.prop(ui, prop)
         l.operator("charmorph.hair_create")

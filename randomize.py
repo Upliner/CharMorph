@@ -19,7 +19,7 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import re, random, math
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from .morphing import manager as mm
 
@@ -88,7 +88,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
 
         col = self.layout.column(align=True)
         col.label(text="What to randomize:")
-        for prop in WhatToProps.__annotations__: # pylint: disable=no-member
+        for prop in WhatToProps.__annotations__:  # pylint: disable=no-member
             col.prop(ui, prop)
 
         self.layout.separator()
@@ -122,14 +122,15 @@ class OpRandomize(bpy.types.Operator):
             saved_props.clear()
         return mm.morpher and not mm.morpher.error
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
         if ui.randomize_mode == "RL1":
             self.save_props()
         incl = re.compile(ui.randomize_incl)
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_func == "GAU":
-            random_func = lambda: random.gauss(0.5, ui.randomize_sigma)
+            def random_func():
+                random.gauss(0.5, ui.randomize_sigma)
         else:
             random_func = random.random
         m = mm.morpher

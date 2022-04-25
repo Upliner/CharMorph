@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import logging
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from .lib import charlib, morpher, fit_calc, utils
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class Manager:
     last_object = None
+
     def __init__(self):
         self.morpher = morpher.null_morpher
 
@@ -106,9 +107,9 @@ class Manager:
 
         if obj.type == "MESH":
             asset = None
-            if (obj.parent and obj.parent.type == "MESH" and
-                    "charmorph_fit_id" in obj.data and
-                    "charmorph_template" not in obj.data):
+            if (obj.parent and obj.parent.type == "MESH"
+                    and "charmorph_fit_id" in obj.data
+                    and "charmorph_template" not in obj.data):
                 asset = obj
                 obj = obj.parent
             if asset:
@@ -162,7 +163,7 @@ class OpBuildAltTopo(bpy.types.Operator):
     def poll(cls, _):
         return manager.morpher and manager.morpher.core.alt_topo_buildable and manager.morpher.core.has_morphs()
 
-    def execute(self, context): # pylint: disable=no-self-use
+    def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.charmorph_ui
         mcore = manager.morpher.core
         obj = mcore.obj

@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, logging
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
 from . import morphing
@@ -32,7 +32,7 @@ class OpReloadLib(bpy.types.Operator):
     bl_label = "Reload library"
     bl_description = "Reload character library"
 
-    def execute(self, _): # pylint: disable=no-self-use
+    def execute(self, _):  # pylint: disable=no-self-use
         charlib.load_library()
         morphing.manager.recreate_charmorphs()
         return {"FINISHED"}
@@ -92,7 +92,7 @@ class OpImport(bpy.types.Operator):
             orig_mesh = ui.alt_topo_obj.data
             mesh = orig_mesh.copy()
             mesh.name = char.name
-            #TODO: cleanup shape keys
+            # TODO: cleanup shape keys
             mesh["cm_alt_topo"] = orig_mesh
 
             obj = bpy.data.objects.new(char.name, mesh)
@@ -131,6 +131,7 @@ class OpImport(bpy.types.Operator):
             ui.fin_rig = char.default_armature
 
         asset_list = []
+
         def add_assets(lst):
             asset_list.extend((char.assets[name] for name in lst))
         add_assets(char.default_assets)
@@ -167,17 +168,17 @@ class UIProps:
             ("TS", "Shared textures only", "Use same texture for all characters"),
             ("MS", "Shared", "Use same materials for all characters")]
     )
-    #TODO: copy materials from custom object
+    # TODO: copy materials from custom object
     material_local: bpy.props.BoolProperty(
         name="Use local materials", default=True,
         description="Use local copies of materials for faster loading")
     tex_set: bpy.props.EnumProperty(
         name="Texture set",
         description="Select texture set for the character",
-        items=lambda ui, _:
-            [(name, "<Default>" if name == "/" else name, "")
-                for name in charlib.chars.get(ui.base_model, charlib.empty_char).texture_sets
-            ],
+        items=lambda ui, _: [
+            (name, "<Default>" if name == "/" else name, "")
+            for name in charlib.chars.get(ui.base_model, charlib.empty_char).texture_sets
+        ],
     )
     tex_downscale: bpy.props.EnumProperty(
         name="Downscale textures",
@@ -204,7 +205,7 @@ class UIProps:
         items=[
             ("<Base>", "<Base>", "Use base character topology"),
             ("<Custom>", "<Custom>", "Use custom local object as alt topo")]
-        )
+    )
     alt_topo_obj: bpy.props.PointerProperty(
         name="Custom alt topo",
         type=bpy.types.Object,
@@ -239,7 +240,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
             r = l.row()
             c = r.column()
             c.alignment = "RIGHT"
-            c.ui_units_x=2.5
+            c.ui_units_x = 2.5
             c.label(text="Author:")
             c.label(text="License:")
             c = r.column()

@@ -25,8 +25,8 @@
 
 import re, math, logging
 
-import bpy #pylint: disable=import-error
-from rna_prop_ui import rna_idprop_ui_create # pylint: disable=import-error, no-name-in-module
+import bpy  # pylint: disable=import-error
+from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module
 
 from . import charlib, utils
 
@@ -55,12 +55,13 @@ class SJCalc:
         if self.rig_name:
             joints = self._rig_joints(self.rig_name)
             if joints:
-                self.influence = {self.rig_name:
-                    {k:v for k, v in ((k, self._get_influence(v)) for k, v in joints.items()) if v is not None}
+                self.influence = {
+                    self.rig_name:
+                    {k: v for k, v in ((k, self._get_influence(v)) for k, v in joints.items()) if v is not None}
                 }
         else:
             self.influence = {
-                name: {k: self._calc_influence(v) for k,v in rig.sliding_joints.items()}
+                name: {k: self._calc_influence(v) for k, v in rig.sliding_joints.items()}
                 for name, rig in self.char.armature.items() if rig.sliding_joints
             }
 
@@ -121,6 +122,7 @@ class SJCalc:
 
     def _prop(self, rig, influence, name):
         joint = self._rig_joints(rig).get(name)
+
         def setter(_, value):
             influence[name] = value
             if self.rig:
@@ -133,7 +135,7 @@ class SJCalc:
 
         return bpy.props.FloatProperty(
             name="_".join((rig, name)),
-            min=0, soft_max = 0.2, max=1.0,
+            min=0, soft_max=0.2, max=1.0,
             precision=3,
             get=lambda _: influence.get(name, 0),
             set=setter

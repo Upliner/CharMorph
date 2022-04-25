@@ -19,7 +19,7 @@
 # Copyright (C) 2021 Michael Vigovsky
 
 import math
-import bpy, mathutils # pylint: disable=import-error
+import bpy, mathutils  # pylint: disable=import-error
 
 from ..lib import utils
 
@@ -43,7 +43,7 @@ def dist_edge(co, v1, v2):
 
 def barycentric_weight_calc(veclist, co):
     result = mathutils.interpolate.poly_3d_calc(veclist, co)
-    if sum(result)<0.5:
+    if sum(result) < 0.5:
         return [1] * len(result)
     return result
 
@@ -60,7 +60,7 @@ def vg_full_to_avg(group):
     return vec / total
 
 def vg_full_to_dict(group):
-    return {tup[1]:tup[2] for tup in group}
+    return {tup[1]: tup[2] for tup in group}
 
 def vg_mult(vg, coeff):
     for idx, weight in vg.items():
@@ -84,7 +84,7 @@ def vg_mix2(a, b, factor):
     return vg_add(a, b, factor / sum(b.values()))
 
 def vg_mixmany(groups):
-    groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum>=1e-30]
+    groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum >= 1e-30]
     if len(groups) == 0:
         return "No groups were found by the calculation method"
     result = groups[0][0]
@@ -96,7 +96,7 @@ def vg_mixmany(groups):
 
 def get_offs(bone, attr):
     offs = bone.get("charmorph_offs_" + attr)
-    if hasattr(offs, "__len__") and len(offs)==3:
+    if hasattr(offs, "__len__") and len(offs) == 3:
         return mathutils.Vector(offs)
     return mathutils.Vector()
 
@@ -110,7 +110,7 @@ def calc_lst(co, lst):
         return "No vertices were found by the calc method"
     return dict(zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co)))
 
-#(lambda group, coords: list(zip(group, barycentric_weight_calc(coords, co))))(*tuple(zip(*((vg_full_to_dict(g), co) for g, co in ((g, vg_full_to_avg(g)) for g in groups) if co is not None))))
+# (lambda group, coords: list(zip(group, barycentric_weight_calc(coords, co))))(*tuple(zip(*((vg_full_to_dict(g), co) for g, co in ((g, vg_full_to_avg(g)) for g in groups) if co is not None))))
 def calc_group_weights(groups, co):
     groups2 = []
     coords = []
@@ -213,7 +213,7 @@ class VGCalculator:
 
         weights = [w*(1-offs) for w in weights_front]+[w*offs for w in weights_back]
 
-        return {item[1]:weight for item, weight in zip(lst, weights)}
+        return {item[1]: weight for item, weight in zip(lst, weights)}
 
     def calc_cu(self, co):
         lst = self.vg_full.get(self.cur_name)
@@ -296,7 +296,7 @@ class VGCalculator:
                 if d < (co2-co1).length/2:
                     lns.append((verts[i][1], verts[j][1], d, p))
 
-        lns.sort(key=lambda tup:tup[2])
+        lns.sort(key=lambda tup: tup[2])
         lns = lns[:self.ui.vg_xl_n]
         if len(lns) == 0:
             return "No cross lines found"
@@ -346,15 +346,15 @@ class VGCalculator:
         children = self.cur_bone.children
         child = children[0] if len(children) == 1 else None
 
-        if ((self.cur_attr=="head" and (self.cur_bone.parent is None or self.ui.vg_bone == "C")) or
-            (self.cur_attr=="tail" and (child is None or self.ui.vg_bone == "P"))):
+        if ((self.cur_attr == "head" and (self.cur_bone.parent is None or self.ui.vg_bone == "C")) or
+            (self.cur_attr == "tail" and (child is None or self.ui.vg_bone == "P"))):
             cast_bone(self.cur_bone)
         elif self.ui.vg_bone == "P":
             cast_bone(self.cur_bone.parent)
         elif self.ui.vg_bone == "C":
             cast_bone(child)
         else:
-            if self.cur_attr=="head":
+            if self.cur_attr == "head":
                 bone2 = self.cur_bone.parent
             else:
                 bone2 = child
@@ -455,8 +455,8 @@ class VGCalculator:
 
     def run(self, joints):
         if self.ui.vg_widgets:
-            joints = {name:tup for name, tup in joints.items() if tup[2] == "head"}
-            offsets = {k:v[1].tail-v[1].head for k,v in joints.items()}
+            joints = {name: tup for name, tup in joints.items() if tup[2] == "head"}
+            offsets = {k: v[1].tail-v[1].head for k, v in joints.items()}
 
         char = self.char
         verts = char.data.vertices
@@ -702,7 +702,7 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
         if ui.vg_calc == "RG":
             l.prop(ui, "vg_obj")
 
-        if ui.vg_calc in ("NP","NJ"):
+        if ui.vg_calc in ("NP", "NJ"):
             l.prop(ui, "vg_n")
         elif ui.vg_calc == "NR":
             l.prop(ui, "vg_radius")

@@ -19,7 +19,7 @@
 # Copyright (C) 2021-2022 Michael Vigovsky
 
 import os, re, json, numpy
-import bpy, bpy_extras, bmesh, idprop # pylint: disable=import-error
+import bpy, bpy_extras, bmesh, idprop  # pylint: disable=import-error
 
 from ..lib import morphs, utils
 
@@ -45,7 +45,7 @@ def np_particles_data(obj, particles, precision=numpy.float32):
         i += len(t2)
 
     utils.np_matrix_transform(data, obj.matrix_world.inverted())
-    return {"cnt":cnt, "data":data}
+    return {"cnt": cnt, "data": data}
 
 def export_hair(obj, psys_idx, filepath, precision):
     pss = obj.particle_systems
@@ -160,7 +160,8 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         names, idx, weights = utils.vg_weights_to_arrays(context.object, r.search)
         cnt = [len(i) for i in idx]
 
-        numpy.savez_compressed(self.filepath,
+        numpy.savez_compressed(
+            self.filepath,
             names=b'\0'.join(name.encode("utf-8") for name in names),
             cnt=numpy.array(cnt, dtype=numpy.uint16 if max(cnt) > 255 else numpy.uint8),
             idx=flatten(idx, numpy.uint16),
@@ -335,14 +336,14 @@ prop_cutoff = bpy.props.FloatProperty(
     name="Cutoff",
     description="Ignore vertices morphed by less than this value",
     default=1e-4,
-    precision = 6,
+    precision=6,
 )
 
 class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.morph_export"
     bl_label = "Export single morph"
     bl_description = "Export active shapekey as L2/L3 morph"
-    check_extension = None # you can enter .npy or .npz in filename to force format or omit extension for auto detection
+    check_extension = None  # you can enter .npy or .npz in filename to force format or omit extension for auto detection
     filename_ext = ""
 
     filter_glob: bpy.props.StringProperty(default="*.npy;*.npz", options={'HIDDEN'})
@@ -370,7 +371,8 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             bm = bmesh.new()
             try:
                 bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
-                export_morph([v.co for v in bm.verts]-utils.get_basis_numpy(context.object),
+                export_morph(
+                    [v.co for v in bm.verts]-utils.get_basis_numpy(context.object),
                     self.filepath, self.cutoff, float_dtype(self.precision))
             finally:
                 bm.free()
@@ -414,7 +416,7 @@ class OpMorphsExport(DirExport):
                 continue
             name = r.sub(self.re_replace, sk.name)
             keys[name] = sk
-            for ext in (".npy",".npz"):
+            for ext in (".npy", ".npz"):
                 if os.path.exists(os.path.join(self.directory, name + ext)):
                     self.report({"ERROR"}, name + f"{name}{ext} already exists!")
                     return {"CANCELLED"}
@@ -480,7 +482,7 @@ class OpMorphsImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.object.type=="MESH"
+        return context.object and context.object.type == "MESH"
 
     def execute(self, context):
         obj = context.object
@@ -493,7 +495,7 @@ class OpMorphsImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         basis = basis.reshape(-1, 3)
 
         for file in self.files:
-            sk = obj.shape_key_add(name=self.prefix + os.path.splitext(os.path.basename(file.name))[0],from_mix=False)
+            sk = obj.shape_key_add(name=self.prefix + os.path.splitext(os.path.basename(file.name))[0], from_mix=False)
             sk.data.foreach_set("co", morphs.load(os.path.join(self.directory, file.name)).apply(basis.copy()).reshape(-1))
 
         return {"FINISHED"}
@@ -555,7 +557,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
 
 classes = [
     OpFaceExport, OpSubsetExport, OpBoneExport,
-    OpHairExport,OpAllHairExport, OpHairImport,
+    OpHairExport, OpAllHairExport, OpHairImport,
     OpVgExport, OpVgImport,
     OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpMorphsImport,
     CHARMORPH_PT_FileIO

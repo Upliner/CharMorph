@@ -294,7 +294,7 @@ class NumpyMorpher(MorpherCore):
             self.storage = morphs.MorphStorage(self.char)
 
     def has_morphs(self):
-        return self.obj.data.get("cm_morpher") == "ext" # HACK: used just to prevent morphing when morphing data was removed
+        return self.obj.data.get("cm_morpher") == "ext"  # HACK: used just to prevent morphing when morphing data was removed
 
     def _update_L1(self):
         if self.L1:
@@ -433,7 +433,7 @@ class AltTopoMorpher(NumpyMorpher):
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
 
-def get(obj, storage = None):
+def get(obj, storage=None):
     if obj.data.get("cm_alt_topo"):
         return AltTopoMorpher(obj, storage)
     if obj.data.get("cm_morpher") == "ext":

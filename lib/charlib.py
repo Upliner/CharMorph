@@ -20,7 +20,7 @@
 
 import os, json, logging, traceback, numpy
 
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from . import morphs, utils
 
@@ -226,7 +226,7 @@ class Character(DataDir):
         return result
 
     def _parse_armature_dict(self, data):
-        return {k: Armature(self, k, v) for k,v in data.items()}
+        return {k: Armature(self, k, v) for k, v in data.items()}
 
 # allows to mark some properties of the class as lazy yaml
 # if property value is dict or some other value, leave it as is
@@ -275,14 +275,14 @@ class Armature:
         self.name = name
 
         if "bones" not in self.__dict__:
-            self.bones = char.bones # Legacy
+            self.bones = char.bones  # Legacy
 
     @utils.lazyproperty
     def weights_npz(self):
         return self.char.get_np(self.weights)
 
 class Asset(DataDir):
-    def __init__(self, name, file, path = None):
+    def __init__(self, name, file, path=None):
         super().__init__(path)
         self.name = name
         self.blend_file = file
@@ -390,7 +390,7 @@ def load_library():
 
     t.time("Library load")
 
-def get_basis(data, mcore = None, use_char=True):
+def get_basis(data, mcore=None, use_char=True):
     if isinstance(data, bpy.types.Object):
         data = data.data
     k = data.shape_keys

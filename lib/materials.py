@@ -20,7 +20,7 @@
 
 import os, logging, collections
 
-import bpy # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from . import charlib, utils
 
@@ -67,7 +67,7 @@ def load_materials(obj, char):
             if ui.material_mode != "MS":
                 mtl = copy_material(mtl)
             obj.data.materials[i] = mtl
-        elif not "_censor" in mtl_name or not adult_mode:
+        elif "_censor" not in mtl_name or not adult_mode:
             materials_to_load.add(mtl_name)
             load_ids.append(i)
 
@@ -87,7 +87,7 @@ def load_materials(obj, char):
                 obj.data.materials.pop(index=i)
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(path, settings:dict):
+def load_texdir(path, settings: dict):
     if not os.path.exists(path):
         return {}
     settings = settings.copy()
@@ -135,7 +135,7 @@ def tex_try_names(char, tex_set, names):
 def apply_tex_settings(img, settings):
     if not settings:
         return
-    img.colorspace_settings.name = settings # Currently only colorspace settings are supported
+    img.colorspace_settings.name = settings  # Currently only colorspace settings are supported
 
 def texture_max_res(ui):
     val = ui.tex_downscale
@@ -206,6 +206,7 @@ def get_props(obj):
     colors = []
     values = []
     groups = set()
+
     def scan_nodes(nodes):
         for node in nodes:
             if node.type == "GROUP" and node.name == "charmorph_settings" and node.node_tree.name not in groups:
@@ -217,6 +218,7 @@ def get_props(obj):
                 colors.append((node.name, node.outputs[0]))
             elif node.type == "VALUE":
                 values.append((node.name, node.outputs[0]))
+
     for mtl in obj.data.materials:
         if not mtl or not mtl.node_tree:
             continue
@@ -225,6 +227,7 @@ def get_props(obj):
 
 class Materials:
     props = {}
+
     def __init__(self, obj):
         if obj:
             self.props = get_props(obj)
