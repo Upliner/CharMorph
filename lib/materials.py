@@ -26,9 +26,11 @@ from . import charlib, utils
 
 logger = logging.getLogger(__name__)
 
+
 def init_materials(obj, char):
     load_materials(obj, char)
     load_textures(obj, char)
+
 
 def load_materials(obj, char):
     mtllist = char.materials
@@ -39,6 +41,7 @@ def load_materials(obj, char):
         return
 
     settings_tree = None
+
     def copy_material(mtl):
         mtl = mtl.copy()
         if not mtl.node_tree:
@@ -82,12 +85,13 @@ def load_materials(obj, char):
             obj.data.materials[i] = material_dict.get(mtllist[i])
 
     if adult_mode:
-        for i in range(len(mtllist)-1, 0, -1):
+        for i in range(len(mtllist) - 1, 0, -1):
             if "_censor" in mtllist[i]:
                 obj.data.materials.pop(index=i)
 
+
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(path, settings: dict):
+def load_texdir(path, settings: dict) -> dict[str, tuple[str, str]]:
     if not os.path.exists(path):
         return {}
     settings = settings.copy()
@@ -106,8 +110,9 @@ def load_texdir(path, settings: dict):
 
     return result, settings
 
+
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
-def load_texmap(char, tex_set):
+def load_texmap(char, tex_set) -> dict[str, tuple[str, str, str]]:
     result = {}
     char_texes, settings = load_texdir(charlib.char_file(char, "textures"), {})
 
@@ -123,6 +128,7 @@ def load_texmap(char, tex_set):
             result[k] = (v[0], f"charmorph-{char}-{tex_set}-{k}", v[1])
     return result
 
+
 def tex_try_names(char, tex_set, names):
     for name in names:
         if name.startswith("tex_"):
@@ -132,16 +138,19 @@ def tex_try_names(char, tex_set, names):
         yield f"charmorph-{char}-{name}"
         yield "charmorph--" + name
 
+
 def apply_tex_settings(img, settings):
     if not settings:
         return
     img.colorspace_settings.name = settings  # Currently only colorspace settings are supported
+
 
 def texture_max_res(ui):
     val = ui.tex_downscale
     if val == "UL":
         return 1024 * 1024
     return 1024 * int(val[0])
+
 
 def load_textures(obj, char):
     if not obj.data.materials:
@@ -200,6 +209,7 @@ def load_textures(obj, char):
             continue
         scan_nodes(mtl.node_tree.nodes.values())
 
+
 def get_props(obj):
     if not obj.data.materials:
         return None
@@ -224,6 +234,7 @@ def get_props(obj):
             continue
         scan_nodes(mtl.node_tree.nodes.values())
     return dict(colors + values)
+
 
 class Materials:
     props: dict = {}

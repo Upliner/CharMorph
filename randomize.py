@@ -25,6 +25,7 @@ from .morphing import manager as mm
 
 saved_props: dict[str, float] = {}
 
+
 class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(
         name="Morphs", default=True,
@@ -36,6 +37,7 @@ class WhatToProps:
         name="Incl. regex")
     randomize_excl: bpy.props.StringProperty(
         name="Excl. regex")
+
 
 class UIProps(WhatToProps):
     randomize_mode: bpy.props.EnumProperty(
@@ -66,6 +68,7 @@ class UIProps(WhatToProps):
     )
     randomize_strength: bpy.props.FloatProperty(
         name="Strength", min=0, soft_max=1, default=0.2, precision=2, description="Randomization strength", subtype="FACTOR")
+
 
 class CHARMORPH_PT_Randomize(bpy.types.Panel):
     bl_label = "Randomize"
@@ -99,6 +102,7 @@ class CHARMORPH_PT_Randomize(bpy.types.Panel):
         else:
             self.layout.prop(ui, "randomize_strength")
         self.layout.operator('charmorph.randomize')
+
 
 class OpRandomize(bpy.types.Operator):
     bl_idname = "charmorph.randomize"
@@ -144,7 +148,7 @@ class OpRandomize(bpy.types.Operator):
                 if ui.randomize_mode == "OVR":
                     m.reset_meta()
                 if ui.randomize_mode == "SEG":
-                    val = (math.floor((m.core.prop_get(name)+1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
+                    val = (math.floor((m.core.prop_get(name) + 1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
                 else:
                     val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
                 if ui.randomize_mode == "RL1":
@@ -160,5 +164,6 @@ class OpRandomize(bpy.types.Operator):
         if ui.randomize_mode == "RL1":
             type(self).saved_version = m.version
         return {"FINISHED"}
+
 
 classes = [OpRandomize, CHARMORPH_PT_Randomize]

@@ -26,10 +26,12 @@ from . import assets, morphing
 
 logger = logging.getLogger(__name__)
 
+
 def create_hair_material(name, hair_color):
     mat = bpy.data.materials.new(name)
     apply_hair_color(mat, hair_color)
     return mat
+
 
 def apply_hair_color(mat, hair_color):
     if not mat:
@@ -59,13 +61,15 @@ def apply_hair_color(mat, hair_color):
     else:
         mat.diffuse_color = (0.01, 0.01, 0.01, 1)
 
+
 def get_material_slot(obj, name, hair_color):
     mats = obj.data.materials
     for i, mtl in enumerate(mats):
-        if mtl.name == name or mtl.name.startswith(name+"."):
+        if mtl.name == name or mtl.name.startswith(name + "."):
             return i + 1
     mats.append(create_hair_material(name, hair_color))
     return len(mats)
+
 
 def attach_scalp(char, obj):
     obj.data["charmorph_fit_mask"] = "false"
@@ -81,6 +85,7 @@ def attach_scalp(char, obj):
         for c in collections:
             c.objects.link(obj)
     assets.get_fitter(char).fit_new((obj,))
+
 
 def create_scalp(name, char, vgi):
     vmap = {}
@@ -107,6 +112,7 @@ def create_scalp(name, char, vgi):
     obj = bpy.data.objects.new(name, m)
     attach_scalp(char, obj)
     return obj
+
 
 def create_default_hair(context, obj, char, scalp):
     l1 = ""
@@ -141,6 +147,7 @@ def create_default_hair(context, obj, char, scalp):
         hair.vertex_group_length = vg
     return s
 
+
 def fit_all_hair(char):
     t = utils.Timer()
     fitter = assets.get_fitter(char)
@@ -150,6 +157,7 @@ def fit_all_hair(char):
         has_fit |= fitter.fit_obj_hair(asset)
     t.time("hair_fit")
     return has_fit
+
 
 def make_scalp(obj, name):
     vg = obj.vertex_groups.get("scalp_" + name)
@@ -167,6 +175,7 @@ def make_scalp(obj, name):
         bm.to_mesh(obj.data)
     finally:
         bm.free()
+
 
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
@@ -198,6 +207,7 @@ class OpRefitHair(bpy.types.Operator):
             self.report({"ERROR"}, "No hair fitting data found")
             return {"CANCELLED"}
         return {"FINISHED"}
+
 
 class OpCreateHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_create"
@@ -256,7 +266,7 @@ class OpCreateHair(bpy.types.Operator):
         override["selected_editable_objects"] = [dst_obj]
         override["particle_system"] = src_psys
         bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
-        dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems)-1]
+        dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems) - 1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
                 continue
@@ -287,7 +297,7 @@ class OpCreateHair(bpy.types.Operator):
         for m in restore_modifiers:
             m.show_viewport = True
 
-        fitter.fit_hair(dst_obj, len(dst_obj.particle_systems)-1)
+        fitter.fit_hair(dst_obj, len(dst_obj.particle_systems) - 1)
 
         if do_shrinkwrap and dst_obj is not char:
             mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
@@ -298,6 +308,7 @@ class OpCreateHair(bpy.types.Operator):
             utils.reposition_modifier(dst_obj, 0)
 
         return {"FINISHED"}
+
 
 class OpRecolorHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_recolor"
@@ -314,13 +325,15 @@ class OpRecolorHair(bpy.types.Operator):
         s = obj.particle_systems.active.settings
         slot = s.material
         if 0 <= slot <= len(obj.data.materials):
-            apply_hair_color(obj.data.materials[slot-1], context.window_manager.charmorph_ui.hair_color)
+            apply_hair_color(obj.data.materials[slot - 1], context.window_manager.charmorph_ui.hair_color)
         else:
             s.material = get_material_slot(context, obj, "hair")
         return {"FINISHED"}
 
+
 def get_hair_colors(_ui, _context):
     return [(k, k, "") for k in charlib.hair_colors.keys()]
+
 
 def get_hairstyles(_, context):
     char = charlib.obj_char(context.object)
@@ -329,6 +342,7 @@ def get_hairstyles(_, context):
         return result
     result.extend([(name, name, "") for name in char.hairstyles])
     return result
+
 
 class UIProps:
     hair_scalp: bpy.props.BoolProperty(
@@ -349,6 +363,7 @@ class UIProps:
         name="Hairstyle",
         description="Hairstyle",
         items=get_hairstyles)
+
 
 class CHARMORPH_PT_Hair(bpy.types.Panel):
     bl_label = "Hair"
@@ -372,5 +387,6 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         l.operator("charmorph.hair_create")
         l.operator("charmorph.hair_refit")
         l.operator("charmorph.hair_recolor")
+
 
 classes = [OpCreateHair, OpRefitHair, OpRecolorHair, CHARMORPH_PT_Hair]

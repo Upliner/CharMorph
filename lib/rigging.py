@@ -27,31 +27,41 @@ from . import sliding_joints, utils
 
 logger = logging.getLogger(__name__)
 
+
 class RigException(Exception):
     pass
+
 
 def get_joints(bones, is_all):
     joints = {}
     for bone in bones:
         if is_all:
             if not bone.use_connect:
-                joints["joint_"+bone.name+"_head"] = (bone.head, bone, "head")
+                joints[f"joint_{bone.name}_head"] = (bone.head, bone, "head")
         elif bone.select_head:
             if bone.use_connect:
                 b = bone.parent
-                joints["joint_"+b.name+"_tail"] = (b.tail, b, "tail")
+                joints[f"joint_{b.name}_tail"] = (b.tail, b, "tail")
             else:
-                joints["joint_"+bone.name+"_head"] = (bone.head, bone, "head")
+                joints[f"joint_{bone.name}_head"] = (bone.head, bone, "head")
         if is_all or bone.select_tail:
-            joints["joint_"+bone.name+"_tail"] = (bone.tail, bone, "tail")
+            joints[f"joint_{bone.name}_tail"] = (bone.tail, bone, "tail")
     return joints
 
+
+####
 def all_joints(context):
     return get_joints(context.object.data.edit_bones, True)
+
+
 def layer_joints(context, layer):
     return get_joints([bone for bone in context.object.data.edit_bones if bone.layers[layer]], True)
+
+
 def selected_joints(context):
     return get_joints(context.object.data.edit_bones, False)
+####
+
 
 def bb_prev_roll(bone):
     if bone.use_endroll_as_inroll:
@@ -60,10 +70,12 @@ def bb_prev_roll(bone):
             return p.bbone_rollout
     return 0
 
+
 def bb_rollin_axis(bone, base_axis):
     axis = getattr(bone, f"{base_axis}_axis")
     axis.rotate(Quaternion(bone.y_axis, bone.bbone_rollin + bb_prev_roll(bone)))
     return axis
+
 
 def bb_rollout_axis(bone, base_axis):
     p = bone.bbone_custom_handle_end
@@ -75,6 +87,7 @@ def bb_rollout_axis(bone, base_axis):
         y_axis = bone.y_axis
     axis.rotate(Quaternion(y_axis, bone.bbone_rollout))
     return axis
+
 
 def bb_align_roll(bone, vec, axis, inout):
     if not vec:
@@ -112,6 +125,7 @@ def bb_align_roll(bone, vec, axis, inout):
 
     setattr(bone, "bbone_roll" + inout, roll)
 
+
 class Rigger:
     def __init__(self, context):
         self.context = context
@@ -135,7 +149,7 @@ class Rigger:
             self.jdata[name] = item
             for i, weight in zip(idx, weights):
                 item[0] += weight
-                item[1] += Vector(verts[i])*weight
+                item[1] += Vector(verts[i]) * weight
 
     def set_opts(self, opts):
         if not opts:
@@ -194,7 +208,7 @@ class Rigger:
         item = self.jdata.get(f"joint_{bone.name}_{attr}")
         if not item or item[0] < 1e-10:
             return None
-        pos = item[1]/item[0]
+        pos = item[1] / item[0]
         offs = self.get_opt(bone, "offs_" + attr)
         if offs and len(offs) == 3:
             pos += Vector(tuple(offs))
@@ -239,7 +253,7 @@ class Rigger:
             vector, axis = self.get_roll(bone, "")
             if vector:
                 if axis == "x":
-                    vector.rotate(Quaternion(bone.y_axis, -math.pi/2))
+                    vector.rotate(Quaternion(bone.y_axis, -math.pi / 2))
                 bone.align_roll(vector)
 
         # Calculate bbone order. Parents need to be processed before childen
@@ -278,6 +292,7 @@ class Rigger:
 
         return self.result
 
+
 bbone_attributes = [
     'bbone_segments', 'use_endroll_as_inroll',
     'bbone_handle_type_start', 'bbone_handle_type_end',
@@ -286,6 +301,7 @@ bbone_attributes = [
 ]
 
 ATTR_CHECKED = False
+
 
 def check_attributes(bone):
     # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
@@ -297,6 +313,7 @@ def check_attributes(bone):
             bbone_attributes[i] = attr[:-1] + "z"
 
     ATTR_CHECKED = True
+
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
@@ -311,10 +328,10 @@ def rigify_finalize(rig, char):
                 handles = [bone.bbone_custom_handle_start, bone.bbone_custom_handle_end]
                 for i, b in enumerate(handles):
                     if b and b.name.startswith("ORG-"):
-                        handles[i] = rig.data.bones.get("DEF-"+b.name[4:], b)
+                        handles[i] = rig.data.bones.get("DEF-" + b.name[4:], b)
 
                 if any(handles):
-                    def_bone = rig.data.bones.get("DEF-"+bone.name[4:], bone)
+                    def_bone = rig.data.bones.get("DEF-" + bone.name[4:], bone)
                     if def_bone is not bone and (def_bone.bbone_segments == 1 or def_bone.bbone_handle_type_start == "AUTO"):
                         for attr in bbone_attributes:
                             setattr(def_bone, attr, getattr(bone, attr))
@@ -324,6 +341,7 @@ def rigify_finalize(rig, char):
                         def_bone.bbone_custom_handle_end = handles[1]
 
     # Set ease in/out for pose bones or not?
+
 
 def unpack_tweaks(path, tweaks, stages=None, depth=0):
     if depth > 100:
@@ -344,7 +362,7 @@ def unpack_tweaks(path, tweaks, stages=None, depth=0):
         if isinstance(tweak, str):
             newpath = os.path.join(path, tweak)
             with open(newpath, "r", encoding="utf-8") as f:
-                unpack_tweaks(os.path.dirname(newpath), utils.load_yaml(f), stages, depth+1)
+                unpack_tweaks(os.path.dirname(newpath), utils.load_yaml(f), stages, depth + 1)
         elif tweak.get("stage") == "pre":
             stages[0].append(tweak)
         elif tweak.get("tweak") == "rigify_sliding_joint":
@@ -356,11 +374,13 @@ def unpack_tweaks(path, tweaks, stages=None, depth=0):
             stages[2].append(tweak)
     return stages
 
+
 def find_constraint(bone, rig, typ, target):
     for c in bone.constraints:
         if c.type == typ and c.target == rig and (target is None or c.subtarget == target):
             return c
     return None
+
 
 def parse_layers(val):
     if isinstance(val, list) and len(val) == 32 and isinstance(val[0], bool):
@@ -372,6 +392,7 @@ def parse_layers(val):
         result[item] = True
     return result
 
+
 def calc_vector(vec, bone):
     if not vec or len(vec) != 3:
         return vec
@@ -381,6 +402,7 @@ def calc_vector(vec, bone):
         elif item == "-len":
             vec[i] = -bone.length
     return vec
+
 
 def extrude_if_necessary(edit_bones, bone, params):
     if not params:
@@ -399,6 +421,7 @@ def extrude_if_necessary(edit_bones, bone, params):
     new_bone.use_connect = True
     return new_bone
 
+
 def process_bone_actions(edit_bones, bone, tweak):
     if tweak.get("action") == "copy":
         new_bone = edit_bones.new(bone.name)
@@ -407,6 +430,7 @@ def process_bone_actions(edit_bones, bone, tweak):
         return new_bone
 
     return extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
+
 
 def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
@@ -436,6 +460,7 @@ def apply_editmode_tweak(context, tweak):
                 setattr(bone, attr, parse_layers(val))
             else:
                 setattr(bone, attr, val)
+
 
 def apply_tweak(rig, tweak):
     if tweak.get("tweak") == "rigify_sliding_joint":

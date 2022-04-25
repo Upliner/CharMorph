@@ -40,6 +40,7 @@ bl_info = {
 
 owner = object()
 
+
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CharMorph"
     bl_label = "CharMorph " + ".".join(str(item) for item in bl_info["version"])
@@ -50,6 +51,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
 
     def draw(self, context):
         pass
+
 
 class CharMorphPrefs(bpy.types.AddonPreferences):
     bl_idname = "CharMorph"
@@ -62,14 +64,17 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
     def draw(self, _):
         self.layout.prop(self, "adult_mode")
 
+
 @bpy.app.handlers.persistent
 def load_handler(_):
     morphing.manager.del_charmorphs()
     morphing.manager.on_select()
 
+
 @bpy.app.handlers.persistent
 def select_handler(_):
     morphing.manager.on_select()
+
 
 classes: list[type] = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
@@ -81,10 +86,10 @@ for module in [library, morphing, randomize, file_io, assets, hair, finalize, ri
         uiprops.append(module.UIProps)
 
 CharMorphUIProps = type("CharMorphUIProps", tuple(uiprops), {})
-
 classes[0] = CharMorphUIProps
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
+
 
 def register():
     logger.debug("Charmorph register")
@@ -105,6 +110,7 @@ def register():
 
     cmedit.register()
 
+
 def unregister():
     logger.debug("Charmorph unregister")
     cmedit.unregister()
@@ -122,6 +128,7 @@ def unregister():
     morphing.manager.del_charmorphs()
 
     class_unregister()
+
 
 if __name__ == "__main__":
     register()

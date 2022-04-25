@@ -35,10 +35,13 @@ flip_x_z = {
     "L": Matrix(((1, 0, 0, 0), (0, 0, 0, 1), (0, 0,-1, 0), (0,-1, 0, 0))),
     "R": Matrix(((1, 0, 0, 0), (0, 0, 0,-1), (0, 0, 1, 0), (0, 1, 0, 0))),
 }
+
+
 def qrotation(mat):
     def rot(v):
         return (v[3], v[0], v[1], v[2])
     return Matrix((rot(mat[3]), rot(mat[0]), rot(mat[1]), rot(mat[2])))
+
 
 shoulder_angle = 1.3960005939006805
 shoulder_rot = {
@@ -47,7 +50,7 @@ shoulder_rot = {
 }
 
 bone_map = {
-    "root":   ("root", m2),
+    "root": ("root", m2),
     "pelvis": ("torso", qrotation(Matrix.Rotation(1.4466689567595232, 4, (1, 0, 0)))),
     "spine01": ("spine_fk.001", m1),
     "spine02": ("spine_fk.002", m1),
@@ -77,6 +80,7 @@ for side in ["L", "R"]:
 ik2fk_map = {}
 
 re_rigid = re.compile(r'^rig_id = "([0-9a-z]*)"$', re.MULTILINE)
+
 
 def scan_rigify_modules():
     for t in bpy.data.texts:
@@ -108,6 +112,7 @@ def scan_rigify_modules():
                 limbs.append(props)
         if len(limbs) > 0:
             ik2fk_map[rig_id] = limbs
+
 
 def apply_pose(ui, context):
     if not ui.pose or ui.pose == " ":
@@ -204,6 +209,7 @@ def apply_pose(ui, context):
             for k, v in ik_fk.items():
                 rig.pose.bones[k]["IK_FK"] = v
 
+
 def poll(context):
     if not (context.mode in ["OBJECT", "POSE"] and context.active_object
             and context.active_object.type == "ARMATURE"
@@ -211,6 +217,7 @@ def poll(context):
         return False
     char = charlib.obj_char(context.active_object)
     return len(char.poses) > 0
+
 
 class OpApplyPose(bpy.types.Operator):
     bl_idname = "charmorph.apply_pose"
@@ -226,8 +233,10 @@ class OpApplyPose(bpy.types.Operator):
         apply_pose(context.window_manager.charmorph_ui, context)
         return {"FINISHED"}
 
+
 def get_poses(_, context):
     return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(charlib.obj_char(context.object).poses.keys())]
+
 
 class UIProps:
     pose_ik2fk: bpy.props.BoolProperty(
@@ -238,6 +247,7 @@ class UIProps:
         name="Pose",
         items=get_poses,
         description="Select pose from library")
+
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):
     bl_label = "Pose"
@@ -255,5 +265,6 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
         for prop in UIProps.__annotations__:  # pylint: disable=no-member
             l.prop(context.window_manager.charmorph_ui, prop)
         l.operator("charmorph.apply_pose")
+
 
 classes = [CHARMORPH_PT_Pose, OpApplyPose]

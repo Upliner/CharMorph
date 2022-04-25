@@ -30,6 +30,7 @@ import rna_prop_ui  # pylint: disable=import-error
 from .lib import charlib, rigging, sliding_joints, utils
 from .morphing import manager as mm
 
+
 def remove_rig(rig):
     try:
         ui = rig.get("rig_ui")
@@ -37,6 +38,7 @@ def remove_rig(rig):
             bpy.data.texts.remove(ui)
     finally:
         bpy.data.armatures.remove(rig.data)
+
 
 def apply_metarig_parameters(metarig):
     if not hasattr(bpy.types.PoseBone, "rigify_type"):
@@ -60,8 +62,10 @@ def apply_metarig_parameters(metarig):
             params.make_widget = True
             params.super_copy_widget_type = "shoulder"
 
+
 lim_default_min = -10
 lim_default_max = 160
+
 
 def apply_rig_parameters(rig, conf):
     ui = bpy.context.window_manager.charmorph_ui
@@ -104,6 +108,7 @@ def apply_rig_parameters(rig, conf):
                 idprop = bone.id_properties_ui("IK_Stretch")
                 idprop.update(min=0, max=0, soft_min=0, soft_max=0, default=0)
 
+
 def add_mixin(char, conf, rig):
     obj_name = conf.mixin
     if not obj_name:
@@ -117,6 +122,7 @@ def add_mixin(char, conf, rig):
     })
 
     return (bones, joints)
+
 
 def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
     obj = m.core.obj
@@ -178,6 +184,7 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
         raise
     return rig
 
+
 class UIProps:
     # TODO: Head pivot shift
     rigify_metarig_only: bpy.props.BoolProperty(
@@ -210,10 +217,12 @@ class UIProps:
         default=True,
     )
 
+
 class FinalizeSubpanel(bpy.types.Panel):
     bl_parent_id = "CHARMORPH_PT_Finalize"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
+
 
 class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
     bl_label = "Sliding joints"
@@ -237,6 +246,7 @@ class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
         for name in items:
             col.prop(context.window_manager.charmorphs, f"sj_{rig}_{name}", text=name, slider=True)
 
+
 class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
     bl_label = "Rigify settings"
     bl_order = 2
@@ -252,5 +262,6 @@ class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
     def draw(self, context):
         for prop in UIProps.__annotations__:  # pylint: disable=no-member
             self.layout.prop(context.window_manager.charmorph_ui, prop)
+
 
 classes = [CHARMORPH_PT_SlidingJoints, CHARMORPH_PT_RigifySettings]

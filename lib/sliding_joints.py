@@ -33,6 +33,7 @@ from . import charlib, utils
 logger = logging.getLogger(__name__)
 eval_unsafe = re.compile(r"__|\(\s*\)|[:;,{'\"\[]")
 
+
 def _parse_joint(item: dict):
     side = item.get("side", "")
     if isinstance(side, list):
@@ -40,6 +41,7 @@ def _parse_joint(item: dict):
             yield item["upper_bone"], item["lower_bone"], s
     else:
         yield item["upper_bone"], item["lower_bone"], side
+
 
 class SJCalc:
     rig_name = ""
@@ -71,7 +73,7 @@ class SJCalc:
     def _calc_avg_dists(self, vert_pairs):
         if not vert_pairs:
             return 1
-        return sum((self.get_co(a)-self.get_co(b)).length for a, b in vert_pairs)/len(vert_pairs)
+        return sum((self.get_co(a) - self.get_co(b)).length for a, b in vert_pairs) / len(vert_pairs)
 
     def _calc_influence(self, data):
         result = data.get("influence")
@@ -149,6 +151,7 @@ class SJCalc:
     def props(self):
         return (self._prop(rig, influence, name) for rig, influence in self.influence.items() for name in influence)
 
+
 def create(context, upper_bone, lower_bone, side):
     bones = context.object.data.edit_bones
 
@@ -209,6 +212,7 @@ def create(context, upper_bone, lower_bone, side):
     bone.bbone_handle_type_end = "TANGENT"
     bone.bbone_custom_handle_end = lower_bone
 
+
 def finalize(rig, upper_bone, lower_bone, side, influence):
     bones = rig.pose.bones
 
@@ -254,10 +258,12 @@ def finalize(rig, upper_bone, lower_bone, side, influence):
     c = mch_bone.constraints.new("LIMIT_ROTATION")
     c.owner_space = "LOCAL"
     c.use_limit_x = True
-    c.max_x = math.pi/2
+    c.max_x = math.pi / 2
+
 
 def _parse_dict(data):
     return ((k, *result) for k, v in data.items() for result in _parse_joint(v))
+
 
 def create_from_conf(sj_calc, conf) -> list[tuple[str, str, str, float]]:
     result = []

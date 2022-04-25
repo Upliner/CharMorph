@@ -23,6 +23,7 @@ import mathutils  # pylint: disable=import-error
 
 from . import charlib, morphs, utils
 
+
 class MorpherCore:
     error = None
     clamp = True
@@ -110,12 +111,15 @@ class MorpherCore:
         else:
             self._del_asset_morphs()
 
+
 def get_combo_item_value(arr_idx, values):
-    return max(sum(val*((arr_idx >> val_idx & 1)*2-1) for val_idx, val in enumerate(values)), 0)
+    return max(sum(val * ((arr_idx >> val_idx & 1) * 2 - 1) for val_idx, val in enumerate(values)), 0)
+
 
 def enum_combo_names(name):
     nameParts = name.split("_")
     return (f"{nameParts[0]}_{name}" for name in nameParts[1].split("-"))
+
 
 class ShapeKeysComboMorpher:
     def __init__(self, arr, dims):
@@ -124,7 +128,7 @@ class ShapeKeysComboMorpher:
         self.values = [self.get_combo_prop_value(i) for i in range(dims)]
 
     def get_combo_prop_value(self, idx):
-        return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1)*2-1) for arr_idx, sk in enumerate(self.arr))
+        return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1) * 2 - 1) for arr_idx, sk in enumerate(self.arr))
 
     def get(self, idx):
         val = self.get_combo_prop_value(idx)
@@ -136,8 +140,10 @@ class ShapeKeysComboMorpher:
         for arr_idx, sk in enumerate(self.arr):
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
+
 class ShapeKeysMorpher(MorpherCore):
     morphs_l2_dict: dict[str, morphs.MinMaxMorph] = {}
+
     def _update_L1(self):
         for name, sk in self.morphs_l1.items():
             sk.value = 1 if name == self.L1 else 0
@@ -182,6 +188,7 @@ class ShapeKeysMorpher(MorpherCore):
             return []
 
         combiner = morphs.MorphCombiner()
+
         def load_shape_keys_by_prefix(prefix):
             for sk in self.obj.data.shape_keys.key_blocks:
                 if sk.name.startswith(prefix):
@@ -274,6 +281,7 @@ class ShapeKeysMorpher(MorpherCore):
                 self.obj.shape_key_remove(sk)
         super().remove_asset_morph(name)
 
+
 class NumpyMorpher(MorpherCore):
     storage: morphs.MorphStorage
     basis: numpy.ndarray = None
@@ -354,7 +362,7 @@ class NumpyMorpher(MorpherCore):
             self.obj.data.update()
 
     def prop_get(self, name):
-        return self.obj.data.get("cmorph_L2_"+name, 0.0)
+        return self.obj.data.get("cmorph_L2_" + name, 0.0)
 
     # Clamp to -1..1 only for combo props
     def prop_get_clamped(self, name):
@@ -424,6 +432,7 @@ class NumpyMorpher(MorpherCore):
             pass
         self.basis = None
 
+
 class AltTopoMorpher(NumpyMorpher):
     def __init__(self, obj, storage=None):
         self.alt_topo = True
@@ -432,6 +441,7 @@ class AltTopoMorpher(NumpyMorpher):
 
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
+
 
 def get(obj, storage=None):
     if obj.data.get("cm_alt_topo"):

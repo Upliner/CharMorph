@@ -27,6 +27,7 @@ from .lib import charlib, morpher, materials, morphs, utils
 
 logger = logging.getLogger(__name__)
 
+
 class OpReloadLib(bpy.types.Operator):
     bl_idname = "charmorph.reload_library"
     bl_label = "Reload library"
@@ -36,6 +37,7 @@ class OpReloadLib(bpy.types.Operator):
         charlib.load_library()
         morphing.manager.recreate_charmorphs()
         return {"FINISHED"}
+
 
 def _import_moprhs(wm, obj, char):
     ui = wm.charmorph_ui
@@ -61,6 +63,7 @@ def _import_moprhs(wm, obj, char):
         progress.leave_substeps("Shape keys done")
 
     return storage
+
 
 class OpImport(bpy.types.Operator):
     bl_idname = "charmorph.import_char"
@@ -143,6 +146,7 @@ class OpImport(bpy.types.Operator):
 
         return {"FINISHED"}
 
+
 def char_default_tex_set(char):
     if not char:
         return "/"
@@ -150,8 +154,10 @@ def char_default_tex_set(char):
         return char.texture_sets[0]
     return char.default_tex_set
 
+
 def update_base_model(ui, _):
     ui.tex_set = char_default_tex_set(charlib.chars.get(ui.base_model))
+
 
 class UIProps:
     base_model: bpy.props.EnumProperty(
@@ -211,6 +217,7 @@ class UIProps:
         type=bpy.types.Object,
         description="Select custom object to use as alternative topology",
         poll=utils.visible_mesh_poll)
+
 
 class CHARMORPH_PT_Library(bpy.types.Panel):
     bl_label = "Character library"

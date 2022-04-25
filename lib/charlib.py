@@ -35,12 +35,14 @@ hair_colors = {}
 if not os.path.isdir(data_dir):
     logger.error("Charmorph data is not found at %s", data_dir)
 
+
 def char_file(char, file):
     if not char or not file:
         return ""
     if file == ".":
         os.path.join(data_dir, "characters", char)
     return os.path.join(data_dir, "characters", char, file)
+
 
 def load_data_dir(path, target_ext):
     result = {}
@@ -51,6 +53,7 @@ def load_data_dir(path, target_ext):
         if ext == target_ext and os.path.isfile(os.path.join(path, file)):
             result[name] = (os.path.join(path, file), name)
     return result
+
 
 def load_json_dir(path):
     result = {}
@@ -63,7 +66,9 @@ def load_json_dir(path):
             result[name] = utils.parse_file(full_path, json.load, {})
     return result
 
+
 _empty_dict = object()
+
 
 class DataDir:
     def __init__(self, dirpath):
@@ -89,6 +94,7 @@ class DataDir:
         if readonly and isinstance(result, numpy.ndarray):
             result.flags.writeable = False
         return result
+
 
 class Character(DataDir):
     description = ""
@@ -228,6 +234,7 @@ class Character(DataDir):
     def _parse_armature_dict(self, data):
         return {k: Armature(self, k, v) for k, v in data.items()}
 
+
 # allows to mark some properties of the class as lazy yaml
 # if property value is dict or some other value, leave it as is
 # if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
@@ -239,13 +246,16 @@ def _lazy_yaml_props(*prop_lst):
                 for prop in prop_lst:
                     value = getattr(self, prop)
                     if isinstance(value, str):
-                        setattr(self, "_lazy_yaml_"+prop, value)
+                        setattr(self, "_lazy_yaml_" + prop, value)
                         delattr(self, prop)
         for prop in prop_lst:
-            setattr(Child, prop, utils.named_lazyprop(prop, lambda self, name=prop: self.char.get_yaml(getattr(self, "_lazy_yaml_"+name))))
+            setattr(Child, prop, utils.named_lazyprop(
+                prop, lambda self, name=prop:
+                    self.char.get_yaml(getattr(self, "_lazy_yaml_" + name))))
         return Child
 
     return wrap_class
+
 
 @_lazy_yaml_props("bones", "mixin_bones")
 class Armature:
@@ -282,6 +292,7 @@ class Armature:
     def weights_npz(self):
         return self.char.get_np(self.weights)
 
+
 class Asset(DataDir):
     def __init__(self, name, file, path=None):
         super().__init__(path)
@@ -308,6 +319,7 @@ class Asset(DataDir):
     def morph(self):
         return morphs.load_noext(self.path("morph"))
 
+
 def get_asset(asset_dir: str, name: str):
     path = os.path.join(asset_dir, name)
     if os.path.isdir(path):
@@ -318,6 +330,7 @@ def get_asset(asset_dir: str, name: str):
     elif name.endswith(".blend"):
         return Asset(name[:-6], path)
     return None
+
 
 def load_assets_dir(path):
     result = {}
@@ -338,6 +351,7 @@ def load_assets_dir(path):
                     asset.config.update(item)
     return result
 
+
 def update_fitting_assets(ui, _):
     global additional_assets
     path = ui.fitting_library_dir
@@ -345,16 +359,20 @@ def update_fitting_assets(ui, _):
         return
     additional_assets = load_assets_dir(path)
 
+
 chars: dict[str, Character] = {}
 empty_char = Character("")
 
+
 def char_by_name(name):
     return chars.get(name) or chars.get(char_aliases.get(name)) or empty_char
+
 
 def obj_char(obj) -> Character:
     if not obj:
         return empty_char
     return char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
+
 
 def load_library():
     global hair_colors
@@ -390,6 +408,7 @@ def load_library():
         chars[char_name] = char
 
     t.time("Library load")
+
 
 def get_basis(data, mcore=None, use_char=True):
     if isinstance(data, bpy.types.Object):

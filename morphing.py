@@ -25,6 +25,7 @@ from .lib import charlib, morpher, fit_calc, utils
 
 logger = logging.getLogger(__name__)
 
+
 class Manager:
     last_object = None
 
@@ -125,7 +126,9 @@ class Manager:
 
         self.create_charmorphs(obj)
 
+
 manager = Manager()
+
 
 class OpResetChar(bpy.types.Operator):
     bl_idname = "charmorph.reset_char"
@@ -152,6 +155,7 @@ class OpResetChar(bpy.types.Operator):
             return {"CANCELLED"}
         manager.update_morpher(new_morpher)
         return {"FINISHED"}
+
 
 class OpBuildAltTopo(bpy.types.Operator):
     bl_idname = "charmorph.build_alt_topo"
@@ -197,6 +201,7 @@ class OpBuildAltTopo(bpy.types.Operator):
 
         manager.update_morpher(morpher.get(obj))
         return {"FINISHED"}
+
 
 class UIProps:
     relative_meta: bpy.props.BoolProperty(
@@ -346,6 +351,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
                 if ui.morph_filter.lower() in prop.lower():
                     col.prop(morphs, "prop_" + prop, slider=True)
 
+
 class CHARMORPH_PT_Materials(bpy.types.Panel):
     bl_label = "Materials"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -362,5 +368,6 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
         for prop in manager.morpher.materials.props.values():
             if prop.node:
                 self.layout.prop(prop, "default_value", text=prop.node.label)
+
 
 classes = [OpResetChar, OpBuildAltTopo, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]

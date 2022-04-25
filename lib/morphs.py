@@ -24,12 +24,14 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
+
 class Morph:
     __slots__ = ()
 
     @staticmethod
     def apply(verts: numpy.ndarray, _=None):
         return verts
+
 
 class FullMorph(Morph):
     __slots__ = ("delta",)
@@ -44,6 +46,7 @@ class FullMorph(Morph):
         verts += self.get_delta(value)
         return verts
 
+
 class PartialMorph(FullMorph):
     __slots__ = "delta", "idx"
 
@@ -55,12 +58,14 @@ class PartialMorph(FullMorph):
         verts[self.idx] += self.get_delta(value)
         return verts
 
+
 def np_ro64(a):
     if a is None:
         return None
     a = a.astype(dtype=numpy.float64, casting="same_kind")
     a.flags.writeable = False
     return a
+
 
 def load(file):
     if not os.path.isfile(file):
@@ -70,16 +75,19 @@ def load(file):
         return FullMorph(np_ro64(data))
     return PartialMorph(data["idx"], np_ro64(data["delta"]))
 
+
 def detect_npy_npz(base):
     for ext in (".npy", ".npz"):
-        path = base+ext
+        path = base + ext
         if os.path.isfile(path):
             return path
     return None
 
+
 def load_noext(basename):
     file = detect_npy_npz(basename)
     return load(file) if file else None
+
 
 class MinMaxMorphData:
     __slots__ = "min", "max", "name"
@@ -88,6 +96,7 @@ class MinMaxMorphData:
         self.min = minval
         self.max = maxval
         self.name = name
+
 
 class MinMaxMorph(MinMaxMorphData):
     __slots__ = "min", "max", "name", "data"
@@ -115,13 +124,16 @@ class MinMaxMorph(MinMaxMorphData):
             else:
                 self.get_morph(1).apply(verts, value)
 
+
 class Separator(Morph):
     name = ""
+
 
 def json_to_morph(item):
     if item.get("separator"):
         return Separator
     return MinMaxMorphData(item.get("morph"), item.get("min", 0), item.get("max", 1))
+
 
 class MorphStorage:
     def __init__(self, char):
@@ -169,6 +181,7 @@ class MorphStorage:
         return (
             MinMaxMorphData(name[:-4], 0, 1) for name in sorted(os.listdir(path))
             if (name.endswith(".npz") or name.endswith(".npy")) and os.path.isfile(os.path.join(path, name)))
+
 
 class MorphImporter:
     _counter_lev: int
@@ -260,12 +273,13 @@ class MorphImporter:
             progress.step(self._import_to_sk(morph, basis, 3)[0])
         progress.leave_substeps("Expressions done")
 
-d_minmax = {"min": 0, "max": 1}
+
 def convertSigns(signs):
     try:
-        return sum(d_minmax[sign] << i for i, sign in enumerate(signs))
+        return sum({"min": 0, "max": 1}[sign] << i for i, sign in enumerate(signs))
     except KeyError:
         return -1
+
 
 class MorphCombiner:
     def __init__(self):
@@ -335,19 +349,21 @@ class MorphCombiner:
 
 def mblab_to_charmorph(data):
     return {
-        "morphs": {k: v*2-1 for k, v in data.get("structural", {}).items()},
+        "morphs": {k: v * 2 - 1 for k, v in data.get("structural", {}).items()},
         "materials": data.get("materialproperties", {}),
         "meta": {(k[10:] if k.startswith("character_") else k): v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
         "type": data.get("type", ()),
     }
 
+
 def charmorph_to_mblab(data):
     return {
-        "structural": {k: (v+1)/2 for k, v in data.get("morphs", {}).items()},
-        "metaproperties": {k: v for sublist, v in (([("character_"+k), ("last_character_"+k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
+        "structural": {k: (v + 1) / 2 for k, v in data.get("morphs", {}).items()},
+        "metaproperties": {k: v for sublist, v in (([("character_" + k), ("last_character_" + k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
         "materialproperties": data.get("materials"),
         "type": data.get("type", ()),
     }
+
 
 def load_morph_data(fn):
     with open(fn, "r", encoding="utf-8") as f:

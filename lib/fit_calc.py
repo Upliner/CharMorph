@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 dist_thresh = 0.1
 epsilon = 1e-30
 
+
 def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
     return numpy.add.reduceat(arr[idx] * weights, positions)
+
 
 def weights_convert(weights, cut=True):
     positions = numpy.empty((len(weights)), dtype=numpy.uint32)
@@ -40,7 +42,7 @@ def weights_convert(weights, cut=True):
     thresh = 0
     for i, d in enumerate(weights):
         if cut:
-            thresh = max(d.values())/32
+            thresh = max(d.values()) / 32
         positions[i] = pos
         for k, v in d.items():
             if v >= thresh:
@@ -51,12 +53,14 @@ def weights_convert(weights, cut=True):
     wresult = numpy.array(wresult)
     return positions, idx, wresult
 
+
 def weights_normalize(positions, wresult):
     cnt = numpy.empty((len(positions)), dtype=numpy.uint32)
     cnt[:-1] = positions[1:]
     cnt[:-1] -= positions[:-1]
-    cnt[-1] = len(wresult)-positions[-1]
+    cnt[-1] = len(wresult) - positions[-1]
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
+
 
 # calculate weights based on distance from asset vertices to character faces
 def calc_weights_direct(weights, char_geom, asset_verts):
@@ -69,9 +73,10 @@ def calc_weights_direct(weights, char_geom, asset_verts):
             continue
         face = faces[idx]
         d = weights[i]
-        fdist = (1-fdist/dist_thresh) / max(fdist, epsilon)
+        fdist = (1 - fdist / dist_thresh) / max(fdist, epsilon)
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-            d[vi] = max(d.get(vi, 0), bw*fdist)
+            d[vi] = max(d.get(vi, 0), bw * fdist)
+
 
 # calculate weights based on distance from character vertices to assset faces
 def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
@@ -83,10 +88,11 @@ def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
         if idx is None:
             continue
         face = faces[idx]
-        fdist = (1-fdist/dist_thresh) / max(fdist, 1e-15)  # using lower epsilon to avoid some artifacts
+        fdist = (1 - fdist / dist_thresh) / max(fdist, 1e-15)  # using lower epsilon to avoid some artifacts
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
             d = weights[vi]
-            d[i] = reduce_func(d.get(i, 0), bw*fdist)
+            d[i] = reduce_func(d.get(i, 0), bw * fdist)
+
 
 # calculate weights based on nearest vertices
 def calc_weights_kd(kd, verts, _epsilon, n):
@@ -96,6 +102,7 @@ def calc_weights_kd(kd, verts, _epsilon, n):
         maxdist = max([p[2] for p in pdata])
         result.append({idx: (1 - (dist / maxdist)) / (max(dist ** 2, _epsilon)) for _, idx, dist in pdata})
     return result
+
 
 class Geometry:
     def __init__(self, verts: numpy.ndarray, faces: list):
@@ -120,10 +127,13 @@ class Geometry:
     def bbox(self):
         return self.verts.min(axis=0), self.verts.max(axis=0)
 
+
 def mesh_faces(mesh):
     return [f.vertices for f in mesh.polygons]
+
 def geom_mesh(mesh):
     return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
+
 
 class SubsetGeometry(Geometry):
     def __init__(self, verts, faces, subset):
@@ -138,21 +148,27 @@ class SubsetGeometry(Geometry):
     def verts_enum(self):
         return ((i, self.verts[i]) for i in self.subset)
 
+
 def morpher_faces(mcore):
     faces = mcore.char.faces
     return faces if faces is not None else mesh_faces(mcore.obj.data)
 
+
 def geom_morpher(mcore):
     return Geometry(mcore.full_basis, morpher_faces(mcore))
+
 
 def geom_morpher_final(mcore):
     return Geometry(mcore.get_final(), morpher_faces(mcore))
 
+
 def geom_shapekey(mesh, sk):
     return Geometry(utils.verts_to_numpy(sk.data), mesh_faces(mesh))
 
+
 def geom_subset(geom, subset):
     return SubsetGeometry(geom.verts, [geom.faces[i] for i in subset["faces"]], subset["verts"])
+
 
 def geom_morph(geom: Geometry, *morphs):
     result = geom.copy()
@@ -161,11 +177,12 @@ def geom_morph(geom: Geometry, *morphs):
         morph.apply(result.verts)
     return result
 
+
 class FitCalculator:
     tmp_buf: numpy.ndarray = None
     geom_cache: dict[str, Geometry]
 
-    def __init__(self, geom: Geometry, parent: "FitCalculator"=None):
+    def __init__(self, geom: Geometry, parent: "FitCalculator" = None):
         self.geom = geom
         self.geom_cache = {} if parent is None else parent.geom_cache
 
@@ -225,6 +242,7 @@ class FitCalculator:
             asset, self.transfer_weights_get(asset, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
+
 class MorpherFitCalculator(FitCalculator):
     def __init__(self, mcore):
         self.mcore = mcore
@@ -250,7 +268,9 @@ class MorpherFitCalculator(FitCalculator):
             return geom_morph(self.geom, morph)
         return self.geom
 
+
 repsilon = 1e-5
+
 
 class RiggerFitCalculator(FitCalculator):
     def __init__(self, morpher):
@@ -263,7 +283,7 @@ class RiggerFitCalculator(FitCalculator):
         for i, vert in self.geom.verts_enum():
             for _, vi, dist in kd.find_n(vert, 4):
                 d = weights[vi]
-                d[i] = d.get(i, 0) + 1/max(dist**2, repsilon)
+                d[i] = d.get(i, 0) + 1 / max(dist**2, repsilon)
 
     def get_weights(self, asset):
         t = utils.Timer()
@@ -272,7 +292,7 @@ class RiggerFitCalculator(FitCalculator):
         # calculate weights based on nearest vertices
         weights = calc_weights_kd(cg.kd, verts, repsilon, 16)
         self._calc_weights_kd_reverse(weights, verts)
-        calc_weights_reverse(weights, cg.verts, asset, lambda a, b: a+b)
+        calc_weights_reverse(weights, cg.verts, asset, lambda a, b: a + b)
         result = weights_convert(weights, False)
         t.time("rigger calc time")
         return result

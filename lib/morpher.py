@@ -37,16 +37,19 @@ else:
     def prefixed_prop(prefix, prop):
         return (prefix + prop.keywords["name"], prop)
 
+
 def morph_category_name(name):
     m = sep_re.search(name)
     if m:
         return name[:m.start()]
     return name
 
+
 def calc_meta_val(coeffs, val):
     if not coeffs:
         return 0
-    return coeffs[1]*val if val > 0 else -coeffs[0]*val
+    return coeffs[1] * val if val > 0 else -coeffs[0] * val
+
 
 # Delete morphs property group
 def del_charmorphs_L2():
@@ -59,6 +62,7 @@ def del_charmorphs_L2():
         propGroup = cm.keywords['type']
     del bpy.types.WindowManager.charmorphs
     bpy.utils.unregister_class(propGroup)
+
 
 class Morpher:
     version = 0
@@ -136,7 +140,7 @@ class Morpher:
                 continue
             value = morph_props.get(morph.name, 0)
             if preset_mix:
-                value = (value+self.core.prop_get(morph.name))/2
+                value = (value + self.core.prop_get(morph.name)) / 2
             self.core.prop_set(morph.name, value)
         self.materials.apply(data.get("materials"))
         self.update()
@@ -192,11 +196,11 @@ class Morpher:
 
                 # assign absolute prop value if current property value is out of range
                 # or add a delta if it is within (-0.999 .. 0.999)
-                sign = -1 if val_cur-val_prev < 0 else 1
-                if propval*sign < -0.999 and val_prev*sign < -1:
+                sign = -1 if val_cur - val_prev < 0 else 1
+                if propval * sign < -0.999 and val_prev * sign < -1:
                     propval = self._calc_meta_abs_val(prop)
                 else:
-                    propval += val_cur-val_prev
+                    propval += val_cur - val_prev
                 self.core.prop_set(prop, propval)
 
             mtl_items = data.get("materials", {}).items()
@@ -204,7 +208,7 @@ class Morpher:
                 for pname, coeffs in mtl_items:
                     prop = self.materials.props.get(pname)
                     if prop:
-                        prop.default_value += calc_meta_val(coeffs, value)-calc_meta_val(coeffs, prev_value)
+                        prop.default_value += calc_meta_val(coeffs, value) - calc_meta_val(coeffs, prev_value)
             elif ui.meta_materials == "A":
                 self.materials.apply((name, calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
 
@@ -269,7 +273,9 @@ class Morpher:
     def set_clamp(self, clamp):
         self.core.clamp = clamp
 
+
 null_morpher = Morpher(morpher_cores.MorpherCore(None))
+
 
 def get(obj, storage=None):
     return Morpher(morpher_cores.get(obj, storage))
