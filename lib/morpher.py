@@ -62,10 +62,11 @@ def del_charmorphs_L2():
 
 class Morpher:
     version = 0
-    categories = []
     L1_idx = 0
+    meta_prev: dict[str, float]
+    categories: list[tuple[str, str, str]] = []
 
-    presets = {}
+    presets: dict[str, dict] = {}
     presets_list = [("_", "(reset)", "")]
 
     def __init__(self, core: morpher_cores.MorpherCore):

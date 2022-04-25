@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging, collections
+import os, logging
 
 import bpy  # pylint: disable=import-error
 
@@ -223,10 +223,10 @@ def get_props(obj):
         if not mtl or not mtl.node_tree:
             continue
         scan_nodes(mtl.node_tree.nodes.values())
-    return collections.OrderedDict(colors + values)
+    return dict(colors + values)
 
 class Materials:
-    props = {}
+    props: dict = {}
 
     def __init__(self, obj):
         if obj:

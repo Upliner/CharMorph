@@ -71,7 +71,7 @@ def load_handler(_):
 def select_handler(_):
     morphing.manager.on_select()
 
-classes = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
+classes: list[type] = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 

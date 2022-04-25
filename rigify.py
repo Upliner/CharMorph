@@ -23,7 +23,7 @@
 # Those used in editing are in rigging.py
 #
 
-import math
+import math, typing
 import bpy          # pylint: disable=import-error
 import rna_prop_ui  # pylint: disable=import-error
 
@@ -142,7 +142,7 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
         for tweak in pre_tweaks:
             rigging.apply_tweak(rig, tweak)
 
-        sj_list = ()
+        sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
         if len(editmode_tweaks) > 0 or len(conf.sliding_joints) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 

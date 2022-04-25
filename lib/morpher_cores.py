@@ -45,7 +45,7 @@ class MorpherCore:
     def _init_storage():
         pass
     @staticmethod
-    def get_L1() -> tuple[str, list[morphs.MinMaxMorph]]:
+    def get_L1() -> tuple[str, dict]:
         return "", {}
     @staticmethod
     def get_morphs_L2():
@@ -137,7 +137,7 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 class ShapeKeysMorpher(MorpherCore):
-    morphs_l2_dict = {}
+    morphs_l2_dict: dict[str, morphs.MinMaxMorph] = {}
     def _update_L1(self):
         for name, sk in self.morphs_l1.items():
             sk.value = 1 if name == self.L1 else 0

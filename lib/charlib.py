@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data"))
 
-char_aliases = {}
+char_aliases: dict[str, str] = {}
 additional_assets = {}
 hair_colors = {}
 
@@ -107,15 +107,15 @@ class Character(DataDir):
     default_hair_length = 0.1
     default_tex_set = ""
     recurse_materials = False
-    armature = {}
-    armature_defaults = {}
-    bones = {}
+    armature: dict[str, "Armature"] = {}
+    armature_defaults: dict = {}
+    bones: dict = {}
     hairstyles = ()
     materials = ()
     material_lib = None
     default_assets = ()
     underwear = ()
-    types = {}
+    types: dict[str, dict] = {}
     hair_library = None
     hair_obj = None
     hair_shrinkwrap = False
@@ -251,9 +251,10 @@ def _lazy_yaml_props(*prop_lst):
 class Armature:
     type = "regular"
     tweaks = ()
-    ik_limits = {}
-    sliding_joints = {}
+    ik_limits: dict[str, dict] = {}
+    sliding_joints: dict[str, dict] = {}
     mixin = ""
+    mixin_bones: dict[str, dict]
     weights: str = None
     arp_reference_layer = 17
 

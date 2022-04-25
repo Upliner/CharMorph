@@ -23,7 +23,7 @@ import bpy  # pylint: disable=import-error
 
 from .morphing import manager as mm
 
-saved_props = {}
+saved_props: dict[str, float] = {}
 
 class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(

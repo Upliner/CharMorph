@@ -23,7 +23,7 @@
 # https://www.youtube.com/watch?v=c7csuy-09k8
 #
 
-import re, math, logging
+import re, math, typing, logging
 
 import bpy  # pylint: disable=import-error
 from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module
@@ -43,7 +43,7 @@ def _parse_joint(item: dict):
 
 class SJCalc:
     rig_name = ""
-    influence = {}
+    influence: dict[str, dict[str, float]] = {}
 
     def __init__(self, char: charlib.Character, rig, get_co):
         self.rig = rig
@@ -259,7 +259,7 @@ def finalize(rig, upper_bone, lower_bone, side, influence):
 def _parse_dict(data):
     return ((k, *result) for k, v in data.items() for result in _parse_joint(v))
 
-def create_from_conf(sj_calc, conf):
+def create_from_conf(sj_calc, conf) -> list[tuple[str, str, str, float]]:
     result = []
     for name, upper_bone, lower_bone, side in _parse_dict(conf.sliding_joints):
         influence = sj_calc.influence.get(conf.name, {}).get(name, 0)
