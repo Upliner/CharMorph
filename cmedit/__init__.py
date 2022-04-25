@@ -19,7 +19,7 @@
 # Copyright (C) 2020-2021 Michael Vigovsky
 
 import logging, os
-import bpy, mathutils  # pylint: disable=import-error
+import bpy, bmesh, mathutils  # pylint: disable=import-error
 
 from . import file_io, vg_calc
 from ..lib import morpher_cores, fit_calc, rigging, utils
@@ -71,6 +71,7 @@ class CMEDIT_PT_Utils(bpy.types.Panel):
 
     def draw(self, _):
         l = self.layout
+        l.operator("cmedit.final_to_sk")
         l.operator("cmedit.cleanup_joints")
         l.operator("cmedit.check_symmetry")
         l.operator("cmedit.symmetrize_weights")
@@ -135,6 +136,30 @@ class OpRetarget(bpy.types.Operator):
         fit = fit_calc.calc_fit(geom_dst.verts-geom_src.verts, *f.get_weights(ui.asset_obj))
         fit += utils.get_basis_numpy(ui.asset_obj)
         sk.data.foreach_set("co", fit.reshape(-1))
+
+        return {"FINISHED"}
+
+class OpFinalToSk(bpy.types.Operator):
+    bl_idname = "cmedit.final_to_sk"
+    bl_label = "Final to shape key"
+    bl_description = "Add shape key from final form (shape keys + modifiers). Can be useful because of problems with applying of corrective smooth modifier."
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object
+
+    def execute(self, context):  # pylint: disable=no-self-use
+        if not context.object.data.shape_keys:
+            context.object.shape_key_add(name="Basis", from_mix=False)
+        sk = context.object.shape_key_add(name="final", from_mix=False)
+        bm = bmesh.new()
+        try:
+            bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
+            a = [v.co[i] for v in bm.verts for i in range(3)]
+            sk.data.foreach_set("co", a)
+        finally:
+            bm.free()
 
         return {"FINISHED"}
 
@@ -668,7 +693,7 @@ class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps):
 
 classes = [
     CMEditUIProps, OpJointsToVG, OpCalcVg, OpRigifyFinalize, VIEW3D_PT_CMEdit, CMEDIT_PT_Rigging, OpCleanupJoints, OpStoreRollX, OpStoreRollZ,
-    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Utils,
+    OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, OpBBoneHandles, OpRigifyTweaks, OpFinalToSk, CMEDIT_PT_Utils,
     OpRetarget, CMEDIT_PT_Assets]
 
 classes.extend(file_io.classes)

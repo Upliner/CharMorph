@@ -23,7 +23,7 @@
 # https://www.youtube.com/watch?v=c7csuy-09k8
 #
 
-import re, math, typing, logging
+import re, math, logging
 
 import bpy  # pylint: disable=import-error
 from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module

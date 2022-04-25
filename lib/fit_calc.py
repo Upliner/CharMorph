@@ -163,8 +163,9 @@ def geom_morph(geom: Geometry, *morphs):
 
 class FitCalculator:
     tmp_buf: numpy.ndarray = None
+    geom_cache: dict[str, Geometry]
 
-    def __init__(self, geom: Geometry, parent=None):
+    def __init__(self, geom: Geometry, parent: "FitCalculator"=None):
         self.geom = geom
         self.geom_cache = {} if parent is None else parent.geom_cache
 
