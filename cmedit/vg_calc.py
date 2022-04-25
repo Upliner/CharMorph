@@ -84,7 +84,11 @@ def vg_mix2(a, b, factor):
     return vg_add(a, b, factor / sum(b.values()))
 
 def vg_mixmany(groups):
-    groups = [(group, gweight/gsum) for group, gweight, gsum in ((group, gweight, sum(group.values())) for group, gweight in groups) if gsum >= 1e-30]
+    groups = [
+        (group, gweight/gsum)
+        for group, gweight, gsum in ((group, gweight, sum(group.values()))
+        for group, gweight in groups) if gsum >= 1e-30
+    ]
     if len(groups) == 0:
         return "No groups were found by the calculation method"
     result = groups[0][0]
@@ -110,7 +114,6 @@ def calc_lst(co, lst):
         return "No vertices were found by the calc method"
     return dict(zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co)))
 
-# (lambda group, coords: list(zip(group, barycentric_weight_calc(coords, co))))(*tuple(zip(*((vg_full_to_dict(g), co) for g, co in ((g, vg_full_to_avg(g)) for g in groups) if co is not None))))
 def calc_group_weights(groups, co):
     groups2 = []
     coords = []
@@ -136,7 +139,9 @@ class VGCalculator:
 
     @utils.lazyproperty
     def vg_full(self):
-        return utils.get_vg_data(self.char, lambda: [], lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
+        return utils.get_vg_data(
+            self.char, lambda: [],
+            lambda data_item, v, co, gw: data_item.append((co, v.index, gw.weight)))
 
     @utils.lazyproperty
     def vg_avg(self):
@@ -148,7 +153,9 @@ class VGCalculator:
 
     @utils.lazyproperty
     def bvh(self):
-        return mathutils.bvhtree.BVHTree.FromPolygons([v.co for v in self.char.data.vertices], [f.vertices for f in self.char.data.polygons])
+        return mathutils.bvhtree.BVHTree.FromPolygons(
+            [v.co for v in self.char.data.vertices],
+            [f.vertices for f in self.char.data.polygons])
 
     @utils.lazyproperty
     def emap(self):
@@ -362,7 +369,11 @@ class VGCalculator:
                 cast_bone(self.cur_bone)
                 cast_bone(bone2)
             else:
-                cast_axes(self.cur_bone.x_axis+bone2.x_axis, self.cur_bone.y_axis+bone2.y_axis, self.cur_bone.z_axis+bone2.z_axis)
+                cast_axes(
+                    self.cur_bone.x_axis+bone2.x_axis,
+                    self.cur_bone.y_axis+bone2.y_axis,
+                    self.cur_bone.z_axis+bone2.z_axis
+                )
 
     def rays_global(self, cast):
         if self.ui.vg_obj:

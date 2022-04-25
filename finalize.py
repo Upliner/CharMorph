@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, traceback, numpy
+import logging, numpy
 
 import bpy  # pylint: disable=import-error
 
@@ -28,14 +28,17 @@ from . import rigify
 
 logger = logging.getLogger(__name__)
 
+
 def remove_armature_modifiers(obj):
     for m in list(obj.modifiers):
         if m.type == "ARMATURE":
             obj.modifiers.remove(m)
 
+
 def delete_old_rig(obj, rig):
     rigify.remove_rig(rig)
     remove_armature_modifiers(obj)
+
 
 def clear_vg_names(vgs, vg_names):
     if not vg_names:
@@ -43,6 +46,7 @@ def clear_vg_names(vgs, vg_names):
     for vg in list(vgs):
         if vg.name in vg_names:
             vgs.remove(vg)
+
 
 def clear_old_weights(obj, char, rig):
     vgs = obj.vertex_groups
@@ -53,15 +57,18 @@ def clear_old_weights(obj, char, rig):
                 vgs.remove(vg)
     clear_vg_names(vgs, set(utils.char_rig_vg_names(char, rig)))
 
+
 def clear_old_weights_with_assets(m, char, rig):
     clear_old_weights(m.core.obj, char, rig)
     for asset in m.fitter.get_assets():
         clear_old_weights(asset, char, rig)
 
+
 def delete_old_rig_with_assets(m, rig):
     delete_old_rig(m.core.obj, rig)
     for asset in m.fitter.get_assets():
         remove_armature_modifiers(asset)
+
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
     m = mm.morpher
@@ -127,11 +134,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
 
         if rig_type == "arp":
             if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
-                try:
-                    bpy.ops.arp.match_to_rig()
-                except Exception as e:
-                    err = str(e)
-                    logger.error(traceback.format_exc())
+                bpy.ops.arp.match_to_rig()
             else:
                 err = "Auto-Rig Pro is not found! Can't match the rig"
 
@@ -150,6 +153,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         bpy.data.armatures.remove(rig.data)
         raise
     return err
+
 
 def attach_rig(obj, rig):
     utils.copy_transforms(rig, obj)
@@ -180,6 +184,7 @@ def attach_rig(obj, rig):
     if bpy.context.window_manager.charmorph_ui.fitting_weights != "NONE":
         mm.morpher.fitter.transfer_new_armature()
 
+
 def sk_to_verts(obj, sk):
     if isinstance(sk, str):
         k = obj.data.shape_keys
@@ -191,6 +196,7 @@ def sk_to_verts(obj, sk):
     sk.data.foreach_get("co", arr)
     obj.data.vertices.foreach_set("co", arr)
 
+
 def _get_fin_sk(obj):
     keys = obj.data.shape_keys
     if not keys or not keys.key_blocks:
@@ -200,6 +206,7 @@ def _get_fin_sk(obj):
         # FIXME: what if L3 morphs are non-zero?
         return obj.shape_key_add(name="charmorph_final", from_mix=True), True
     return fin_sk, False
+
 
 def _get_sk_verts(ui):
     m = mm.morpher.core
@@ -228,6 +235,7 @@ def _get_sk_verts(ui):
         verts_alt = verts
 
     return fin_sk, verts, verts_alt
+
 
 def _cleanup_morphs(ui, fin_sk):
     if ui.fin_morph == "NO":
@@ -260,12 +268,14 @@ def _cleanup_morphs(ui, fin_sk):
         obj.shape_key_remove(fin_sk)
     obj.shape_key_remove(keys.reference_key)
 
+
 def apply_morphs(ui):
     fin_sk, verts, verts_alt = _get_sk_verts(ui)
     _cleanup_morphs(ui, fin_sk)
     if (ui.fin_csmooth and not ui.fin_cs_morphing) or ui.fin_morph == "AL":
         mm.morpher.core.obj.data.vertices.foreach_set("co", verts_alt.reshape(-1))
     return verts, verts_alt
+
 
 def _add_modifiers(ui):
     obj = mm.morpher.core.obj
@@ -311,6 +321,7 @@ def _add_modifiers(ui):
         if ui.fin_subdiv_assets:
             add_subsurf(asset)
 
+
 def _do_vg_cleanup():
     unused_l1 = set()
     m = mm.morpher.core
@@ -337,6 +348,7 @@ def _do_vg_cleanup():
         if vg.name.startswith("joint_") or (
                 vg.name.startswith("hair_") and vg.name[5:] in unused_l1):
             obj.vertex_groups.remove(vg)
+
 
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
@@ -387,6 +399,7 @@ class OpFinalize(bpy.types.Operator):
 
         return {"FINISHED"}
 
+
 class OpUnrig(bpy.types.Operator):
     bl_idname = "charmorph.unrig"
     bl_label = "Unrig"
@@ -419,10 +432,12 @@ class OpUnrig(bpy.types.Operator):
 
         return {"FINISHED"}
 
+
 def get_rigs(_ui, _ctx):
     result = [("-", "<None>", "Don't generate rig")]
     result.extend((name, rig.title, "") for name, rig in mm.morpher.core.char.armature.items())
     return result
+
 
 class UIProps:
     fin_morph: bpy.props.EnumProperty(
@@ -431,7 +446,7 @@ class UIProps:
         items=[
             ("NO", "Don't apply", "Keep all morphing shape keys"),
             ("SK", "Keep original basis", "Keep original basis shape key (recommended if you plan to fit more assets)"),
-            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys (won't work when facial expression shapekeys or other additional morphs are present)"),
+            ("AL", "Full apply", "Apply current mix as new basis and remove all shape keys except facial expression shapekeys or other additional morphs"),
         ],
         description="Apply current shape key mix")
     fin_rig: bpy.props.EnumProperty(
@@ -491,6 +506,7 @@ class UIProps:
         default=False,
         description="Remove unused vertex groups after finalization")
 
+
 class CHARMORPH_PT_Finalize(bpy.types.Panel):
     bl_label = "Finalization"
     bl_parent_id = "VIEW3D_PT_CharMorph"
@@ -517,5 +533,6 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
             ll.prop(ui, prop)
         l.operator("charmorph.finalize")
         l.operator("charmorph.unrig")
+
 
 classes = [OpFinalize, OpUnrig, CHARMORPH_PT_Finalize]

@@ -26,10 +26,12 @@ from .morphing import manager as mm
 
 logger = logging.getLogger(__name__)
 
+
 def get_fitter(obj):
     if obj is mm.morpher.core.obj:
         return mm.morpher.fitter
     return fitting.Fitter(morpher_cores.get(obj))
+
 
 def get_asset_conf(context):
     ui = context.window_manager.charmorph_ui
@@ -42,16 +44,22 @@ def get_asset_conf(context):
         return charlib.additional_assets.get(item[4:])
     return None
 
+
 def get_fitting_assets(ui, _):
     char = charlib.obj_char(ui.fitting_char)
-    return [("char_" + k, k, '') for k in sorted(char.assets.keys())] + [("add_" + k, k, '') for k in sorted(charlib.additional_assets.keys())]
+    return [("char_" + k, k, '') for k in sorted(char.assets.keys())]\
+        + [("add_" + k, k, '') for k in sorted(charlib.additional_assets.keys())]
+
 
 class UIProps:
     fitting_char: bpy.props.PointerProperty(
         name="Char",
         description="Character for fitting",
         type=bpy.types.Object,
-        poll=lambda ui, obj: utils.visible_mesh_poll(ui, obj) and ("charmorph_fit_id" not in obj.data or 'cm_alt_topo' in obj.data))
+        poll=lambda ui, obj:
+            utils.visible_mesh_poll(ui, obj)
+            and ("charmorph_fit_id" not in obj.data or 'cm_alt_topo' in obj.data)
+    )
     fitting_asset: bpy.props.PointerProperty(
         name="Local asset",
         description="Asset for fitting",
@@ -76,7 +84,8 @@ class UIProps:
         items=[
             ("NONE", "None", "Don't transfer weights and armature modifiers to the asset"),
             ("ORIG", "Original", "Use original weights from character library"),
-            ("OBJ", "Object", "Use weights directly from object (use it if you manually weight-painted the character before fitting the asset)"),
+            ("OBJ", "Object", "Use weights directly from object"
+                "(use it if you manually weight-painted the character before fitting the asset)"),
         ],
         description="Select source for armature deform weights")
     fitting_weights_ovr: bpy.props.BoolProperty(
@@ -92,6 +101,7 @@ class UIProps:
         description="Additional library directory",
         update=charlib.update_fitting_assets,
         subtype='DIR_PATH')
+
 
 class CHARMORPH_PT_Assets(bpy.types.Panel):
     bl_label = "Assets"
@@ -133,10 +143,12 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
         l.prop(ui, "fitting_library_dir")
         l.separator()
 
+
 def mesh_obj(obj):
     if obj and obj.type == "MESH":
         return obj
     return None
+
 
 def get_char(context):
     obj = mesh_obj(context.window_manager.charmorph_ui.fitting_char)
@@ -144,11 +156,14 @@ def get_char(context):
         return None
     return obj
 
+
 def fitter_from_ctx(context):
     return get_fitter(get_char(context))
 
+
 def get_asset_obj(context):
     return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
+
 
 class OpFitLocal(bpy.types.Operator):
     bl_idname = "charmorph.fit_local"
@@ -175,8 +190,10 @@ class OpFitLocal(bpy.types.Operator):
         fitter_from_ctx(context).fit_new((obj,))
         return {"FINISHED"}
 
+
 def fitExtPoll(context):
     return context.mode == "OBJECT" and get_char(context)
+
 
 class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.fit_external"
@@ -198,6 +215,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
 
+
 class OpFitLibrary(bpy.types.Operator):
     bl_idname = "charmorph.fit_library"
     bl_label = "Fit from library"
@@ -217,6 +235,7 @@ class OpFitLibrary(bpy.types.Operator):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}
+
 
 class OpUnfit(bpy.types.Operator):
     bl_idname = "charmorph.unfit"
@@ -265,5 +284,6 @@ class OpUnfit(bpy.types.Operator):
 
         mm.last_object = asset  # Prevent swithing morpher to asset object
         return {"FINISHED"}
+
 
 classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Assets]

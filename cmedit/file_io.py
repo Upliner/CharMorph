@@ -23,29 +23,31 @@ import bpy, bpy_extras, bmesh, idprop  # pylint: disable=import-error
 
 from ..lib import morphs, utils
 
+
 def np_particles_data(obj, particles, precision=numpy.float32):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
     total = 0
     mx = 1
     for i, p in enumerate(particles):
-        c = len(p.hair_keys)-1
+        c = len(p.hair_keys) - 1
         cnt[i] = c
         total += c
         if c > mx:
             mx = c
 
     data = numpy.empty((total, 3), dtype=precision)
-    tmp = numpy.empty(mx*3+3, dtype=precision)
+    tmp = numpy.empty(mx * 3 + 3, dtype=precision)
     i = 0
     for p in particles:
-        t2 = tmp[:len(p.hair_keys)*3]
+        t2 = tmp[:len(p.hair_keys) * 3]
         p.hair_keys.foreach_get("co_local", t2)
         t2 = t2[3:].reshape((-1, 3))
-        data[i:i+len(t2)] = t2
+        data[i:i + len(t2)] = t2
         i += len(t2)
 
     utils.np_matrix_transform(data, obj.matrix_world.inverted())
     return {"cnt": cnt, "data": data}
+
 
 def export_hair(obj, psys_idx, filepath, precision):
     pss = obj.particle_systems
@@ -63,6 +65,7 @@ def export_hair(obj, psys_idx, filepath, precision):
 
     pss.active_index = old_psys_idx
 
+
 prop_precision = bpy.props.EnumProperty(
     name="Precision",
     description="Floating point precision for morph npz files",
@@ -72,8 +75,11 @@ prop_precision = bpy.props.EnumProperty(
         ("64", "64 bits", "IEEE Double precision floating point"),
     ]
 )
+
+
 def float_dtype(value):
     return numpy.float64 if value == "64" else numpy.float32
+
 
 class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.hair_export"
@@ -92,6 +98,7 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         export_hair(context.object, context.object.particle_systems.active_index, self.filepath, float_dtype(self.precision))
         return {"FINISHED"}
 
+
 class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "cmedit.hair_import"
     bl_label = "Import hair"
@@ -109,6 +116,7 @@ class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         utils.set_hair_points(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
         return {"FINISHED"}
 
+
 class DirExport(bpy.types.Operator):
     precision: prop_precision
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
@@ -124,6 +132,7 @@ class DirExport(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+
 class OpAllHairExport(DirExport):
     bl_idname = "cmedit.all_hair_export"
     bl_label = "Export all hair"
@@ -134,8 +143,10 @@ class OpAllHairExport(DirExport):
             export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"), float_dtype(self.precision))
         return {"FINISHED"}
 
+
 def flatten(arr, dtype):
     return numpy.block([numpy.array(item, dtype=dtype) for item in arr])
+
 
 class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.vg_export"
@@ -170,6 +181,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+
 class OpFaceExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.face_export"
     bl_label = "Export faces"
@@ -185,6 +197,7 @@ class OpFaceExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     def execute(self, context):
         numpy.save(self.filepath, numpy.array([f.vertices for f in context.object.data.polygons]).astype(dtype=numpy.uint16))
         return {"FINISHED"}
+
 
 class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "cmedit.vg_import"
@@ -206,6 +219,7 @@ class OpVgImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         utils.import_vg(context.object, self.filepath, self.overwrite)
         return {"FINISHED"}
 
+
 class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.bones_export"
     bl_label = "Export Bone settings"
@@ -226,7 +240,7 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.object.type == "ARMATURE" and (context.mode == "EDIT_ARMATURE" or context.window_manager.cmedit_ui.rig_bones_mode == "N")
+        return context.object and context.object.type == "ARMATURE"
 
     def execute(self, context):
         result = {}
@@ -257,6 +271,7 @@ class OpBoneExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+
 class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.l1_export"
     bl_label = "Export L1 morph"
@@ -275,10 +290,11 @@ class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         sk = obj.active_shape_key
         data = sk.data if sk else obj.data.vertices
 
-        arr = numpy.empty(len(data)*3, dtype=float_dtype(self.precision))
+        arr = numpy.empty(len(data) * 3, dtype=float_dtype(self.precision))
         data.foreach_get("co", arr)
         numpy.save(self.filepath, arr.reshape(-1, 3))
         return {"FINISHED"}
+
 
 def export_morph(m, path, epsilon, dtype):
     def save_npy():
@@ -294,6 +310,7 @@ def export_morph(m, path, epsilon, dtype):
     else:
         save_npy()
 
+
 class MorphExporter:
     def __init__(self, obj, epsilon, dtype):
         self.obj = obj
@@ -302,9 +319,9 @@ class MorphExporter:
 
         rk = self.obj.data.shape_keys.reference_key
         self.rk = rk
-        self.basis = numpy.empty(len(rk.data)*3)
-        self.basis2 = numpy.empty(len(rk.data)*3)
-        self.morphed = numpy.empty(len(rk.data)*3)
+        self.basis = numpy.empty(len(rk.data) * 3)
+        self.basis2 = numpy.empty(len(rk.data) * 3)
+        self.morphed = numpy.empty(len(rk.data) * 3)
         rk.data.foreach_get("co", self.basis)
 
     def do_export(self, sk, path):
@@ -332,12 +349,14 @@ class MorphExporter:
 
         export_morph(m2, path, self.epsilon, self.dtype)
 
+
 prop_cutoff = bpy.props.FloatProperty(
     name="Cutoff",
     description="Ignore vertices morphed by less than this value",
     default=1e-4,
     precision=6,
 )
+
 
 class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.morph_export"
@@ -382,6 +401,7 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+
 prop_regex = bpy.props.StringProperty(
     name="Morph regex",
     description="Regular expression for morph export",
@@ -392,6 +412,7 @@ prop_re_replace = bpy.props.StringProperty(
     description="Replace matched morph regex with this content",
     default="",
 )
+
 
 class OpMorphsExport(DirExport):
     bl_idname = "cmedit.morphs_export"
@@ -430,6 +451,7 @@ class OpMorphsExport(DirExport):
 
         return {"FINISHED"}
 
+
 class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.morphlist_export"
     bl_label = "Export morph list"
@@ -466,6 +488,7 @@ class OpMorphListExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         return {"FINISHED"}
 
+
 class OpMorphsImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "cmedit.morphs_import"
     bl_label = "Import morphs"
@@ -500,10 +523,12 @@ class OpMorphsImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
         return {"FINISHED"}
 
+
 # There seems to be bug in pylint with numpy's nonzero function
 # pylint: disable=no-member
 def sel_arr(items):
     return numpy.array([x.select for x in items], dtype=bool).nonzero()[0].astype(dtype=numpy.uint16)
+
 
 class OpSubsetExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.subset_export"
@@ -524,12 +549,14 @@ class OpSubsetExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         numpy.savez(self.filepath, verts=sel_arr(mesh.vertices), faces=sel_arr(mesh.polygons))
         return {"FINISHED"}
 
+
 class CHARMORPH_PT_FileIO(bpy.types.Panel):
     bl_label = "File I/O"
     bl_parent_id = "VIEW3D_PT_CMEdit"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 4
 
     def draw(self, _):
@@ -554,6 +581,7 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_export")
         l.operator("cmedit.morphlist_export")
         l.operator("cmedit.morphs_import")
+
 
 classes = [
     OpFaceExport, OpSubsetExport, OpBoneExport,
