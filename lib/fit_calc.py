@@ -69,9 +69,9 @@ def calc_weights_direct(weights, char_geom, asset_verts):
             continue
         face = faces[idx]
         d = weights[i]
-        fdist = max(fdist ** 2, epsilon)
+        fdist = (1-fdist/dist_thresh) / max(fdist, epsilon)
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-            d[vi] = max(d.get(vi, 0), bw/fdist)
+            d[vi] = max(d.get(vi, 0), bw*fdist)
 
 # calculate weights based on distance from character vertices to assset faces
 def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
@@ -83,14 +83,19 @@ def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
         if idx is None:
             continue
         face = faces[idx]
-        fdist = max(fdist ** 2, 1e-15)  # using lower epsilon to avoid some artifacts
+        fdist = (1-fdist/dist_thresh) / max(fdist, 1e-15)  # using lower epsilon to avoid some artifacts
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
             d = weights[vi]
-            d[i] = reduce_func(d.get(i, 0), bw/fdist)
+            d[i] = reduce_func(d.get(i, 0), bw*fdist)
 
 # calculate weights based on nearest vertices
 def calc_weights_kd(kd, verts, _epsilon, n):
-    return [{idx: 1/(max(dist**2, _epsilon)) for _, idx, dist in kd.find_n(v, n)} for v in verts]
+    result = []
+    for v in verts:
+        pdata = kd.find_n(v, n)
+        maxdist = max([p[2] for p in pdata])
+        result.append({idx: (1 - (dist / maxdist)) / (max(dist ** 2, _epsilon)) for _, idx, dist in pdata})
+    return result
 
 class Geometry:
     def __init__(self, verts: numpy.ndarray, faces: list):
