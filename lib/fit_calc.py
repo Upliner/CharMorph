@@ -36,19 +36,17 @@ def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
 
 def weights_convert(weights, cut=True):
     positions = numpy.empty((len(weights)), dtype=numpy.uint32)
-    pos = 0
     idx = []
     wresult = []
     thresh = 0
     for i, d in enumerate(weights):
         if cut:
             thresh = max(d.values()) / 32
-        positions[i] = pos
+        positions[i] = len(idx)
         for k, v in d.items():
             if v >= thresh:
                 idx.append(k)
                 wresult.append(v)
-                pos += 1
     idx = numpy.array(idx, dtype=numpy.uint32)
     wresult = numpy.array(wresult)
     return positions, idx, wresult

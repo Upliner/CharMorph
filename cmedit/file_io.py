@@ -391,7 +391,7 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             try:
                 bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
                 export_morph(
-                    [v.co for v in bm.verts]-utils.get_basis_numpy(context.object),
+                    [v.co for v in bm.verts] - utils.get_basis_numpy(context.object),
                     self.filepath, self.cutoff, float_dtype(self.precision))
             finally:
                 bm.free()
@@ -513,7 +513,7 @@ class OpMorphsImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             sk = obj.shape_key_add(name="Basis", from_mix=False)
         else:
             sk = obj.data.shape_keys.reference_key
-        basis = numpy.empty(len(sk.data)*3)
+        basis = numpy.empty(len(sk.data) * 3)
         sk.data.foreach_get("co", basis)
         basis = basis.reshape(-1, 3)
 

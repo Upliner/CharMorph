@@ -24,6 +24,7 @@ import bpy, bpy_extras  # pylint: disable=import-error
 from .lib import morphs, utils
 from .morphing import manager as mm
 
+
 class UIProps:
     export_format: bpy.props.EnumProperty(
         name="Format",
@@ -33,6 +34,7 @@ class UIProps:
             ("yaml", "CharMorph (yaml)", ""),
             ("json", "MB-Lab (json)", "")
         ])
+
 
 class CHARMORPH_PT_ImportExport(bpy.types.Panel):
     bl_label = "Import/Export"
@@ -59,6 +61,7 @@ class CHARMORPH_PT_ImportExport(bpy.types.Panel):
             col.operator("charmorph.export_yaml")
         col.operator("charmorph.import")
 
+
 def morphs_to_data():
     m = mm.morpher
     typ = []
@@ -75,6 +78,7 @@ def morphs_to_data():
         "meta": {k: m.meta_get(k) for k in m.core.char.morphs_meta},
         "materials": m.materials.as_dict()
     }
+
 
 class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_json"
@@ -93,6 +97,7 @@ class OpExportJson(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
             json.dump(morphs.charmorph_to_mblab(morphs_to_data()), f, indent=4, sort_keys=True)
         return {"FINISHED"}
 
+
 class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "charmorph.export_yaml"
     bl_label = "Export morphs"
@@ -109,6 +114,7 @@ class OpExportYaml(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         with open(self.filepath, "w", encoding="utf-8") as f:
             utils.dump_yaml(morphs_to_data(), f)
         return {"FINISHED"}
+
 
 class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_idname = "charmorph.import"
@@ -142,5 +148,6 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
         m.apply_morph_data(data, False)
         return {"FINISHED"}
+
 
 classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]
