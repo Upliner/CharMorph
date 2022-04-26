@@ -19,7 +19,6 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, json, logging, traceback, numpy
-from matplotlib.style import library
 
 import bpy  # pylint: disable=import-error
 
