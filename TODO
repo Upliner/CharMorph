@@ -43,11 +43,16 @@ Randomize:
 
 Hair:
   - Import scalp vertex groups only when necessary so VG cleanup on finalize won't be necessary anymore
+  - Rework hair shaders engine
   - Lichtso hair engine
   - Move hair.blend to char.blend?
   - Hair refitting after edit
 
 Fitting:
+  - Hybrid mode: store asset morphs in shapekeys even in numpy mode (probably not activating them),
+      get asset morph data from morpher-code, not charlib!
+  - BMesh instead of creating from_mix shapekey?
+  - List all generative modifiers
   - MakeHuman asset support ?
   - Bounding box transform?
   - More fitting settings? (Thresholds and so on)

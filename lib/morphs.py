@@ -351,7 +351,11 @@ def mblab_to_charmorph(data):
     return {
         "morphs": {k: v * 2 - 1 for k, v in data.get("structural", {}).items()},
         "materials": data.get("materialproperties", {}),
-        "meta": {(k[10:] if k.startswith("character_") else k): v for k, v in data.get("metaproperties", {}).items() if not k.startswith("last_character_")},
+        "meta": {
+            (k[10:] if k.startswith("character_") else k): v
+            for k, v in data.get("metaproperties", {}).items()
+            if not k.startswith("last_character_")
+        },
         "type": data.get("type", ()),
     }
 
@@ -359,7 +363,13 @@ def mblab_to_charmorph(data):
 def charmorph_to_mblab(data):
     return {
         "structural": {k: (v + 1) / 2 for k, v in data.get("morphs", {}).items()},
-        "metaproperties": {k: v for sublist, v in (([("character_" + k), ("last_character_" + k)], v) for k, v in data.get("meta", {}).items()) for k in sublist},
+        "metaproperties": {
+            k: v
+            for sublist, v in (
+                ([("character_" + k), ("last_character_" + k)], v)
+                for k, v in data.get("meta", {}).items()
+            ) for k in sublist
+        },
         "materialproperties": data.get("materials"),
         "type": data.get("type", ()),
     }

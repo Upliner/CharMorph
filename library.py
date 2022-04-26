@@ -24,6 +24,7 @@ from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disabl
 
 from . import morphing
 from .lib import charlib, morpher, materials, morphs, utils
+from .lib.charlib import library, empty_char
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class OpReloadLib(bpy.types.Operator):
     bl_description = "Reload character library"
 
     def execute(self, _):  # pylint: disable=no-self-use
-        charlib.load_library()
+        library.load()
         morphing.manager.recreate_charmorphs()
         return {"FINISHED"}
 
@@ -81,7 +82,7 @@ class OpImport(bpy.types.Operator):
             self.report({'ERROR'}, "Please select base model")
             return {"CANCELLED"}
 
-        char = charlib.chars[ui.base_model]
+        char = library.chars[ui.base_model]
 
         if ui.alt_topo != "<Base>" and char.faces is None:
             ui.alt_topo = "<Base>"
@@ -156,13 +157,13 @@ def char_default_tex_set(char):
 
 
 def update_base_model(ui, _):
-    ui.tex_set = char_default_tex_set(charlib.chars.get(ui.base_model))
+    ui.tex_set = char_default_tex_set(library.chars.get(ui.base_model))
 
 
 class UIProps:
     base_model: bpy.props.EnumProperty(
         name="Base",
-        items=lambda _ui, _: [(name, char.title, char.description) for name, char in charlib.chars.items()],
+        items=lambda _ui, _: [(name, char.title, char.description) for name, char in library.chars.items()],
         update=update_base_model,
         description="Choose a base model")
     material_mode: bpy.props.EnumProperty(
@@ -183,7 +184,7 @@ class UIProps:
         description="Select texture set for the character",
         items=lambda ui, _: [
             (name, "<Default>" if name == "/" else name, "")
-            for name in charlib.chars.get(ui.base_model, charlib.empty_char).texture_sets
+            for name in library.chars.get(ui.base_model, empty_char).texture_sets
         ],
     )
     tex_downscale: bpy.props.EnumProperty(
@@ -235,14 +236,14 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         l.operator('charmorph.reload_library')
         l.separator()
-        if charlib.data_dir == "":
+        if library.dirpath == "":
             l.label(text="Data dir is not found. Importing is not available.")
             return
-        if not charlib.chars:
-            l.label(text=f"No characters found at {charlib.data_dir}. Nothing to import.")
+        if not library.chars:
+            l.label(text=f"No characters found at {library.dirpath}. Nothing to import.")
             return
         l.prop(ui, "base_model")
-        char = charlib.chars.get(ui.base_model)
+        char = library.chars.get(ui.base_model)
         if char:
             r = l.row()
             c = r.column()

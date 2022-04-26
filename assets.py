@@ -21,7 +21,8 @@
 import os, logging
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import charlib, fitting, morpher_cores, utils
+from .lib import fitting, morpher_cores, utils
+from .lib.charlib import library, Asset
 from .morphing import manager as mm
 
 logger = logging.getLogger(__name__)
@@ -38,17 +39,17 @@ def get_asset_conf(context):
     item = ui.fitting_library_asset
     if item.startswith("char_"):
         obj = ui.fitting_char
-        char = charlib.obj_char(obj)
+        char = library.obj_char(obj)
         return char.assets.get(item[5:])
     if item.startswith("add_"):
-        return charlib.additional_assets.get(item[4:])
+        return library.additional_assets.get(item[4:])
     return None
 
 
-def get_fitting_assets(ui, _):
-    char = charlib.obj_char(ui.fitting_char)
+def get_assets(ui, _):
+    char = library.obj_char(ui.fitting_char)
     return [("char_" + k, k, '') for k in sorted(char.assets.keys())]\
-        + [("add_" + k, k, '') for k in sorted(charlib.additional_assets.keys())]
+        + [("add_" + k, k, '') for k in sorted(library.additional_assets.keys())]
 
 
 class UIProps:
@@ -95,11 +96,11 @@ class UIProps:
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",
-        items=get_fitting_assets)
+        items=get_assets)
     fitting_library_dir: bpy.props.StringProperty(
         name="Library dir",
         description="Additional library directory",
-        update=charlib.update_fitting_assets,
+        update=lambda ui, _: library.update_additional_assets(ui.fitting_library_dir),
         subtype='DIR_PATH')
 
 
@@ -210,7 +211,7 @@ class OpFitExternal(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         name, _ = os.path.splitext(self.filepath)
-        if fitter_from_ctx(context).fit_import((charlib.Asset(name, self.filepath),)):
+        if fitter_from_ctx(context).fit_import((Asset(name, self.filepath),)):
             return {"FINISHED"}
         self.report({'ERROR'}, "Import failed")
         return {"CANCELLED"}

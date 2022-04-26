@@ -26,8 +26,14 @@ from . import fit_calc, utils
 
 logger = logging.getLogger(__name__)
 
+
 def masking_enabled(asset):
     return utils.is_true(asset.data.get("charmorph_fit_mask", True))
+
+
+def mask_name(asset):
+    return f"cm_mask_{asset.name}_{asset.data.get('charmorph_fit_id', 'xxx')[:3]}"
+
 
 def get_fitting_shapekey(obj):
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
@@ -39,8 +45,6 @@ def get_fitting_shapekey(obj):
         sk.value = 1
     return sk.data
 
-def mask_name(asset):
-    return f"cm_mask_{asset.name}_{asset.data.get('charmorph_fit_id', 'xxx')[:3]}"
 
 def cleanup_masks(obj):
     for mod in obj.modifiers:
@@ -54,6 +58,7 @@ def cleanup_masks(obj):
         if vg.name.startswith("cm_mask_"):
             obj.vertex_groups.remove(vg)
 
+
 def shrink_vertex_set(vset: set, faces):
     boundary_verts = set()
     for f in faces:
@@ -63,16 +68,18 @@ def shrink_vertex_set(vset: set, faces):
 
     vset.difference_update(boundary_verts)
 
-def get_cast_points(bmin: numpy.ndarray, bmax: numpy.ndarray):
-    center = (bmin+bmax)/2
-    size = (bmax-bmin).max()
 
-    points = numpy.vstack((center-size, center, center+size))
+def get_cast_points(bmin: numpy.ndarray, bmax: numpy.ndarray):
+    center = (bmin + bmax) / 2
+    size = (bmax - bmin).max()
+
+    points = numpy.vstack((center - size, center, center + size))
     return [
         mathutils.Vector((points[x][0], points[y][1], points[z][2]))
         for x in range(3) for y in range(3) for z in range(3)
         if x != 1 or y != 1 or z != 1
     ]
+
 
 def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func=lambda _idx, _co: True):
     cast_points = get_cast_points(*char_geom.bbox)
@@ -83,7 +90,7 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func=lambda _i
         idx = bvh_asset.ray_cast(co, direction, max_dist)[2]
         if idx is None:
             # Vertex is not blocked by cloth. Maybe blocked by the body itself?
-            idx = bvh_char.ray_cast(co, direction, max_dist*0.99)[2]
+            idx = bvh_char.ray_cast(co, direction, max_dist * 0.99)[2]
             if idx is None:
                 return False  # No ray hit
         else:
@@ -105,7 +112,7 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func=lambda _i
             continue
 
         for cast_point in cast_points:
-            direction = co-cast_point
+            direction = co - cast_point
             max_dist = direction.length
             if not cast_rays(cast_point, direction, max_dist):
                 cnt += 1
@@ -118,6 +125,7 @@ def calculate_mask(char_geom: fit_calc.Geometry, bvh_asset, match_func=lambda _i
 
     shrink_vertex_set(result, char_geom.faces)
     return result
+
 
 def add_mask(obj, vg_name, verts):
     if not verts:
@@ -132,6 +140,7 @@ def add_mask(obj, vg_name, verts):
     mod.invert_vertex_group = True
     mod.vertex_group = vg.name
 
+
 def obj_bbox(obj):
     bbox_min = mathutils.Vector((obj.bound_box[0]))
     bbox_max = mathutils.Vector((obj.bound_box[0]))
@@ -141,18 +150,21 @@ def obj_bbox(obj):
             bbox_max[i] = max(bbox_max[i], v[i])
     return bbox_min, bbox_max
 
+
 def bbox_match(co, bbox):
     for i in range(3):
         if co[i] < bbox[0][i] or co[i] > bbox[1][i]:
             return False
     return True
 
+
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
+
 
 class EmptyAsset:
     author = ""
     license = ""
-    morph = None
+
 
 class Fitter(fit_calc.MorpherFitCalculator):
     children: list = None
@@ -170,6 +182,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
             self._add_single_mask(vg_name, asset)
 
     def _add_single_mask(self, vg_name, asset):
+        custom_mask = self._get_asset_conf(asset).mask
+        if custom_mask is not None:
+            add_mask(self.mcore.obj, vg_name, custom_mask.tolist())
+            return
+
         asset_geom = self.get_asset_geom(asset)
         bbox = asset_geom.bbox
         add_mask(
@@ -203,7 +220,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
         asset_morphs = []
         morph_cnt = 0
         morph_asset = None
+        mask = set()
         for asset in assets:
+            asset_mask = self._get_asset_conf(asset).mask
+            if asset_mask is not None:
+                mask.update(asset_mask.tolist())
             morph = self._get_asset_morph(asset)
             asset_morphs.append(morph)
             if morph:
@@ -238,12 +259,16 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         t.time("mask_bvh")
 
-        def check_bboxes(_, co):
+        def check_func(idx, co):
+            if idx in mask:
+                return False
             for box in bboxes:
                 if bbox_match(co, box):
                     return True
             return False
-        add_mask(self.mcore.obj, "cm_mask_combined", calculate_mask(char_geom, bvh_assets, check_bboxes))
+
+        mask.update(calculate_mask(char_geom, bvh_assets, check_func))
+        add_mask(self.mcore.obj, "cm_mask_combined", mask)
         t.time("comb_mask")
 
     def _get_fit_id(self, data):
@@ -332,7 +357,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if cnts is None or data is None or not weights:
             return False
 
-        morphed = numpy.empty((len(data)+1, 3))
+        morphed = numpy.empty((len(data) + 1, 3))
         morphed[1:] = fit_calc.calc_fit(self.get_diff_hair(), *weights)
         morphed[1:] += data
 
@@ -343,9 +368,6 @@ class Fitter(fit_calc.MorpherFitCalculator):
         restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type == "SHRINKWRAP")
         try:
             utils.set_hair_points(obj, cnts, morphed)
-        except Exception as e:
-            logger.error(str(e))
-            self.weights_cache.clear()
         finally:
             for m in restore_modifiers:
                 m.show_viewport = True
@@ -499,11 +521,17 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
     def get_children(self):
         if self.children is None:
-            self.children = [obj for obj in self.mcore.obj.children if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()]
+            self.children = [
+                obj for obj in self.mcore.obj.children
+                if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()
+            ]
         return self.children
 
     def _get_assets(self):
-        return [asset for asset in self.get_children() if asset.type == "MESH" and 'charmorph_fit_id' in asset.data]
+        return [
+            asset for asset in self.get_children()
+            if asset.type == "MESH" and 'charmorph_fit_id' in asset.data
+        ]
 
     def get_assets(self):
         try:

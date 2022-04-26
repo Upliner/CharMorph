@@ -76,12 +76,16 @@ class Morpher:
     def __init__(self, core: morpher_cores.MorpherCore):
         self.core = core
         self.meta_prev = {}
+
+        self.L1_list = [
+            (name, core.char.types.get(name, {}).get("title", name), "")
+            for name in sorted(core.morphs_l1.keys())
+        ]
+        self.update_L1_idx()
+
         self.materials = materials.Materials(core.obj)
         if self.core.obj:
             self.fitter = fitting.Fitter(self.core, self)
-
-        self.L1_list = [(name, core.char.types.get(name, {}).get("title", name), "") for name in sorted(core.morphs_l1.keys())]
-        self.update_L1_idx()
         self.sj_calc = sliding_joints.SJCalc(self.core.char, self.core.rig, self.core.get_co)
 
     def __bool__(self):
@@ -233,7 +237,8 @@ class Morpher:
             soft_min=morph.min, soft_max=morph.max,
             precision=3,
             get=lambda _: self.core.prop_get(morph.name),
-            set=lambda _, value: self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.core.clamp else value)
+            set=lambda _, value:
+                self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.core.clamp else value)
         )
 
     def get_presets(self):
@@ -249,7 +254,10 @@ class Morpher:
 
     def update_morph_categories(self):
         if not self.core.char.no_morph_categories:
-            self.categories = [(name, name, "") for name in sorted(set(morph_category_name(morph.name) for morph in self.core.morphs_l2 if morph.name))]
+            self.categories = [
+                (name, name, "") for name in sorted(set(morph_category_name(morph.name)
+                for morph in self.core.morphs_l2 if morph.name))
+            ]
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):

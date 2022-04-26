@@ -222,7 +222,7 @@ class FitCalculator:
         if self.tmp_buf is None:
             self.tmp_buf = numpy.empty(len(self.geom.verts))
         positions, fit_idx, fit_weights = self.get_weights(asset)
-        # Reshepe is needed because vertex arrays are 2D and weight arrays are 1D
+        # Reshape is needed because vertex arrays are 2D and weight arrays are 1D
         fit_weights = fit_weights.reshape(-1)
         for name, vg_idx, vg_weights in utils.vg_read(vg_data):
             self.tmp_buf.fill(0)

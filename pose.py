@@ -23,7 +23,7 @@ import bpy  # pylint: disable=import-error
 
 from mathutils import Matrix, Vector  # pylint: disable=import-error
 
-from .lib import charlib
+from .lib.charlib import library
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def apply_pose(ui, context):
     if not ui.pose or ui.pose == " ":
         return
     rig = context.active_object
-    pose = charlib.obj_char(rig).poses.get(ui.pose)
+    pose = library.obj_char(rig).poses.get(ui.pose)
     if not pose:
         logger.error("pose not found %s %s", ui.pose, rig)
         return
@@ -215,7 +215,7 @@ def poll(context):
             and context.active_object.type == "ARMATURE"
             and context.active_object.data.get("rig_id")):
         return False
-    char = charlib.obj_char(context.active_object)
+    char = library.obj_char(context.active_object)
     return len(char.poses) > 0
 
 
@@ -235,7 +235,7 @@ class OpApplyPose(bpy.types.Operator):
 
 
 def get_poses(_, context):
-    return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(charlib.obj_char(context.object).poses.keys())]
+    return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(library.obj_char(context.object).poses.keys())]
 
 
 class UIProps:

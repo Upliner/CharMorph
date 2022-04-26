@@ -21,7 +21,8 @@
 import logging, random
 import bpy, bmesh  # pylint: disable=import-error
 
-from .lib import charlib, utils
+from .lib import utils
+from .lib.charlib import library, empty_char
 from . import assets, morphing
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def apply_hair_color(mat, hair_color):
     output_node = tree.nodes.new("ShaderNodeOutputMaterial")
     hair_node = tree.nodes.new("ShaderNodeBsdfHairPrincipled")
     tree.links.new(hair_node.outputs[0], output_node.inputs[0])
-    settings = charlib.hair_colors.get(hair_color)
+    settings = library.hair_colors.get(hair_color)
     if settings and settings["type"] == "ShaderNodeBsdfHairPrincipled":
         hair_node.parametrization = settings.get("parametrization", "MELANIN")
         hair_node.inputs[0].default_value = utils.parse_color(settings.get("color", [0, 0, 0]))
@@ -223,7 +224,7 @@ class OpCreateHair(bpy.types.Operator):
         ui = context.window_manager.charmorph_ui
         style = ui.hair_style
         char = context.object
-        char_conf = charlib.obj_char(char)
+        char_conf = library.obj_char(char)
         if style == "default":
             create_default_hair(context, char, char_conf, ui.hair_scalp)
             return {"FINISHED"}
@@ -332,11 +333,11 @@ class OpRecolorHair(bpy.types.Operator):
 
 
 def get_hair_colors(_ui, _context):
-    return [(k, k, "") for k in charlib.hair_colors.keys()]
+    return [(k, k, "") for k in library.hair_colors.keys()]
 
 
 def get_hairstyles(_, context):
-    char = charlib.obj_char(context.object)
+    char = library.obj_char(context.object)
     result = [("default", "Default hair", "")]
     if not char.name:
         return result
@@ -377,7 +378,7 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         char = morphing.manager.morpher.core.char
         if not char:
-            char = charlib.empty_char
+            char = empty_char
         l = self.layout
         for prop in UIProps.__annotations__:  # pylint: disable=no-member
             if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (

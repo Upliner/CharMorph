@@ -33,7 +33,7 @@ class MorpherCore:
 
     def __init__(self, obj):
         self.obj = obj
-        self.char = charlib.obj_char(obj)
+        self.char = charlib.library.obj_char(obj)
         self._init_storage()
         self.L1, self.morphs_l1 = self.get_L1()
         self.update_morphs_L2()
@@ -128,7 +128,10 @@ class ShapeKeysComboMorpher:
         self.values = [self.get_combo_prop_value(i) for i in range(dims)]
 
     def get_combo_prop_value(self, idx):
-        return sum(0 if sk is None else sk.value * ((arr_idx >> idx & 1) * 2 - 1) for arr_idx, sk in enumerate(self.arr))
+        return sum(
+            0 if sk is None else sk.value * ((arr_idx >> idx & 1) * 2 - 1)
+            for arr_idx, sk in enumerate(self.arr)
+        )
 
     def get(self, idx):
         val = self.get_combo_prop_value(idx)
@@ -152,7 +155,9 @@ class ShapeKeysMorpher(MorpherCore):
         if not self.obj.data.shape_keys:
             return
         for sk in self.obj.data.shape_keys.key_blocks:
-            if sk.name.startswith("L2_") and not sk.name.startswith("L2__") and not sk.name.startswith(f"L2_{self.L1}_"):
+            if sk.name.startswith("L2_")\
+                    and not sk.name.startswith("L2__")\
+                    and not sk.name.startswith(f"L2_{self.L1}_"):
                 sk.value = 0
 
     # scan object shape keys and convert them to dictionary
@@ -227,11 +232,15 @@ class ShapeKeysMorpher(MorpherCore):
             return
         skmin, skmax = tuple(morph.data)
         if value < 0:
-            if skmax is not None: skmax.value = 0
-            if skmin is not None: skmin.value = -value
+            if skmax is not None:
+                skmax.value = 0
+            if skmin is not None:
+                skmin.value = -value
         else:
-            if skmin is not None: skmin.value = 0
-            if skmax is not None: skmax.value = value
+            if skmin is not None:
+                skmin.value = 0
+            if skmax is not None:
+                skmax.value = value
 
     def prop_get(self, name):
         morph = self.morphs_l2_dict[name]
@@ -302,7 +311,8 @@ class NumpyMorpher(MorpherCore):
             self.storage = morphs.MorphStorage(self.char)
 
     def has_morphs(self):
-        return self.obj.data.get("cm_morpher") == "ext"  # HACK: used just to prevent morphing when morphing data was removed
+        # HACK: used just to prevent morphing when morphing data was removed
+        return self.obj.data.get("cm_morpher") == "ext"
 
     def _update_L1(self):
         if self.L1:

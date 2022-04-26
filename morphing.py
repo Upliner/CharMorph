@@ -74,7 +74,7 @@ class Manager:
             return
 
         storage = None
-        if hasattr(self.morpher.core, "storage") and self.morpher.core.char is charlib.obj_char(obj):
+        if hasattr(self.morpher.core, "storage") and self.morpher.core.char is charlib.library.obj_char(obj):
             storage = self.morpher.core.storage
 
         self.update_morpher(morpher.get(obj, storage))
@@ -116,7 +116,7 @@ class Manager:
             if asset:
                 ui.fitting_char = obj
                 ui.fitting_asset = asset
-            elif charlib.obj_char(obj):
+            elif charlib.library.obj_char(obj):
                 ui.fitting_char = obj
             else:
                 ui.fitting_asset = obj

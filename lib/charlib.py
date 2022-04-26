@@ -19,29 +19,13 @@
 # Copyright (C) 2020-2022 Michael Vigovsky
 
 import os, json, logging, traceback, numpy
+from matplotlib.style import library
 
 import bpy  # pylint: disable=import-error
 
 from . import morphs, utils
 
 logger = logging.getLogger(__name__)
-
-data_dir = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data"))
-
-char_aliases: dict[str, str] = {}
-additional_assets = {}
-hair_colors = {}
-
-if not os.path.isdir(data_dir):
-    logger.error("Charmorph data is not found at %s", data_dir)
-
-
-def char_file(char, file):
-    if not char or not file:
-        return ""
-    if file == ".":
-        os.path.join(data_dir, "characters", char)
-    return os.path.join(data_dir, "characters", char, file)
 
 
 def load_data_dir(path, target_ext):
@@ -74,10 +58,13 @@ class DataDir:
     def __init__(self, dirpath):
         self.dirpath = dirpath
 
-    def path(self, file):
+    def blend_file(self):
+        return os.path.isdir(self.dirpath)
+
+    def path(self, file, *paths):
         if not file or not self.dirpath:
             return ""
-        return os.path.join(self.dirpath, file)
+        return os.path.join(self.dirpath, os.path.join(file, *paths))
 
     def get_yaml(self, file, default=_empty_dict):
         if default is _empty_dict:
@@ -127,8 +114,9 @@ class Character(DataDir):
     hair_shrinkwrap = False
     hair_shrinkwrap_offset = 0.0002
 
-    def __init__(self, name):
-        super().__init__(os.path.join(data_dir, "characters", name) if name else "")
+    def __init__(self, name, lib: DataDir):
+        super().__init__(lib.path("characters", name))
+        self.lib = lib
         self.title = name
         self.name = name
         self.__dict__.update(self.get_yaml("config.yaml"))
@@ -172,7 +160,7 @@ class Character(DataDir):
 
     @utils.lazyproperty
     def alt_topos(self):
-        return load_data_dir(self.path("morphs/alt_topo"), ".npy")
+        return load_data_dir(self.path("morphs", "alt_topo"), ".npy")
 
     @utils.lazyproperty
     def poses(self):
@@ -204,7 +192,7 @@ class Character(DataDir):
                     data = morphs.load_morph_data(fpath)
                     if data is not None:
                         result[os.path.splitext(file)[0]] = data
-        except Exception as e:
+        except OSError as e:
             logger.error(e)
         return result
 
@@ -332,11 +320,11 @@ def get_asset(asset_dir: str, name: str):
     return None
 
 
-def load_assets_dir(path):
+def load_assets_dir(path: str) -> dict[str, Asset]:
     result = {}
     if not os.path.isdir(path):
         return result
-    for item in os.listdir(path):
+    for item in sorted(os.listdir(path)):
         asset = get_asset(path, item)
         if asset:
             result[asset.name] = asset
@@ -351,63 +339,69 @@ def load_assets_dir(path):
                     asset.config.update(item)
     return result
 
+empty_char = Character("", DataDir(""))
 
-def update_fitting_assets(ui, _):
-    global additional_assets
-    path = ui.fitting_library_dir
-    if not path:
-        return
-    additional_assets = load_assets_dir(path)
+class Library(DataDir):
+    chars: dict[str, Character]
+    char_aliases: dict[str, str]
+    additional_assets: dict[str, Asset]
+    hair_colors: dict[str, dict] = {}
+
+    def __init__(self, dirpath):
+        super().__init__(dirpath)
+        self.chars = {}
+        self.char_aliases = {}
+        self.additional_assets = {}
+
+    def char_by_name(self, name: str) -> Character:
+        return self.chars.get(name) or self.chars.get(self.char_aliases.get(name)) or empty_char
+
+    def obj_char(self, obj) -> Character:
+        if not obj:
+            return empty_char
+        return self.char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
+
+    def update_additional_assets(self, path):
+        self.additional_assets = load_assets_dir(path)
+
+    def load(self):
+        t = utils.Timer()
+        logger.debug("Loading character library at %s", self.dirpath)
+        if not os.path.isdir(self.dirpath):
+            logger.error("Charmorph data is not found at %s", self.dirpath)
+        self.chars.clear()
+        self.hair_colors = self.get_yaml("hair_colors.yaml")
+        aliases = self.get_yaml("aliases.yaml")
+        self.char_aliases.clear()
+        for k, v in aliases.items():
+            for k2 in v if isinstance(v, list) else (v,):
+                self.char_aliases[k2] = k
+
+        chardir = self.path("characters")
+        if not os.path.isdir(chardir):
+            logger.error("Directory %s is not found.", format(chardir))
+            return
+
+        for char_name in sorted(os.listdir(chardir)):
+            if not os.path.isdir(os.path.join(chardir, char_name)):
+                continue
+            try:
+                char = Character(char_name, self)
+            except Exception as e:
+                logger.error("Error in character %s: %s", char_name, e)
+                logger.error(traceback.format_exc())
+                continue
+
+            if not os.path.isfile(char.blend_file()):
+                logger.error("Character %s doesn't have char file %s.", char_name, char.blend_file())
+                continue
+
+            self.chars[char_name] = char
+
+        t.time("Library load")
 
 
-chars: dict[str, Character] = {}
-empty_char = Character("")
-
-
-def char_by_name(name):
-    return chars.get(name) or chars.get(char_aliases.get(name)) or empty_char
-
-
-def obj_char(obj) -> Character:
-    if not obj:
-        return empty_char
-    return char_by_name(obj.data.get("charmorph_template") or obj.get("manuellab_id"))
-
-
-def load_library():
-    global hair_colors
-    t = utils.Timer()
-    logger.debug("Loading character library at %s", data_dir)
-    chars.clear()
-    hair_colors = utils.parse_file(os.path.join(data_dir, "hair_colors.yaml"), utils.load_yaml, {})
-    chardir = os.path.join(data_dir, "characters")
-    if not os.path.isdir(chardir):
-        logger.error("Directory %s is not found.", format(chardir))
-        return
-
-    aliases = utils.parse_file(os.path.join(chardir, "aliases.yaml"), utils.load_yaml, None)
-    char_aliases.clear()
-    for k, v in aliases.items():
-        for k2 in v if isinstance(v, list) else (v,):
-            char_aliases[k2] = k
-
-    for char_name in sorted(os.listdir(chardir)):
-        if not os.path.isdir(os.path.join(chardir, char_name)):
-            continue
-        try:
-            char = Character(char_name)
-        except Exception as e:
-            logger.error("Error in character %s: %s", char_name, e)
-            logger.error(traceback.format_exc())
-            continue
-
-        if not os.path.isfile(char.blend_file()):
-            logger.error("Character %s doesn't have char file %s.", char_name, char.blend_file())
-            continue
-
-        chars[char_name] = char
-
-    t.time("Library load")
+library = Library(os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data")))
 
 
 def get_basis(data, mcore=None, use_char=True):
@@ -426,12 +420,12 @@ def get_basis(data, mcore=None, use_char=True):
 
     char = None
     if use_char:
-        char = char_by_name(data.get("charmorph_template"))
+        char = library.char_by_name(data.get("charmorph_template"))
 
     if char:
         if not alt_topo:
             return char.np_basis
         if isinstance(alt_topo, str):
-            return char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+            return library.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
 
     return utils.verts_to_numpy(data.vertices)

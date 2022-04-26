@@ -22,17 +22,18 @@ import os, logging
 
 import bpy  # pylint: disable=import-error
 
-from . import charlib, utils
+from .charlib import Character
+from . import utils
 
 logger = logging.getLogger(__name__)
 
 
-def init_materials(obj, char):
+def init_materials(obj, char: Character):
     load_materials(obj, char)
     load_textures(obj, char)
 
 
-def load_materials(obj, char):
+def load_materials(obj, char: Character):
     mtllist = char.materials
     if not mtllist:
         return
@@ -112,11 +113,11 @@ def load_texdir(path, settings: dict) -> dict[str, tuple[str, str]]:
 
 
 # Returns a dictionary { texture_short_name: tuple(filename, texture_full_name, texture_settings) }
-def load_texmap(char, tex_set) -> dict[str, tuple[str, str, str]]:
+def load_texmap(char: Character, tex_set) -> dict[str, tuple[str, str, str]]:
     result = {}
-    char_texes, settings = load_texdir(charlib.char_file(char, "textures"), {})
+    char_texes, settings = load_texdir(char.path("textures"), {})
 
-    for k, v in load_texdir(os.path.join(charlib.data_dir, "textures"), {})[0].items():
+    for k, v in load_texdir(char.lib.path("textures"), {})[0].items():
         if k not in char_texes:
             result[k] = (v[0], "charmorph--" + k, v[1])
 
@@ -124,7 +125,7 @@ def load_texmap(char, tex_set) -> dict[str, tuple[str, str, str]]:
         result[k] = (v[0], f"charmorph-{char}-{k}", v[1])
 
     if tex_set and tex_set != "/":
-        for k, v in load_texdir(charlib.char_file(char, os.path.join("textures", tex_set)), settings)[0].items():
+        for k, v in load_texdir(char.path("textures", tex_set), settings)[0].items():
             result[k] = (v[0], f"charmorph-{char}-{tex_set}-{k}", v[1])
     return result
 
@@ -178,7 +179,7 @@ def load_textures(obj, char):
 
             if img is None:
                 if texmap is None:
-                    texmap = load_texmap(char.name, ui.tex_set)
+                    texmap = load_texmap(char, ui.tex_set)
 
                 img_tuple = None
                 for name in [node.name, node.label]:
