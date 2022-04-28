@@ -74,6 +74,7 @@ for side in ["L", "R"]:
         bone_map[f"thumb0{i}_{side}"] = (f"thumb.0{i}{is_master}.{side}", m2)
         for finger in ["index", "middle", "ring", "pinky"]:
             bone_map[f"{finger}0{i}_{side}"] = (f"f_{finger}.0{i}{is_master}.{side}", m2)
+del side
 
 # Different rigify versions use different parameters for IK2FK so we need to scan its modules
 

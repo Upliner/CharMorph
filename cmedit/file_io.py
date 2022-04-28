@@ -148,6 +148,14 @@ def flatten(arr, dtype):
     return numpy.block([numpy.array(item, dtype=dtype) for item in arr])
 
 
+def get_bits(num):
+    if num >= 65536:
+        return numpy.uint32
+    if num >= 256:
+        return numpy.uint16
+    return numpy.uint8
+
+
 class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.vg_export"
     bl_label = "Export VGs"
@@ -174,7 +182,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         numpy.savez_compressed(
             self.filepath,
             names=b'\0'.join(name.encode("utf-8") for name in names),
-            cnt=numpy.array(cnt, dtype=numpy.uint16 if max(cnt) > 255 else numpy.uint8),
+            cnt=numpy.array(cnt, dtype=get_bits(max(cnt, default=0))),
             idx=flatten(idx, numpy.uint16),
             weights=flatten(weights, float_dtype(self.precision))
         )

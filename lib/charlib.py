@@ -57,9 +57,6 @@ class DataDir:
     def __init__(self, dirpath):
         self.dirpath = dirpath
 
-    def blend_file(self):
-        return os.path.isdir(self.dirpath)
-
     def path(self, file, *paths):
         if not file or not self.dirpath:
             return ""
@@ -131,6 +128,9 @@ class Character(DataDir):
 
     def __bool__(self):
         return bool(self.name)
+
+    def __str__(self):
+        return self.name
 
     def blend_file(self):
         return self.path(self.char_file)
@@ -303,6 +303,14 @@ class Asset(DataDir):
         return self.get_np("mask.npy")
 
     @utils.lazyproperty
+    def bones(self):
+        return self.config.get("bones")
+
+    @utils.lazyproperty
+    def joints(self):
+        return self.get_np("joints.npz")
+
+    @utils.lazyproperty
     def morph(self):
         return morphs.load_noext(self.path("morph"))
 
@@ -319,8 +327,8 @@ def get_asset(asset_dir: str, name: str):
     return None
 
 
-def load_assets_dir(path: str) -> dict[str, Asset]:
-    result = {}
+def load_assets_dir(path: str):
+    result: dict[str, Asset] = {}
     if not os.path.isdir(path):
         return result
     for item in sorted(os.listdir(path)):
@@ -329,13 +337,13 @@ def load_assets_dir(path: str) -> dict[str, Asset]:
             result[asset.name] = asset
     item = os.path.join(path, "authors.yaml")
     if os.path.isfile(item):
-        for item in utils.parse_file(item, utils.load_yaml, ()):
-            assets = item.get("items", ())
-            del item["items"]
+        for yaml in utils.parse_file(item, utils.load_yaml, ()):
+            assets = yaml.get("items", ())
+            del yaml["items"]
             for name in assets:
                 asset = result.get(name)
                 if asset:
-                    asset.config.update(item)
+                    asset.config.update(yaml)
     return result
 
 empty_char = Character("", DataDir(""))

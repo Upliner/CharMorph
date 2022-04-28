@@ -100,7 +100,7 @@ class OpRetarget(bpy.types.Operator):
         sk.value = 1
 
         f = fit_calc.FitCalculator(geom_src)
-        fit = fit_calc.calc_fit(geom_dst.verts - geom_src.verts, *f.get_weights(ui.asset_obj))
+        fit = fit_calc.calc_fit(geom_dst.verts - geom_src.verts, f.get_weights(ui.asset_obj))
         fit += utils.get_basis_numpy(ui.asset_obj)
         sk.data.foreach_set("co", fit.reshape(-1))
 

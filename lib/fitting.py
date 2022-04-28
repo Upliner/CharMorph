@@ -158,6 +158,16 @@ def bbox_match(co, bbox):
     return True
 
 
+def fit_to_bmesh(bm, afd, fitted_diff):
+    try:
+        morphed = afd.geom.verts + fitted_diff
+        afd.obj.data.vertices.foreach_set("co", morphed.reshape(-1))
+        bm.from_mesh(afd.obj.data)
+    finally:
+        afd.obj.data.vertices.foreach_set("co", afd.geom.verts.reshape(-1))
+    return morphed.min(axis=0), morphed.max(axis=0)
+
+
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
 
@@ -167,7 +177,7 @@ class EmptyAsset:
 
 
 class Fitter(fit_calc.MorpherFitCalculator):
-    children: list = None
+    children: list[fit_calc.AssetFitData] = None
     transfer_calc: fit_calc.FitCalculator = None
     diff_arr: numpy.ndarray = None
 
@@ -176,40 +186,28 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.morpher = morpher
         self.weights_cache = {}
 
-    def add_mask_from_asset(self, asset):
-        vg_name = mask_name(asset)
+    def add_mask_from_asset(self, afd: fit_calc.AssetFitData):
+        vg_name = mask_name(afd.obj)
         if vg_name not in self.mcore.obj.vertex_groups:
-            self._add_single_mask(vg_name, asset)
+            self._add_single_mask(vg_name, afd)
 
-    def _add_single_mask(self, vg_name, asset):
-        custom_mask = self._get_asset_conf(asset).mask
-        if custom_mask is not None:
-            add_mask(self.mcore.obj, vg_name, custom_mask.tolist())
+    def _add_single_mask(self, vg_name, afd: fit_calc.AssetFitData):
+        if afd.conf.mask is not None:
+            add_mask(self.mcore.obj, vg_name, afd.conf.mask.tolist())
             return
 
-        asset_geom = self.get_asset_geom(asset)
-        bbox = asset_geom.bbox
+        bbox = afd.geom.bbox
         add_mask(
             self.mcore.obj, vg_name,
             calculate_mask(
-                self.get_char_geom(asset), asset_geom.bvh,
+                self.get_char_geom(afd), afd.geom.bvh,
                 lambda _, co: bbox_match(co, bbox)))
-
-    def fit_to_bmesh(self, bm, asset, fitted_diff):
-        geom = self.get_asset_geom(asset)
-        try:
-            morphed = geom.verts + fitted_diff
-            asset.data.vertices.foreach_set("co", morphed.reshape(-1))
-            bm.from_mesh(asset.data)
-        finally:
-            asset.data.vertices.foreach_set("co", geom.verts.reshape(-1))
-        return morphed.min(axis=0), morphed.max(axis=0)
 
     def recalc_comb_mask(self):
         t = utils.Timer()
         cleanup_masks(self.mcore.obj)
 
-        assets = [asset for asset in self.get_assets() if masking_enabled(asset)]
+        assets = [afd for afd in self.get_assets() if masking_enabled(afd.obj)]
         if not assets:
             return
         if len(assets) == 1:
@@ -217,42 +215,38 @@ class Fitter(fit_calc.MorpherFitCalculator):
             t.time("comb_mask_single")
             return
 
-        asset_morphs = []
         morph_cnt = 0
-        morph_asset = None
+        morph_afd = None
         mask = set()
-        for asset in assets:
-            asset_mask = self._get_asset_conf(asset).mask
-            if asset_mask is not None:
-                mask.update(asset_mask.tolist())
-            morph = self._get_asset_morph(asset)
-            asset_morphs.append(morph)
-            if morph:
+        for afd in assets:
+            if afd.mask is not None:
+                mask.update(afd.mask.tolist())
+            if afd.morph:
                 morph_cnt += 1
-                morph_asset = asset
+                morph_afd = afd
         if morph_cnt > 1:
-            morph_asset = None
+            morph_afd = None
 
         char_geom = self.geom
         if morph_cnt > 0:
-            char_geom = fit_calc.geom_morph(char_geom, *(morph for morph in asset_morphs if morph is not None))
+            char_geom = fit_calc.geom_morph(char_geom, *(afd.morph for afd in assets if afd.morph is not None))
             diff = char_geom.verts - self.geom.verts
 
         bboxes = []
         try:
             bm = bmesh.new()
-            for asset, morph in zip(assets, asset_morphs):
-                if morph_cnt > 0 and asset is not morph_asset:
+            for afd in assets:
+                if morph_cnt > 0 and afd is not morph_afd:
                     cur_diff = diff
-                    if morph:
-                        cur_diff = morph.apply(cur_diff.copy())
-                    fitted_diff = fit_calc.calc_fit(cur_diff, *self.get_weights(asset))
+                    if afd.morph:
+                        cur_diff = afd.morph.apply(cur_diff.copy())
+                    fitted_diff = fit_calc.calc_fit(cur_diff, afd.weights)
                     if (fitted_diff ** 2).sum(1).max() > 0.001:
-                        bboxes.append(self.fit_to_bmesh(bm, asset, fitted_diff))
+                        bboxes.append(fit_to_bmesh(bm, afd, fitted_diff))
                         continue
 
-                bm.from_mesh(asset.data)
-                bboxes.append(obj_bbox(asset))
+                bm.from_mesh(afd.obj.data)
+                bboxes.append(obj_bbox(afd.obj))
             bvh_assets = mathutils.bvhtree.BVHTree.FromBMesh(bm)
         finally:
             bm.free()
@@ -272,8 +266,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         t.time("comb_mask")
 
     def _get_fit_id(self, data):
-        if isinstance(data, bpy.types.Object):
-            data = data.data
+        data = fit_calc.get_mesh(data)
         if data is self.mcore.obj.data:
             return 0
         result = data.get("charmorph_fit_id")
@@ -282,14 +275,16 @@ class Fitter(fit_calc.MorpherFitCalculator):
             data["charmorph_fit_id"] = result
         return result
 
-    def get_weights(self, asset):
-        fit_id = self._get_fit_id(asset)
+    def get_weights(self, afd):
+        fit_id = self._get_fit_id(afd)
 
         result = self.weights_cache.get(fit_id)
         if result is not None:
             return result
 
-        result = super().get_weights(asset)
+        t = utils.Timer()
+        result = super().get_weights(afd)
+        t.time("weights " + afd.obj.name)
         self.weights_cache[fit_id] = result
         return result
 
@@ -297,9 +292,6 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if self.diff_arr is None:
             self.diff_arr = self.mcore.get_diff()
         return morph.apply(self.diff_arr.copy(), -1) if morph else self.diff_arr
-
-    def calc_fit(self, weights_tuple, morph=None):
-        return fit_calc.calc_fit(self.get_diff_arr(morph), *weights_tuple)
 
     def get_hair_data(self, psys):
         if not psys.is_edited:
@@ -358,7 +350,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             return False
 
         morphed = numpy.empty((len(data) + 1, 3))
-        morphed[1:] = fit_calc.calc_fit(self.get_diff_hair(), *weights)
+        morphed[1:] = fit_calc.calc_fit(self.get_diff_hair(), weights)
         morphed[1:] += data
 
         obj.particle_systems.active_index = idx
@@ -381,11 +373,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
             has_fit |= self.fit_hair(obj, i)
         return has_fit
 
-    def _transfer_weights_orig(self, asset):
-        self.transfer_weights(asset, utils.char_weights_npz(self.mcore.obj, self.mcore.char))
+    def _transfer_weights_orig(self, afd: fit_calc.AssetFitData):
+        self.transfer_weights(afd, utils.char_weights_npz(self.mcore.obj, self.mcore.char))
 
-    def _transfer_weights_obj(self, asset, vgs):
-        if asset.data is self.mcore.obj.data:
+    def _transfer_weights_obj(self, afd, vgs):
+        if afd.obj.data is self.mcore.obj.data:
             raise Exception("Tried to self-transfer weights")
         if self.mcore.alt_topo:
             if self.transfer_calc is None:
@@ -393,11 +385,11 @@ class Fitter(fit_calc.MorpherFitCalculator):
             calc = self.transfer_calc
         else:
             calc = self
-        calc.transfer_weights(asset, zip(*utils.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
+        calc.transfer_weights(afd, zip(*utils.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
 
-    def _transfer_armature(self, asset):
+    def _transfer_armature(self, afd: fit_calc.AssetFitData):
         existing = set()
-        for mod in asset.modifiers:
+        for mod in afd.obj.modifiers:
             if mod.type == "ARMATURE" and mod.object:
                 existing.add(mod.object.name)
 
@@ -416,15 +408,15 @@ class Fitter(fit_calc.MorpherFitCalculator):
         t = utils.Timer()
         source = bpy.context.window_manager.charmorph_ui.fitting_weights
         if source == "ORIG":
-            self._transfer_weights_orig(asset)
+            self._transfer_weights_orig(afd)
         elif source == "OBJ":
-            self._transfer_weights_obj(asset, vgs)
+            self._transfer_weights_obj(afd, vgs)
         else:
             raise Exception("Unknown weights source: " + source)
         t.time("weights")
 
         for mod in modifiers:
-            newmod = asset.modifiers.new(mod.name, "ARMATURE")
+            newmod = afd.obj.modifiers.new(mod.name, "ARMATURE")
             newmod.object = mod.object
             newmod.use_deform_preserve_volume = mod.use_deform_preserve_volume
             newmod.invert_vertex_group = mod.invert_vertex_group
@@ -432,66 +424,66 @@ class Fitter(fit_calc.MorpherFitCalculator):
             newmod.use_vertex_groups = mod.use_vertex_groups
             newmod.use_multi_modifier = mod.use_multi_modifier
             newmod.vertex_group = mod.vertex_group
-            utils.reposition_armature_modifier(asset)
+            utils.reposition_armature_modifier(afd.obj)
 
     def transfer_new_armature(self):
-        for asset in self.get_assets():
-            self._transfer_armature(asset)
+        for afd in self.get_assets():
+            self._transfer_armature(afd)
         self.tmp_buf = None
         self.transfer_calc = None
 
-    def get_target(self, asset):
+    def _get_target(self, asset):
         return utils.get_target(asset) if asset.data is self.mcore.obj.data else get_fitting_shapekey(asset)
 
-    def fit(self, asset, morph=False):
+    def fit(self, afd: fit_calc.AssetFitData):
+        if not afd:
+            return
         t = utils.Timer()
 
-        if morph is False:
-            morph = self._get_asset_morph(asset)
-        verts = self.calc_fit(self.get_weights(asset), morph)
-        verts += self.get_asset_geom(asset).verts
-        self.get_target(asset).foreach_set("co", verts.reshape(-1))
-        asset.data.update()
+        verts = fit_calc.calc_fit(self.get_diff_arr(afd.morph), afd.weights)
+        verts += afd.geom.verts
+        self._get_target(afd.obj).foreach_set("co", verts.reshape(-1))
+        afd.obj.data.update()
 
-        t.time("fit " + asset.name)
+        t.time("fit " + afd.obj.name)
 
     def _fit_new_item(self, asset):
         ui = bpy.context.window_manager.charmorph_ui
         if ui.fitting_transforms:
             utils.apply_transforms(asset)
 
-        if self.children is None:
-            self.get_children()
-        self.children.append(asset)
+        afd = self._get_asset_data(asset)
+        if self.children is not None:
+            self.children.append(afd)
         asset.parent = self.mcore.obj
 
+        if afd.morph:
+            name = afd.conf.name
+            if not name:
+                name = asset.name
+            self.mcore.add_asset_morph(name, afd.morph)
+
+        if ui.fitting_mask == "SEPR" and masking_enabled(asset):
+            self.add_mask_from_asset(afd)
+
         if ui.fitting_weights != "NONE":
-            self._transfer_armature(asset)
+            self._transfer_armature(afd)
+
+        return afd
 
     def fit_new(self, assets):
-        ui = bpy.context.window_manager.charmorph_ui
-        comb_mask = False
-        has_morphs = False
-        for asset in assets:
-            self._fit_new_item(asset)
-            c = self._get_asset_conf(asset)
-            if c and c.morph:
-                self.mcore.add_asset_morph(c.name, c.morph)
-                has_morphs = True
-            if masking_enabled(asset):
-                if ui.fitting_mask == "SEPR":
-                    self.add_mask_from_asset(asset)
-                elif ui.fitting_mask == "COMB":
-                    comb_mask = True
+        afd_list = [self._fit_new_item(asset) for asset in assets]
+        if bpy.context.window_manager.charmorph_ui.fitting_mask == "COMB":
+            for asset in assets:
+                if masking_enabled(asset):
+                    self.recalc_comb_mask()
+                    break
 
-        if comb_mask:
-            self.recalc_comb_mask()
-
-        if has_morphs:
+        if any(afd.morph is not None for afd in afd_list):
             self.update_char()
         else:
-            for asset in assets:
-                self.fit(asset, None)
+            for afd in afd_list:
+                self.fit(afd)
 
         self.transfer_calc = None
 
@@ -519,38 +511,42 @@ class Fitter(fit_calc.MorpherFitCalculator):
             ui.fitting_asset = obj
         return result
 
-    def get_children(self):
+    def _get_children(self):
         if self.children is None:
             self.children = [
-                obj for obj in self.mcore.obj.children
-                if obj.type == "MESH" and 'charmorph_fit_id' in obj.data and obj.visible_get()
+                self._get_asset_data(obj) for obj in self.mcore.obj.children
+                if obj.type == "MESH" and 'charmorph_fit_id' in obj.data
             ]
         return self.children
 
-    def _get_assets(self):
-        return [
-            asset for asset in self.get_children()
-            if asset.type == "MESH" and 'charmorph_fit_id' in asset.data
-        ]
-
     def get_assets(self):
         try:
-            return self._get_assets()
+            if self.children:
+                for child in self.children:
+                    if 'charmorph_fit_id' not in child.obj.data:
+                        self.children = None
+                        break
         except ReferenceError:  # can happen if some of the assets were deleted
             self.children = None
-            return self._get_assets()
+
+        return self._get_children()
+
+    @utils.lazyproperty
+    def alt_topo_afd(self):
+        if self.mcore.alt_topo:
+            return self._get_asset_data(self.mcore.obj)
+        return None
 
     def refit_all(self):
         self.diff_arr = None
-        if self.mcore.alt_topo:
-            self.fit(self.mcore.obj)
+        self.fit(self.alt_topo_afd)
         hair_deform = bpy.context.window_manager.charmorph_ui.hair_deform
         if hair_deform:
             self.fit_obj_hair(self.mcore.obj)
-        for asset in self.get_assets():
-            self.fit(asset)
+        for afd in self.get_assets():
+            self.fit(afd)
             if hair_deform:
-                self.fit_obj_hair(asset)
+                self.fit_obj_hair(afd.obj)
 
     def remove_cache(self, asset):
         keys = [asset.name]

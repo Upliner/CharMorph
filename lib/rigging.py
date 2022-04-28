@@ -143,8 +143,6 @@ class Rigger:
         for name, idx, weights in utils.vg_read(file):
             if not name.startswith("joint_"):
                 continue
-            if name in self.jdata:
-                continue
             item = [0, Vector()]
             self.jdata[name] = item
             for i, weight in zip(idx, weights):
@@ -154,7 +152,6 @@ class Rigger:
     def set_opts(self, opts):
         if not opts:
             return
-        self.opts.clear()
         if "bones" not in opts and "groups" not in opts and "default" not in opts:
             self.opts.update(opts)  # Legacy bones format
             return
@@ -299,26 +296,17 @@ bbone_attributes = [
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
 ]
-
-ATTR_CHECKED = False
-
-
-def check_attributes(bone):
-    # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
-    global ATTR_CHECKED
-    if ATTR_CHECKED:
-        return
+# bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
+def __blender3_bbone_attributes():
+    props = bpy.types.Bone.bl_rna.properties
     for i, attr in enumerate(bbone_attributes):
-        if not hasattr(bone, attr) and attr.endswith("y"):
+        if not attr not in props and attr.endswith("y"):
             bbone_attributes[i] = attr[:-1] + "z"
-
-    ATTR_CHECKED = True
+__blender3_bbone_attributes()
 
 
 def rigify_finalize(rig, char):
     vgs = char.vertex_groups
-    if len(rig.data.bones) > 0:
-        check_attributes(rig.data.bones[0])
     for bone in rig.data.bones:
         is_org = bone.name.startswith("ORG-")
         if is_org or bone.name.startswith("MCH-"):
@@ -339,7 +327,6 @@ def rigify_finalize(rig, char):
                         def_bone.bbone_custom_handle_start = handles[0]
                     if handles[1]:
                         def_bone.bbone_custom_handle_end = handles[1]
-
     # Set ease in/out for pose bones or not?
 
 

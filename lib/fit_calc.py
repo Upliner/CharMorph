@@ -22,7 +22,7 @@ import logging, numpy
 
 import bpy, mathutils  # pylint: disable=import-error
 
-from . import charlib, utils
+from . import morphs, charlib, utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ dist_thresh = 0.1
 epsilon = 1e-30
 
 
-def calc_fit(arr: numpy.ndarray, positions, idx, weights) -> numpy.ndarray:
-    return numpy.add.reduceat(arr[idx] * weights, positions)
+def calc_fit(arr: numpy.ndarray, weights) -> numpy.ndarray:
+    return numpy.add.reduceat(arr[weights[1]] * weights[2], weights[0])
 
 
 def weights_convert(weights, cut=True):
@@ -98,7 +98,7 @@ def calc_weights_kd(kd, verts, _epsilon, n):
     for v in verts:
         pdata = kd.find_n(v, n)
         maxdist = max([p[2] for p in pdata])
-        result.append({idx: (1 - (dist / maxdist)) / (max(dist ** 2, _epsilon)) for _, idx, dist in pdata})
+        result.append({idx: (1 - (dist / maxdist)) / (max(dist, _epsilon)) for _, idx, dist in pdata})
     return result
 
 
@@ -112,22 +112,39 @@ class Geometry:
 
     def verts_cnt(self):
         return len(self.verts)
+
     def verts_enum(self):
         return enumerate(self.verts)
 
     @utils.lazyproperty
     def kd(self):
         return utils.kdtree_from_verts_enum(self.verts_enum(), self.verts_cnt())
+
     @utils.lazyproperty
     def bvh(self):
         return mathutils.bvhtree.BVHTree.FromPolygons(self.verts, self.faces)
+
     @utils.lazyproperty
     def bbox(self):
         return self.verts.min(axis=0), self.verts.max(axis=0)
 
 
+class AssetFitData:
+    __slots__ = ("obj", "conf", "morph", "geom", "weights")
+    obj: bpy.types.Object
+    conf: charlib.Asset
+    morph: morphs.Morph
+    geom: Geometry
+    weights: tuple
+
+    def __init__(self):
+        self.conf = None
+        self.morph = None
+
+
 def mesh_faces(mesh):
     return [f.vertices for f in mesh.polygons]
+
 
 def geom_mesh(mesh):
     return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
@@ -143,6 +160,7 @@ class SubsetGeometry(Geometry):
 
     def verts_cnt(self):
         return len(self.subset)
+
     def verts_enum(self):
         return ((i, self.verts[i]) for i in self.subset)
 
@@ -168,12 +186,20 @@ def geom_subset(geom, subset):
     return SubsetGeometry(geom.verts, [geom.faces[i] for i in subset["faces"]], subset["verts"])
 
 
-def geom_morph(geom: Geometry, *morphs):
+def geom_morph(geom: Geometry, *morph_list):
     result = geom.copy()
     result.verts = result.verts.copy()
-    for morph in morphs:
+    for morph in morph_list:
         morph.apply(result.verts)
     return result
+
+
+def get_mesh(data):
+    if isinstance(data, AssetFitData):
+        data = data.obj
+    if isinstance(data, bpy.types.Object):
+        return data.data
+    return data
 
 
 class FitCalculator:
@@ -184,12 +210,11 @@ class FitCalculator:
         self.geom = geom
         self.geom_cache = {} if parent is None else parent.geom_cache
 
-    def get_char_geom(self, _asset):
+    def get_char_geom(self, _):
         return self.geom
 
-    def get_asset_geom(self, data) -> Geometry:
-        if isinstance(data, bpy.types.Object):
-            data = data.data
+    def _get_asset_geom(self, data) -> Geometry:
+        data = get_mesh(data)
         key = data.get("charmorph_fit_id", data.name)
         result = self.geom_cache.get(key)
         if result is None:
@@ -197,47 +222,58 @@ class FitCalculator:
             self.geom_cache[data] = result
         return result
 
-    def _calc_weights_internal(self, asset_verts, asset=None):
+    @staticmethod
+    def _add_asset_data(_):
+        pass
+
+    def _get_asset_data(self, obj):
+        afd = AssetFitData()
+        afd.obj = obj
+        self._add_asset_data(afd)
+        afd.geom = self._get_asset_geom(obj)
+        afd.weights = self.get_weights(afd)
+        return afd
+
+    def _calc_weights_internal(self, asset_verts, afd=None):
         t = utils.Timer()
-        cg = self.get_char_geom(asset)
+        cg = self.get_char_geom(afd)
         weights = calc_weights_kd(cg.kd, asset_verts, epsilon, 16)
         t.time("kdtree")
         calc_weights_direct(weights, cg, asset_verts)
         t.time("bvh direct")
-        if asset:
-            calc_weights_reverse(weights, cg, self.get_asset_geom(asset))
+        if afd:
+            calc_weights_reverse(weights, cg, self._get_asset_geom(afd))
             t.time("bvh reverse")
         positions, idx, wresult = weights_convert(weights)
         weights_normalize(positions, wresult)
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def get_weights(self, asset):
-        return self._calc_weights_internal(self.get_asset_geom(asset).verts, asset)
+    def get_weights(self, afd):
+        return self._calc_weights_internal(self._get_asset_geom(afd).verts, afd)
 
     def calc_weights_hair(self, arr):
         return self._calc_weights_internal(arr)
 
-    def _transfer_weights_iter_arrays(self, asset, vg_data):
+    def _transfer_weights_iter_arrays(self, weights, vg_data):
         if self.tmp_buf is None:
             self.tmp_buf = numpy.empty(len(self.geom.verts))
-        positions, fit_idx, fit_weights = self.get_weights(asset)
         # Reshape is needed because vertex arrays are 2D and weight arrays are 1D
-        fit_weights = fit_weights.reshape(-1)
+        weights = (weights[0], weights[1], weights[2].reshape(-1))
         for name, vg_idx, vg_weights in utils.vg_read(vg_data):
             self.tmp_buf.fill(0)
             self.tmp_buf.put(vg_idx, vg_weights)
-            yield name, calc_fit(self.tmp_buf, positions, fit_idx, fit_weights)
+            yield name, calc_fit(self.tmp_buf, weights)
 
-    def transfer_weights_get(self, asset, vg_data, cutoff=1e-4):
-        for name, weights in self._transfer_weights_iter_arrays(asset, vg_data):
-            idx = (weights > cutoff).nonzero()[0]
+    def _transfer_weights_get(self, weights, vg_data, cutoff=1e-4):
+        for name, vg_weights in self._transfer_weights_iter_arrays(weights, vg_data):
+            idx = (vg_weights > cutoff).nonzero()[0]
             if len(idx) > 0:
-                yield name, idx, weights[idx]
+                yield name, idx, vg_weights[idx]
 
-    def transfer_weights(self, asset, vg_data):
+    def transfer_weights(self, afd: AssetFitData, vg_data):
         utils.import_vg(
-            asset, self.transfer_weights_get(asset, vg_data),
+            afd.obj, self._transfer_weights_get(afd.weights, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
 
@@ -250,20 +286,18 @@ class MorpherFitCalculator(FitCalculator):
             geom = geom_subset(geom, subset)
         super().__init__(geom)
 
-    def _get_asset_conf(self, data):
-        if isinstance(data, bpy.types.Object):
-            data = data.data
-        if not data:
+    def _get_asset_conf(self, obj):
+        if not obj:
             return charlib.Asset
-        return self.mcore.char.assets.get(data.get("charmorph_asset"), charlib.Asset)
+        return self.mcore.char.assets.get(obj.data.get("charmorph_asset"), charlib.Asset)
 
-    def _get_asset_morph(self, asset) -> Geometry:
-        return self._get_asset_conf(asset).morph
+    def _add_asset_data(self, afd):
+        afd.conf = self._get_asset_conf(afd.obj)
+        afd.morph = afd.conf.morph  # TODO: get morph from mcore
 
-    def get_char_geom(self, asset) -> Geometry:
-        morph = self._get_asset_morph(asset)
-        if morph:
-            return geom_morph(self.geom, morph)
+    def get_char_geom(self, afd: AssetFitData) -> Geometry:
+        if afd.morph:
+            return geom_morph(self.geom, afd.morph)
         return self.geom
 
 
@@ -283,14 +317,17 @@ class RiggerFitCalculator(FitCalculator):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1 / max(dist**2, repsilon)
 
-    def get_weights(self, asset):
+    def get_weights(self, afd: AssetFitData):
         t = utils.Timer()
-        cg = self.get_char_geom(asset)
-        verts = self.get_asset_geom(asset).verts
+        cg = self.get_char_geom(afd)
+        verts = afd.geom.verts
         # calculate weights based on nearest vertices
         weights = calc_weights_kd(cg.kd, verts, repsilon, 16)
         self._calc_weights_kd_reverse(weights, verts)
-        calc_weights_reverse(weights, cg.verts, asset, lambda a, b: a + b)
+        calc_weights_reverse(weights, cg.verts, afd.geom, lambda a, b: a + b)
         result = weights_convert(weights, False)
         t.time("rigger calc time")
         return result
+
+    def transfer_weights_get(self, obj, vg_data, cutoff=1e-4):
+        return self._transfer_weights_get(self._get_asset_data(obj), vg_data, cutoff)

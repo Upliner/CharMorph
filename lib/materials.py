@@ -27,6 +27,11 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
+colorspaces = {
+    item.name for item in
+    bpy.types.ColorManagedInputColorspaceSettings.bl_rna.properties.get("name").enum_items
+}
+
 
 def init_materials(obj, char: Character):
     load_materials(obj, char)
@@ -92,7 +97,7 @@ def load_materials(obj, char: Character):
 
 
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
-def load_texdir(path, settings: dict) -> dict[str, tuple[str, str]]:
+def load_texdir(path, settings: dict) -> tuple[dict[str, tuple[str, str]], dict]:
     if not os.path.exists(path):
         return {}
     settings = settings.copy()
@@ -140,10 +145,19 @@ def tex_try_names(char, tex_set, names):
         yield "charmorph--" + name
 
 
+# Currently only colorspace settings are supported
 def apply_tex_settings(img, settings):
     if not settings:
         return
-    img.colorspace_settings.name = settings  # Currently only colorspace settings are supported
+    if settings in colorspaces:
+        img.colorspace_settings.name = settings
+        return
+    if settings == "Non-Color":
+        img.colorspace_settings.is_data = True
+        return
+    logger.error("Color settings %s is not available!", settings)
+    if settings != "sRGB" and "Linear" in colorspaces:
+        img.colorspace_settings.name = "Linear"
 
 
 def texture_max_res(ui):

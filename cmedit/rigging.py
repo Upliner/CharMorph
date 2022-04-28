@@ -99,7 +99,7 @@ class OpJointsToVG(bpy.types.Operator):
 
     def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.cmedit_ui
-        r = rigging.Rigger(ui.char_obj)
+        r = rigging.Rigger(context)
         r.joints_from_char(ui.char_obj)
         r.run(joint_list_extended(context, False))
         return {"FINISHED"}
@@ -255,7 +255,6 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l.operator("cmedit.store_roll_z")
         l.operator("cmedit.bbone_handles")
         l.operator("cmedit.rigify_finalize")
-        l.prop(ui, "rig_tweaks_file")
         l.operator("cmedit.rigify_tweaks")
         l.separator()
         l.operator("cmedit.joints_to_vg")

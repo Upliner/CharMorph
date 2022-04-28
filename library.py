@@ -23,7 +23,7 @@ import bpy  # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
 from . import morphing
-from .lib import charlib, morpher, materials, morphs, utils
+from .lib import morpher, materials, morphs, utils
 from .lib.charlib import library, empty_char
 
 logger = logging.getLogger(__name__)

@@ -60,14 +60,14 @@ def clear_old_weights(obj, char, rig):
 
 def clear_old_weights_with_assets(m, char, rig):
     clear_old_weights(m.core.obj, char, rig)
-    for asset in m.fitter.get_assets():
-        clear_old_weights(asset, char, rig)
+    for afd in m.fitter.get_assets():
+        clear_old_weights(afd.obj, char, rig)
 
 
 def delete_old_rig_with_assets(m, rig):
     delete_old_rig(m.core.obj, rig)
-    for asset in m.fitter.get_assets():
-        remove_armature_modifiers(asset)
+    for afd in m.fitter.get_assets():
+        remove_armature_modifiers(afd.obj)
 
 
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
@@ -98,11 +98,16 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if conf.joints:
             joints = conf.joints
             if mc.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, utils.vg_read(joints))
+                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, joints)
             rigger.joints_from_file(joints, verts)
         else:
             rigger.joints_from_char(obj, verts_alt)
+
         rigger.set_opts(conf.bones)
+        for afd in m.fitter.get_assets():
+            rigger.set_opts(afd.conf.bones)
+            rigger.joints_from_file(afd.conf.joints, afd.geom.verts)
+
         joints = None
         if rig_type == "arp":
             joints = rigging.layer_joints(bpy.context, conf.arp_reference_layer)
@@ -124,7 +129,9 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
         if rig_type == "rigify":
             rigify.apply_metarig_parameters(rig)
             metarig_only = ui.rigify_metarig_only
-            if metarig_only or (not hasattr(rig.data, "rigify_generate_mode") and not hasattr(rig.data, "rigify_target_rig")):
+            if metarig_only\
+                    or (not hasattr(rig.data, "rigify_generate_mode")\
+                    and not hasattr(rig.data, "rigify_target_rig")):
                 if not metarig_only:
                     err = "Rigify is not found! Generating metarig only"
                 utils.copy_transforms(rig, obj)
@@ -311,15 +318,15 @@ def _add_modifiers(ui):
     add_corrective_smooth(obj)
     add_subsurf(obj)
 
-    for asset in mm.morpher.fitter.get_assets():
+    for afd in mm.morpher.fitter.get_assets():
         if ui.fin_csmooth_assets == "RO":
-            sk_to_verts(asset, "charmorph_fitting")
+            sk_to_verts(afd.obj, "charmorph_fitting")
         elif ui.fin_csmooth_assets == "FR":
-            sk_to_verts(asset, "Basis")
+            sk_to_verts(afd.obj, "Basis")
         if ui.fin_csmooth_assets != "NO":
-            add_corrective_smooth(asset)
+            add_corrective_smooth(afd.obj)
         if ui.fin_subdiv_assets:
-            add_subsurf(asset)
+            add_subsurf(afd.obj)
 
 
 def _do_vg_cleanup():

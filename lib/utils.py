@@ -333,10 +333,10 @@ def get_vg_data(char, new, accumulate, verts=None):
 
     if isinstance(verts, numpy.ndarray):
         def get_co(i):
-            mathutils.Vector(verts[i])
+            return mathutils.Vector(verts[i])
     else:
         def get_co(i):
-            verts[i].co
+            return verts[i].co
 
     data = {}
     for v in char.data.vertices:

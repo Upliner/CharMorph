@@ -179,7 +179,7 @@ class OpBuildAltTopo(bpy.types.Operator):
             manager.update_morpher(morpher.get(obj))
             return {"FINISHED"}
         weights = fit_calc.FitCalculator(fit_calc.geom_morpher_final(mcore)).get_weights(obj)
-        result = fit_calc.calc_fit(mcore.full_basis - mcore.get_final(), *weights)
+        result = fit_calc.calc_fit(mcore.full_basis - mcore.get_final(), weights)
         result += utils.get_morphed_numpy(obj)
         result = result.reshape(-1)
         if btype == "K":

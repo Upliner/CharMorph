@@ -48,7 +48,7 @@ class FullMorph(Morph):
 
 
 class PartialMorph(FullMorph):
-    __slots__ = "delta", "idx"
+    __slots__ = ("idx",)
 
     def __init__(self, idx, delta):
         super().__init__(delta)
@@ -99,7 +99,7 @@ class MinMaxMorphData:
 
 
 class MinMaxMorph(MinMaxMorphData):
-    __slots__ = "min", "max", "name", "data"
+    __slots__ = ("data",)
 
     def __init__(self, name, data, minval=0, maxval=0):
         super().__init__(name, minval, maxval)
@@ -126,6 +126,7 @@ class MinMaxMorph(MinMaxMorphData):
 
 
 class Separator(Morph):
+    __slots__ = ()
     name = ""
 
 
