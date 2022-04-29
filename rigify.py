@@ -115,7 +115,7 @@ def add_mixin(char, conf, rig):
         return (None, None)
     mixin = utils.import_obj(char.path(conf.file), obj_name, "ARMATURE")
     bones = [b.name for b in mixin.data.bones]
-    joints = rigging.all_joints(mixin)
+    joints = rigging.get_joints(mixin)
     bpy.ops.object.join({
         "object": rig,
         "selected_editable_objects": [rig, mixin],
@@ -124,7 +124,7 @@ def add_mixin(char, conf, rig):
     return (bones, joints)
 
 
-def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
+def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger, tweaks: tuple[list, list, list]):
     obj = m.core.obj
     metarig = bpy.context.object
     if hasattr(metarig.data, "rigify_generate_mode"):
@@ -144,12 +144,11 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
 
         new_bones, new_joints = add_mixin(m.core.char, conf, rig)
 
-        pre_tweaks, editmode_tweaks, post_tweaks = rigging.unpack_tweaks(m.core.char.path("."), conf.tweaks)
-        for tweak in pre_tweaks:
+        for tweak in tweaks[0]:
             rigging.apply_tweak(rig, tweak)
 
         sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
-        if len(editmode_tweaks) > 0 or len(conf.sliding_joints) > 0 or new_joints:
+        if len(tweaks[1]) > 0 or len(conf.sliding_joints) > 0 or new_joints:
             bpy.ops.object.mode_set(mode="EDIT")
 
             if new_joints:
@@ -157,14 +156,14 @@ def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger):
                 if not rigger.run(new_joints):
                     raise rigging.RigException("Mixin fitting failed")
 
-            for tweak in editmode_tweaks:
+            for tweak in tweaks[1]:
                 rigging.apply_editmode_tweak(bpy.context, tweak)
 
             sj_list = sliding_joints.create_from_conf(m.sj_calc, conf)
 
             bpy.ops.object.mode_set(mode="OBJECT")
 
-        for tweak in post_tweaks:
+        for tweak in tweaks[2]:
             rigging.apply_tweak(rig, tweak)
 
         for data in sj_list:

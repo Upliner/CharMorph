@@ -32,34 +32,33 @@ class RigException(Exception):
     pass
 
 
-def get_joints(bones, is_all):
+def get_joints(obj, bfilter=lambda _: True):
+    joints = []
+    for bone in obj.data.bones:
+        if not bfilter(bone):
+            continue
+        if not bone.use_connect:
+            joints.append((bone, "head"))
+        joints.append((bone, "tail"))
+    return joints
+
+
+def layer_joints(obj, layer):
+    return get_joints(obj, lambda bone: bone.layers[layer])
+
+
+def selected_joints(context):
     joints = {}
-    for bone in bones:
-        if is_all:
-            if not bone.use_connect:
-                joints[f"joint_{bone.name}_head"] = (bone.head, bone, "head")
-        elif bone.select_head:
+    for bone in context.object.edit_bones:
+        if bone.select_head:
             if bone.use_connect:
                 b = bone.parent
                 joints[f"joint_{b.name}_tail"] = (b.tail, b, "tail")
             else:
                 joints[f"joint_{bone.name}_head"] = (bone.head, bone, "head")
-        if is_all or bone.select_tail:
+        if bone.select_tail:
             joints[f"joint_{bone.name}_tail"] = (bone.tail, bone, "tail")
     return joints
-
-
-####
-def all_joints(context):
-    return get_joints(context.object.data.edit_bones, True)
-
-
-def layer_joints(context, layer):
-    return get_joints([bone for bone in context.object.data.edit_bones if bone.layers[layer]], True)
-
-
-def selected_joints(context):
-    return get_joints(context.object.data.edit_bones, False)
 ####
 
 
@@ -126,6 +125,27 @@ def bb_align_roll(bone, vec, axis, inout):
     setattr(bone, "bbone_roll" + inout, roll)
 
 
+def get_roll(get_func):
+    for axis in ("z", "x"):
+        value = get_func(axis)
+        if value and len(value) == 3:
+            return Vector(value), axis
+    return None, None
+
+
+def roll_x_to_z(vector, bone):
+    return Quaternion(bone.y_axis, -math.pi / 2) @ vector
+
+
+def get_roll_z(get_func, bone):
+    vector, axis = get_roll(get_func)
+    if vector is None:
+        return None
+    if axis == "x":
+        vector = roll_x_to_z(vector, bone)
+    return vector
+
+
 class Rigger:
     def __init__(self, context):
         self.context = context
@@ -155,14 +175,14 @@ class Rigger:
         if "bones" not in opts and "groups" not in opts and "default" not in opts:
             self.opts.update(opts)  # Legacy bones format
             return
-        self.default_opts.update(opts.get("default", ""))
-        self.opts.update(opts.get("bones", ""))
-        for g in opts.get("groups", ""):
+        self.default_opts.update(opts.get("default", ()))
+        self.opts.update(opts.get("bones", ()))
+        for g in opts.get("groups", ()):
             g_opts = g.get("opts", {})
-            for b in g.get("bones", ""):
+            for b in g.get("bones", ()):
                 self.opts[b] = g_opts.copy()
 
-    def get_opt(self, bone, opt):
+    def get_opt(self, bone, opt: str):
         if self.opts or self.default_opts:
             bo = self.opts.get(bone.name)
             if bo is None:
@@ -213,10 +233,10 @@ class Rigger:
 
     def _set_bone_pos(self, lst):
         edit_bones = self.context.object.data.edit_bones
-        for _, bone, _ in lst.values():
+        for bone, _ in lst:
             edit_bone = edit_bones[bone.name]
             self._save_bone_data(edit_bone)
-        for _, bone, attr in lst.values():
+        for bone, attr in lst:
             pos = self.joint_position(bone, attr)
             if pos:
                 edit_bone = edit_bones[bone.name]
@@ -226,11 +246,7 @@ class Rigger:
                 self.result = False
 
     def get_roll(self, bone, prefix):
-        for axis in ("z", "x"):
-            value = self.get_opt(bone, f"{prefix}axis_{axis}")
-            if value and len(value) == 3:
-                return Vector(value), axis
-        return None, None
+        return get_roll(lambda axis: self.get_opt(bone, f"{prefix}axis_{axis}"))
 
     def _post_process_bones(self):
         edit_bones = self.context.object.data.edit_bones
@@ -247,10 +263,8 @@ class Rigger:
                 logger.error("Align bone %s is not found", align)
                 self.result = False
 
-            vector, axis = self.get_roll(bone, "")
+            vector = get_roll_z(lambda axis, bone=bone: self.get_opt(bone, "axis_" + axis), bone)
             if vector:
-                if axis == "x":
-                    vector.rotate(Quaternion(bone.y_axis, -math.pi / 2))
                 bone.align_roll(vector)
 
         # Calculate bbone order. Parents need to be processed before childen
@@ -278,12 +292,9 @@ class Rigger:
         walk(bbones)
 
     def run(self, lst=None):
-        if lst is None:
-            lst = all_joints(self.context)
-
         self.result = True
         self._bones = set()
-        self._set_bone_pos(lst)
+        self._set_bone_pos(get_joints(self.context.object) if lst is None else lst)
         self._post_process_bones()
         self._bones = None
 
@@ -296,12 +307,16 @@ bbone_attributes = [
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
 ]
+
+
 # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
 def __blender3_bbone_attributes():
     props = bpy.types.Bone.bl_rna.properties
     for i, attr in enumerate(bbone_attributes):
         if attr not in props and attr.endswith("y"):
             bbone_attributes[i] = attr[:-1] + "z"
+
+
 __blender3_bbone_attributes()
 
 
@@ -320,7 +335,9 @@ def rigify_finalize(rig, char):
 
                 if any(handles):
                     def_bone = rig.data.bones.get("DEF-" + bone.name[4:], bone)
-                    if def_bone is not bone and (def_bone.bbone_segments == 1 or def_bone.bbone_handle_type_start == "AUTO"):
+                    if def_bone is not bone and (
+                            def_bone.bbone_segments == 1
+                            or def_bone.bbone_handle_type_start == "AUTO"):
                         for attr in bbone_attributes:
                             setattr(def_bone, attr, getattr(bone, attr))
                     if handles[0]:
@@ -330,7 +347,7 @@ def rigify_finalize(rig, char):
     # Set ease in/out for pose bones or not?
 
 
-def unpack_tweaks(path, tweaks, stages=None, depth=0):
+def unpack_tweaks(path: str, tweaks, stages: tuple[list, list, list] = None, depth=0):
     if depth > 100:
         logger.error("Too deep tweaks loading: %s", repr(tweaks))
         return ([], [], [])
@@ -355,7 +372,7 @@ def unpack_tweaks(path, tweaks, stages=None, depth=0):
         elif tweak.get("tweak") == "rigify_sliding_joint":
             stages[1].append(tweak)
             stages[2].append(tweak)
-        elif tweak.get("select") == "edit_bone" or tweak.get("tweak") in ["assign_parents", "align"]:
+        elif tweak.get("select") == "edit_bone" or tweak.get("tweak") in ("assign_parents", "align"):
             stages[1].append(tweak)
         else:
             stages[2].append(tweak)
@@ -419,6 +436,40 @@ def process_bone_actions(edit_bones, bone, tweak):
     return extrude_if_necessary(edit_bones, bone, tweak.get("extrude"))
 
 
+def align_vec_roll(bones, vector, roll_vec, roll_axis):
+    for bone in bones:
+        bone.tail = bone.head + vector * (bone.tail - bone.head).length
+        if roll_vec:
+            if roll_axis == "x":
+                bone.align_roll(roll_x_to_z(roll_vec, bone))
+            else:
+                bone.align_roll(roll_vec)
+
+
+def align_tweak(edit_bones, tweak: dict):
+    bones = tweak["bones"]
+    if isinstance(bones, dict):
+        items = bones.items()
+    else:
+        target_bone = tweak.get("target_bone")
+        if target_bone:
+            items = ((bone, target_bone) for bone in bones)
+        else:
+            if "vector" in tweak:
+                vector = Vector(tweak["vector"])
+                roll = get_roll(lambda axis: tweak.get("axis_" + axis))
+            elif "foot_bone" in tweak:
+                vector = edit_bones[tweak["foot_bone"]].z_axis
+                vector[2] = 0
+                roll = (Vector((0, 0, 1)), "z")
+            else:
+                raise RigException("Cannot get align target for tweak " + str(tweak))
+            align_vec_roll((edit_bones[name] for name in bones), vector, *roll)
+            return
+    for bone, target in items:
+        edit_bones[bone].align_orientation(edit_bones[target])
+
+
 def apply_editmode_tweak(context, tweak):
     t = tweak.get("tweak")
     edit_bones = context.object.data.edit_bones
@@ -431,11 +482,7 @@ def apply_editmode_tweak(context, tweak):
                 v = edit_bones[v]
             edit_bones[k].parent = v
     elif t == "align":
-        for k, v in tweak["bones"].items():
-            bone = edit_bones[k]
-            target = edit_bones[v]
-            bone.align_orientation(target)
-            bone.roll = target.roll
+        align_tweak(edit_bones, tweak)
     elif tweak.get("select") == "edit_bone":
         bone = edit_bones.get(tweak.get("bone"))
         if not bone:
@@ -461,7 +508,7 @@ def apply_tweak(rig, tweak):
     else:
         bones = rig.pose.bones
 
-    obj = bones.get(tweak.get("bone"))
+    obj = bones.get(tweak["bone"])
 
     if select == "pose_bone":
         add = tweak.get("add")

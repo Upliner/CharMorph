@@ -194,14 +194,11 @@ class OpCleanupJoints(bpy.types.Operator):
 
     def execute(self, context):
         char = context.window_manager.cmedit_ui.char_obj
-        joints = rigging.get_joints(context.object.data.bones, True)
+        joints = rigging.get_joints(context.object)
+        joints = [j for j in joints if j[1] != "head" or not utils.is_true(j[0].get("charmorph_connected"))]
         if len(joints) == 0:
             self.report({'ERROR'}, "No joints found")
             return {"CANCELLED"}
-
-        for k, v in list(joints.items()):
-            if v[2] == "head" and utils.is_true(v[1].get("charmorph_connected")):
-                del joints[k]
 
         for vg in list(char.vertex_groups):
             if vg.name.startswith("joint_") and vg.name not in joints:

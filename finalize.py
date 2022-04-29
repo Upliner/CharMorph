@@ -22,7 +22,7 @@ import logging, numpy
 
 import bpy  # pylint: disable=import-error
 
-from .lib import fit_calc, rigging, utils
+from .lib import charlib, fit_calc, rigging, utils
 from .morphing import manager as mm
 from . import rigify
 
@@ -70,20 +70,71 @@ def delete_old_rig_with_assets(m, rig):
         remove_armature_modifiers(afd.obj)
 
 
+def match_armature(main: charlib.Armature, match: dict):
+    for k, values in match.items():
+        if not isinstance(values, list):
+            values = (values,)
+        match_value = getattr(main, k)
+        if not any(match_value == value for value in values):
+            return False
+    return True
+
+
+def matching_armatures(main: charlib.Armature, candidates: list[charlib.Armature]):
+    return (c for c in candidates if any(match_armature(main, match) for match in c.match))
+
+
+def run_rigger(conf: charlib.Armature, verts: numpy.ndarray, verts_alt: numpy.ndarray, manual_sculpt):
+    m = mm.morpher
+    bpy.ops.object.mode_set(mode="EDIT")
+    rig = bpy.context.object
+    rig.data.use_mirror_x = False
+    rigger = rigging.Rigger(bpy.context)
+
+    def add_char_joints(joints):
+        if m.core.alt_topo and (manual_sculpt or verts is verts_alt):
+            joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(m.core.obj, joints)
+            rigger.joints_from_file(joints, verts_alt)
+        else:
+            rigger.joints_from_file(joints, verts)
+
+    if conf.joints:
+        add_char_joints(conf.joints)
+    else:
+        rigger.joints_from_char(m.core.obj, verts_alt)
+
+    tweaks = rigging.unpack_tweaks(conf.parent.dirpath, conf.tweaks)
+    rigger.set_opts(conf.bones)
+    for afd in m.fitter.get_assets():
+        for a in matching_armatures(conf, afd.conf.armature):
+            rigger.set_opts(a.bones)
+            rigging.unpack_tweaks(a.parent.dirpath, a.tweaks, tweaks)
+            for j in a.joints:
+                if j["verts"] == "char":
+                    add_char_joints(j["file"])
+                elif j["verts"] == "asset":
+                    rigger.joints_from_file(j["file"], afd.geom.verts)
+                else:
+                    logger.error('Unknown verts source "%s" for asset %s', j["verts"], afd.obj.name)
+
+    if not rigger.run(rigging.layer_joints(rig, conf.arp_reference_layer) if conf.type == "arp" else None):
+        raise rigging.RigException("Rig fitting failed")
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return rigger, tweaks
+
+
 def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
     m = mm.morpher
-    mc = m.core
-    obj = mc.obj
-    char = mc.char
-    conf = char.armature.get(ui.fin_rig)
+    obj = m.core.obj
+    conf = m.core.char.armature.get(ui.fin_rig)
     if not conf:
         raise rigging.RigException("Rig is not found")
 
-    rig_type = conf.type
-    if rig_type not in ("arp", "rigify", "regular"):
-        raise rigging.RigException(f"Rig type {rig_type} is not supported")
+    if conf.type not in ("arp", "rigify", "regular"):
+        raise rigging.RigException(f"Rig type {conf.type} is not supported")
 
-    rig = utils.import_obj(char.path(conf.file), conf.obj_name, "ARMATURE")
+    rig = utils.import_obj(m.core.char.path(conf.file), conf.obj_name, "ARMATURE")
     if not rig:
         raise rigging.RigException("Rig import failed")
 
@@ -91,55 +142,32 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
     err = None
     try:
         bpy.context.view_layer.objects.active = rig
-        bpy.ops.object.mode_set(mode="EDIT")
-
-        rig.data.use_mirror_x = False
-        rigger = rigging.Rigger(bpy.context)
-        if conf.joints:
-            joints = conf.joints
-            if mc.alt_topo and (ui.fin_manual_sculpt or verts is verts_alt):
-                joints = fit_calc.RiggerFitCalculator(m).transfer_weights_get(obj, joints)
-            rigger.joints_from_file(joints, verts)
-        else:
-            rigger.joints_from_char(obj, verts_alt)
-
-        rigger.set_opts(conf.bones)
-        for afd in m.fitter.get_assets():
-            rigger.set_opts(afd.conf.bones)
-            rigger.joints_from_file(afd.conf.joints, afd.geom.verts)
-
-        joints = None
-        if rig_type == "arp":
-            joints = rigging.layer_joints(bpy.context, conf.arp_reference_layer)
-        if not rigger.run(joints):
-            raise rigging.RigException("Rig fitting failed")
-
-        bpy.ops.object.mode_set(mode="OBJECT")
+        rigger, tweaks = run_rigger(conf, verts, verts_alt, ui.fin_manual_sculpt)
 
         old_rig = obj.find_armature()
         if old_rig:
-            clear_old_weights_with_assets(m, char, old_rig)
+            clear_old_weights_with_assets(m, m.core.char, old_rig)
 
-        if mc.alt_topo:
+        if m.core.alt_topo:
             m.fitter.transfer_weights(obj, conf.weights_npz)
         else:
             utils.import_vg(obj, conf.weights_npz, False)
 
         attach = True
-        if rig_type == "rigify":
+        if conf.type == "rigify":
             rigify.apply_metarig_parameters(rig)
             metarig_only = ui.rigify_metarig_only
             if metarig_only\
-                    or (not hasattr(rig.data, "rigify_generate_mode")\
+                or (not hasattr(rig.data, "rigify_generate_mode")
                     and not hasattr(rig.data, "rigify_target_rig")):
                 if not metarig_only:
                     err = "Rigify is not found! Generating metarig only"
                 utils.copy_transforms(rig, obj)
                 attach = False
             else:
-                rig = rigify.do_rig(m, conf, rigger)
+                rig = rigify.do_rig(m, conf, rigger, tweaks)
 
-        if rig_type == "arp":
+        if conf.type == "arp":
             if hasattr(bpy.ops, "arp") and hasattr(bpy.ops.arp, "match_to_rig"):
                 bpy.ops.arp.match_to_rig()
             else:

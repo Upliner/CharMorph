@@ -226,22 +226,25 @@ class Character(DataDir):
 # if property value is dict or some other value, leave it as is
 # if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
 def _lazy_yaml_props(*prop_lst):
-    def wrap_class(superclass):
-        class Child(superclass):
-            def __init__(self, *args):
-                super().__init__(*args)
-                for prop in prop_lst:
-                    value = getattr(self, prop)
-                    if isinstance(value, str):
-                        setattr(self, "_lazy_yaml_" + prop, value)
-                        delattr(self, prop)
-        for prop in prop_lst:
-            setattr(Child, prop, utils.named_lazyprop(
-                prop, lambda self, name=prop:
-                    self.char.get_yaml(getattr(self, "_lazy_yaml_" + name))))
-        return Child
+    def modify_class(cls):
+        orig_init = cls.__init__
 
-    return wrap_class
+        def new_init(self, *args):
+            orig_init(self, *args)
+            for prop in prop_lst:
+                value = self.__dict__.get(prop)
+                if isinstance(value, str):
+                    setattr(self, "_lazy_yaml_" + prop, value)
+                    delattr(self, prop)
+
+        cls.__init__ = new_init
+        for prop in prop_lst:
+            setattr(cls, prop, utils.named_lazyprop(
+                prop, lambda self, name=prop:
+                    self.parent.get_yaml(getattr(self, "_lazy_yaml_" + name))))
+        return cls
+
+    return modify_class
 
 
 @_lazy_yaml_props("bones", "mixin_bones")
@@ -251,33 +254,45 @@ class Armature:
     ik_limits: dict[str, dict] = {}
     sliding_joints: dict[str, dict] = {}
     mixin = ""
+    match = []
     mixin_bones: dict[str, dict]
     weights: str = None
     arp_reference_layer = 17
 
-    def __init__(self, char: Character, name: str, conf: dict):
+    def __init__(self, parent: DataDir, name: str, conf: dict):
         self.title = name
+        self.parent = parent
         self.obj_name = name
-        self.file = char.char_file
         self.mixin_bones = {}
 
-        self.__dict__.update(char.armature_defaults)
-        self.__dict__.update(conf)
+        if isinstance(parent, Character):
+            self.file = parent.char_file
+            self.__dict__.update(parent.armature_defaults)
 
-        self.char = char
+        self.__dict__.update(conf)
 
         for item in ("weights", "joints"):
             value = getattr(self, item, None)
-            setattr(self, item, char.path(value) if value else char.path(os.path.join(item, name + ".npz")))
+            if value is None or isinstance(value, str):
+                setattr(self, item, parent.path(value) if value else parent.path(os.path.join(item, name + ".npz")))
+            elif not name and isinstance(value, dict):
+                value = (value,)
+                setattr(self, item, value)
+            if not name and isinstance(value, (list, tuple)):
+                for jitem in value:
+                    # There seems to be pylint type inference bug
+                    jitem["file"] = parent.path(jitem["file"])  # pylint: disable=unsupported-assignment-operation, unsubscriptable-object
 
         self.name = name
+        if isinstance(self.match, dict):
+            self.match = (self.match,)
 
-        if "bones" not in self.__dict__:
-            self.bones = char.bones  # Legacy
+        if "bones" not in self.__dict__ and isinstance(parent, Character):
+            self.bones = parent.bones  # Legacy
 
     @utils.lazyproperty
     def weights_npz(self):
-        return self.char.get_np(self.weights)
+        return self.parent.get_np(self.weights)
 
 
 class Asset(DataDir):
@@ -303,12 +318,11 @@ class Asset(DataDir):
         return self.get_np("mask.npy")
 
     @utils.lazyproperty
-    def bones(self):
-        return self.config.get("bones")
-
-    @utils.lazyproperty
-    def joints(self):
-        return self.get_np("joints.npz")
+    def armature(self):
+        items = self.config.get("armature", ())
+        if items and not isinstance(items, list):
+            items = (items,)
+        return [Armature(self, "", item) for item in items]
 
     @utils.lazyproperty
     def morph(self):
@@ -343,10 +357,12 @@ def load_assets_dir(path: str):
             for name in assets:
                 asset = result.get(name)
                 if asset:
-                    asset.config.update(yaml)
+                    asset.__dict__.update(yaml)
     return result
 
+
 empty_char = Character("", DataDir(""))
+
 
 class Library(DataDir):
     chars: dict[str, Character]
