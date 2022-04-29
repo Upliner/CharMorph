@@ -300,7 +300,7 @@ bbone_attributes = [
 def __blender3_bbone_attributes():
     props = bpy.types.Bone.bl_rna.properties
     for i, attr in enumerate(bbone_attributes):
-        if not attr not in props and attr.endswith("y"):
+        if attr not in props and attr.endswith("y"):
             bbone_attributes[i] = attr[:-1] + "z"
 __blender3_bbone_attributes()
 
