@@ -110,10 +110,10 @@ def run_rigger(conf: charlib.Armature, verts: numpy.ndarray, verts_alt: numpy.nd
             rigger.set_opts(a.bones)
             rigging.unpack_tweaks(a.parent.dirpath, a.tweaks, tweaks)
             for j in a.joints:
-                if j["verts"] == "char":
-                    add_char_joints(j["file"])
-                elif j["verts"] == "asset":
-                    rigger.joints_from_file(j["file"], afd.geom.verts)
+                if j.verts == "char":
+                    add_char_joints(j.file)
+                elif j.verts == "asset":
+                    rigger.joints_from_file(j.file, afd.geom.verts)
                 else:
                     logger.error('Unknown verts source "%s" for asset %s', j["verts"], afd.obj.name)
 

@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging, math, os
+import typing, logging, math, os
 
 import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
@@ -448,6 +448,7 @@ def align_vec_roll(bones, vector, roll_vec, roll_axis):
 
 def align_tweak(edit_bones, tweak: dict):
     bones = tweak["bones"]
+    items: typing.Iterable[tuple[str, str]]
     if isinstance(bones, dict):
         items = bones.items()
     else:

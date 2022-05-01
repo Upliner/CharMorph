@@ -99,7 +99,7 @@ def load_materials(obj, char: Character):
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
 def load_texdir(path, settings: dict) -> tuple[dict[str, tuple[str, str]], dict]:
     if not os.path.exists(path):
-        return {}
+        return {}, settings
     settings = settings.copy()
     settings.update(utils.parse_file(os.path.join(path, "settings.yaml"), utils.load_yaml, {}))
     default_setting = settings.get("*")

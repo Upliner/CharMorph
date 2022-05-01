@@ -148,7 +148,8 @@ def flatten(arr, dtype):
     return numpy.block([numpy.array(item, dtype=dtype) for item in arr])
 
 
-def get_bits(num):
+def get_bits(arr):
+    num = max(arr, default=0)
     if num >= 65536:
         return numpy.uint32
     if num >= 256:
@@ -182,7 +183,7 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         numpy.savez_compressed(
             self.filepath,
             names=b'\0'.join(name.encode("utf-8") for name in names),
-            cnt=numpy.array(cnt, dtype=get_bits(max(cnt, default=0))),
+            cnt=numpy.array(cnt, dtype=get_bits(cnt)),
             idx=flatten(idx, numpy.uint16),
             weights=flatten(weights, float_dtype(self.precision))
         )

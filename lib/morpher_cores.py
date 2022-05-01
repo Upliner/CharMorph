@@ -245,7 +245,7 @@ class ShapeKeysMorpher(MorpherCore):
     def prop_get(self, name):
         morph = self.morphs_l2_dict[name]
         if self.is_combo_morph(morph):
-            return sum(combo_morpher.get(idx) for combo_morpher, idx in morph.data)/len(morph.data)
+            return sum(combo_morpher.get(idx) for combo_morpher, idx in morph.data) / len(morph.data)
         if len(morph.data) == 1:
             return morph.data[0].value
         skmin, skmax = tuple(morph.data)

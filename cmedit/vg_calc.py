@@ -23,29 +23,33 @@ import bpy, mathutils  # pylint: disable=import-error
 
 from ..lib import utils
 
+
 def closest_point_on_face(face, co):
     if len(face) == 3:
         return mathutils.geometry.closest_point_on_tri(co, face[0], face[1], face[2])
     results = []
     for _ in range(len(face)):
         results.append(mathutils.geometry.closest_point_on_tri(co, face[0], face[1], face[2]))
-        face = face[1:]+face[:1]
-    results.sort(key=lambda elem: (elem-co).length)
-    return (results[0]+results[1])/2
+        face = face[1:] + face[:1]
+    results.sort(key=lambda elem: (elem - co).length)
+    return (results[0] + results[1]) / 2
+
 
 def dist_edge(co, v1, v2):
     co2, dist = mathutils.geometry.intersect_point_line(co, v1, v2)
     if dist <= 0:
-        return (v1-co).length
+        return (v1 - co).length
     if dist >= 1:
-        return (v2-co).length
-    return (co2-co).length
+        return (v2 - co).length
+    return (co2 - co).length
+
 
 def barycentric_weight_calc(veclist, co):
     result = mathutils.interpolate.poly_3d_calc(veclist, co)
     if sum(result) < 0.5:
         return [1] * len(result)
     return result
+
 
 def vg_full_to_avg(group):
     if group is None:
@@ -54,24 +58,28 @@ def vg_full_to_avg(group):
     vec = mathutils.Vector()
     for co, _, weight in group:
         total += weight
-        vec += co*weight
+        vec += co * weight
     if total < 0.1:
         return None
     return vec / total
 
+
 def vg_full_to_dict(group):
     return {tup[1]: tup[2] for tup in group}
 
+
 def vg_mult(vg, coeff):
     for idx, weight in vg.items():
-        vg[idx] = weight*coeff
+        vg[idx] = weight * coeff
+
 
 def vg_add(a, b, coeff=1):
     if isinstance(b, dict):
         b = b.items()
     for idx, weight in b:
-        a[idx] = a.get(idx, 0)+weight*coeff
+        a[idx] = a.get(idx, 0) + weight * coeff
     return a
+
 
 def vg_mix2(a, b, factor):
     if factor < 1e-30:
@@ -83,11 +91,14 @@ def vg_mix2(a, b, factor):
     vg_mult(a, (1 - factor) / sum(a.values()))
     return vg_add(a, b, factor / sum(b.values()))
 
+
 def vg_mixmany(groups):
     groups = [
-        (group, gweight/gsum)
-        for group, gweight, gsum in ((group, gweight, sum(group.values()))
-        for group, gweight in groups) if gsum >= 1e-30
+        (group, gweight / gsum)
+        for group, gweight, gsum in (
+            (group, gweight, sum(group.values()))
+            for group, gweight in groups
+        ) if gsum >= 1e-30
     ]
     if len(groups) == 0:
         return "No groups were found by the calculation method"
@@ -98,21 +109,25 @@ def vg_mixmany(groups):
         vg_add(result, group, coeff)
     return result
 
+
 def get_offs(bone, attr):
     offs = bone.get("charmorph_offs_" + attr)
     if hasattr(offs, "__len__") and len(offs) == 3:
         return mathutils.Vector(offs)
     return mathutils.Vector()
 
+
 def overwrite_vg(vertex_groups, name):
     if name in vertex_groups:
         vertex_groups.remove(vertex_groups[name])
     return vertex_groups.new(name=name)
 
+
 def calc_lst(co, lst):
     if lst is None or len(lst) == 0:
         return "No vertices were found by the calc method"
     return dict(zip([tup[1] for tup in lst], barycentric_weight_calc([tup[0] for tup in lst], co)))
+
 
 def calc_group_weights(groups, co):
     groups2 = []
@@ -123,6 +138,7 @@ def calc_group_weights(groups, co):
             groups2.append(vg_full_to_dict(g))
             coords.append(co2)
     return list(zip(groups2, barycentric_weight_calc(coords, co)))
+
 
 class VGCalculator:
     def __init__(self, rig, char, ui):
@@ -190,10 +206,10 @@ class VGCalculator:
             vco = vert.co
             for bv in range(8):
                 for coord in range(3):
-                    if bv>>coord&1 != (1 if vco[coord] > co[coord] else 0):
+                    if bv >> coord & 1 != (1 if vco[coord] > co[coord] else 0):
                         break
                 else:
-                    dist = sum(abs(vco[coord]-co[coord]) for coord in range(3))
+                    dist = sum(abs(vco[coord] - co[coord]) for coord in range(3))
                     if lst[bv][2] is None or lst[bv][2] > dist:
                         lst[bv] = (vco, idx, dist)
                     break
@@ -210,15 +226,15 @@ class VGCalculator:
         weights_front = barycentric_weight_calc(front_face, closest_point_on_face(front_face, co))
         weights_back = barycentric_weight_calc(back_face, closest_point_on_face(back_face, co))
 
-        avg_front = sum((co*weight for co, weight in zip(front_face, weights_front)), mathutils.Vector())
-        avg_back = sum((co*weight for co, weight in zip(back_face, weights_back)), mathutils.Vector())
-        axis = avg_back-avg_front
-        offs = min(max((co-avg_front).dot(axis)/axis.dot(axis), 0), 1)
+        avg_front = sum((co * weight for co, weight in zip(front_face, weights_front)), mathutils.Vector())
+        avg_back = sum((co * weight for co, weight in zip(back_face, weights_back)), mathutils.Vector())
+        axis = avg_back - avg_front
+        offs = min(max((co - avg_front).dot(axis) / axis.dot(axis), 0), 1)
 
         weights_front[2], weights_front[3] = weights_front[3], weights_front[2]
         weights_back[2], weights_back[3] = weights_back[3], weights_back[2]
 
-        weights = [w*(1-offs) for w in weights_front]+[w*offs for w in weights_back]
+        weights = [w * (1 - offs) for w in weights_front] + [w * offs for w in weights_back]
 
         return {item[1]: weight for item, weight in zip(lst, weights)}
 
@@ -236,9 +252,9 @@ class VGCalculator:
         lst = lst[1:]
         while len(lst) > 0:
             idx = 0
-            dist = (lst[0][0]-co1).length
+            dist = (lst[0][0] - co1).length
             for i, item in enumerate(lst[1:]):
-                dist2 = (item[0]-co1).length
+                dist2 = (item[0] - co1).length
                 if dist2 < dist:
                     idx = i + 1
                     dist = dist2
@@ -269,14 +285,14 @@ class VGCalculator:
         verts = [(self.char.data.vertices[i].co, i) for i in self.char.data.polygons[idx].vertices]
         if self.ui.vg_snap > 1e-30:
             for co2, idx1 in verts:
-                if (co2-co).length < self.ui.vg_snap:
+                if (co2 - co).length < self.ui.vg_snap:
                     return {idx1: 1}
 
             for i, (co2, idx2) in enumerate(verts):
-                co1, idx1 = verts[i-1]
+                co1, idx1 = verts[i - 1]
                 co3, p = mathutils.geometry.intersect_point_line(co, co1, co2)
-                if (co3-co).length < self.ui.vg_snap and 0 <= p <= 1:
-                    return {idx1: 1-p, idx2: p}
+                if (co3 - co).length < self.ui.vg_snap and 0 <= p <= 1:
+                    return {idx1: 1 - p, idx2: p}
 
         return calc_lst(co, verts)
 
@@ -286,21 +302,22 @@ class VGCalculator:
 
     def calc_np(self, co):
         return calc_lst(co, self.kd_verts.find_n(co, self.ui.vg_n))
+
     def calc_nr(self, co):
         return calc_lst(co, self.kd_verts.find_range(co, self.ui.vg_radius))
 
     def calc_xl(self, co):
         verts = self.kd_verts.find_n(co, self.ui.vg_xl_vn)
         lns = []
-        for i in range(len(verts)-1):
-            for j in range(i+1, len(verts)):
+        for i in range(len(verts) - 1):
+            for j in range(i + 1, len(verts)):
                 co1 = verts[i][0]
                 co2 = verts[j][0]
                 co3, p = mathutils.geometry.intersect_point_line(co, co1, co2)
                 if p < 0 or p > 1:
                     continue
-                d = (co3-co).length
-                if d < (co2-co1).length/2:
+                d = (co3 - co).length
+                if d < (co2 - co1).length / 2:
                     lns.append((verts[i][1], verts[j][1], d, p))
 
         lns.sort(key=lambda tup: tup[2])
@@ -308,7 +325,7 @@ class VGCalculator:
         if len(lns) == 0:
             return "No cross lines found"
 
-        return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1-p), (j, p))))
+        return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1 - p), (j, p))))
 
     def cast_rays(self, co, d):
         b = self.bvh
@@ -324,6 +341,7 @@ class VGCalculator:
         if not self.ui.vg_x and not self.ui.vg_y and not self.ui.vg_z:
             return "No axes selected"
         result = {}
+
         def cast(d):
             vg = self.cast_rays(co, d)
             if vg is not None:
@@ -339,7 +357,8 @@ class VGCalculator:
     def rays_bone(self, cast):
         def cast_perp(axis, y):
             for i in range(self.ui.vg_rays):
-                cast(mathutils.Quaternion(y, math.pi*i/self.ui.vg_rays + self.ui.vg_roll) @ axis)
+                cast(mathutils.Quaternion(y, math.pi * i / self.ui.vg_rays + self.ui.vg_roll) @ axis)
+
         def cast_axes(x, y, z):
             if self.ui.vg_y:
                 cast(y)
@@ -347,14 +366,15 @@ class VGCalculator:
                 cast_perp(x, y)
             if self.ui.vg_z:
                 cast_perp(z, y)
+
         def cast_bone(bone):
             cast_axes(bone.x_axis, bone.y_axis, bone.z_axis)
 
         children = self.cur_bone.children
         child = children[0] if len(children) == 1 else None
 
-        if ((self.cur_attr == "head" and (self.cur_bone.parent is None or self.ui.vg_bone == "C")) or
-            (self.cur_attr == "tail" and (child is None or self.ui.vg_bone == "P"))):
+        if ((self.cur_attr == "head" and (self.cur_bone.parent is None or self.ui.vg_bone == "C"))
+                or (self.cur_attr == "tail" and (child is None or self.ui.vg_bone == "P"))):
             cast_bone(self.cur_bone)
         elif self.ui.vg_bone == "P":
             cast_bone(self.cur_bone.parent)
@@ -370,9 +390,9 @@ class VGCalculator:
                 cast_bone(bone2)
             else:
                 cast_axes(
-                    self.cur_bone.x_axis+bone2.x_axis,
-                    self.cur_bone.y_axis+bone2.y_axis,
-                    self.cur_bone.z_axis+bone2.z_axis
+                    self.cur_bone.x_axis + bone2.x_axis,
+                    self.cur_bone.y_axis + bone2.y_axis,
+                    self.cur_bone.z_axis + bone2.z_axis
                 )
 
     def rays_global(self, cast):
@@ -396,6 +416,7 @@ class VGCalculator:
 
     def calc_nc(self, co):
         vgroups = self.vg_full
+
         def get_head(bone):
             if bone is None:
                 return None
@@ -427,7 +448,7 @@ class VGCalculator:
     def calc_nj(self, co):
         cur_groups = []
         coords = []
-        for co2, idx, _ in sorted(self.kd_joints.find_n(co, self.ui.vg_n+1), key=lambda tup: tup[2]):
+        for co2, idx, _ in sorted(self.kd_joints.find_n(co, self.ui.vg_n + 1), key=lambda tup: tup[2]):
             name, group = self.kdj_groups[idx]
             if name == self.cur_name:
                 continue
@@ -447,8 +468,8 @@ class VGCalculator:
             co2, p = mathutils.geometry.intersect_point_line(co, bone.head, bone.tail)
             if p < 0 or p > 1:
                 continue
-            dist = (co-co2).length
-            if dist < mindist and bone != self.cur_bone and dist < (bone.tail-bone.head).length/2:
+            dist = (co - co2).length
+            if dist < mindist and bone != self.cur_bone and dist < (bone.tail - bone.head).length / 2:
                 new_a = vgroups.get(f"joint_{bone.name}_head")
                 if new_a is None and bone.parent is not None:
                     new_a = vgroups.get(f"joint_{bone.parent.name}_tail")
@@ -467,7 +488,7 @@ class VGCalculator:
     def run(self, joints):
         if self.ui.vg_widgets:
             joints = {name: tup for name, tup in joints.items() if tup[2] == "head"}
-            offsets = {k: v[1].tail-v[1].head for k, v in joints.items()}
+            offsets = {k: v[1].tail - v[1].head for k, v in joints.items()}
 
         char = self.char
         verts = char.data.vertices
@@ -491,7 +512,7 @@ class VGCalculator:
                 if group is not None:
                     co2 = vg_full_to_avg(group)
                     if co2 is not None:
-                        co1 += (co1-co2) * self.ui.vg_shift
+                        co1 += (co1 - co2) * self.ui.vg_shift
 
             vg_data = calc_func(co1)
             if isinstance(vg_data, str):
@@ -500,13 +521,13 @@ class VGCalculator:
             if self.ui.vg_mix < 1:
                 group = self.vg_full.get(name)
                 if group is not None:
-                    vg_mix2(vg_data, vg_full_to_dict(group), 1-self.ui.vg_mix)
+                    vg_mix2(vg_data, vg_full_to_dict(group), 1 - self.ui.vg_mix)
 
             coeff = max(vg_data.values())
             if coeff < 1e-30:
                 return name + ": empty vg returned"
 
-            coeff = 1/coeff
+            coeff = 1 / coeff
             co2 = mathutils.Vector()
             wsum = 0.0
 
@@ -524,9 +545,9 @@ class VGCalculator:
 
             co2 /= wsum
 
-            k = "charmorph_offs_"+attr
+            k = "charmorph_offs_" + attr
             if self.ui.vg_offs == "R":
-                offs = co-co2
+                offs = co - co2
                 if offs.length >= self.ui.vg_snap:
                     bone[k] = list(offs)
                 elif k in bone:
@@ -539,6 +560,7 @@ class VGCalculator:
                 bone["charmorph_offs_tail"] = get_offs(bone, "head") + offsets.get(name, mathutils.Vector())
 
         return True
+
 
 class UIProps:
     vg_xmirror: bpy.props.BoolProperty(
@@ -678,6 +700,7 @@ class UIProps:
         default=True,
     )
 
+
 class CMEDIT_PT_VGCalc(bpy.types.Panel):
     bl_label = "Joint VG Calculation"
     bl_parent_id = "CMEDIT_PT_Rigging"
@@ -722,5 +745,6 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
             l.prop(ui, "vg_xl_n")
         l.prop(ui, "vg_mix", slider=True)
         l.prop(ui, "vg_shift", slider=True)
+
 
 classes = [CMEDIT_PT_VGCalc]

@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, json, logging, traceback, numpy
+import os, json, collections, logging, traceback, numpy
 
 import bpy  # pylint: disable=import-error
 
@@ -222,79 +222,6 @@ class Character(DataDir):
         return {k: Armature(self, k, v) for k, v in data.items()}
 
 
-# allows to mark some properties of the class as lazy yaml
-# if property value is dict or some other value, leave it as is
-# if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
-def _lazy_yaml_props(*prop_lst):
-    def modify_class(cls):
-        orig_init = cls.__init__
-
-        def new_init(self, *args):
-            orig_init(self, *args)
-            for prop in prop_lst:
-                value = self.__dict__.get(prop)
-                if isinstance(value, str):
-                    setattr(self, "_lazy_yaml_" + prop, value)
-                    delattr(self, prop)
-
-        cls.__init__ = new_init
-        for prop in prop_lst:
-            setattr(cls, prop, utils.named_lazyprop(
-                prop, lambda self, name=prop:
-                    self.parent.get_yaml(getattr(self, "_lazy_yaml_" + name))))
-        return cls
-
-    return modify_class
-
-
-@_lazy_yaml_props("bones", "mixin_bones")
-class Armature:
-    type = "regular"
-    tweaks = ()
-    ik_limits: dict[str, dict] = {}
-    sliding_joints: dict[str, dict] = {}
-    mixin = ""
-    match = []
-    mixin_bones: dict[str, dict]
-    weights: str = None
-    arp_reference_layer = 17
-
-    def __init__(self, parent: DataDir, name: str, conf: dict):
-        self.title = name
-        self.parent = parent
-        self.obj_name = name
-        self.mixin_bones = {}
-
-        if isinstance(parent, Character):
-            self.file = parent.char_file
-            self.__dict__.update(parent.armature_defaults)
-
-        self.__dict__.update(conf)
-
-        for item in ("weights", "joints"):
-            value = getattr(self, item, None)
-            if value is None or isinstance(value, str):
-                setattr(self, item, parent.path(value) if value else parent.path(os.path.join(item, name + ".npz")))
-            elif not name and isinstance(value, dict):
-                value = (value,)
-                setattr(self, item, value)
-            if not name and isinstance(value, (list, tuple)):
-                for jitem in value:
-                    # There seems to be pylint type inference bug
-                    jitem["file"] = parent.path(jitem["file"])  # pylint: disable=unsupported-assignment-operation, unsubscriptable-object
-
-        self.name = name
-        if isinstance(self.match, dict):
-            self.match = (self.match,)
-
-        if "bones" not in self.__dict__ and isinstance(parent, Character):
-            self.bones = parent.bones  # Legacy
-
-    @utils.lazyproperty
-    def weights_npz(self):
-        return self.parent.get_np(self.weights)
-
-
 class Asset(DataDir):
     def __init__(self, name, file, path=None):
         super().__init__(path)
@@ -359,6 +286,87 @@ def load_assets_dir(path: str):
                 if asset:
                     asset.__dict__.update(yaml)
     return result
+
+
+# allows to mark some properties of the class as lazy yaml
+# if property value is dict or some other value, leave it as is
+# if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
+def _lazy_yaml_props(*prop_lst):
+    def modify_class(cls):
+        orig_init = cls.__init__
+
+        def new_init(self, *args):
+            orig_init(self, *args)
+            for prop in prop_lst:
+                value = self.__dict__.get(prop)
+                if isinstance(value, str):
+                    setattr(self, "_lazy_yaml_" + prop, value)
+                    delattr(self, prop)
+
+        cls.__init__ = new_init
+        for prop in prop_lst:
+            setattr(cls, prop, utils.named_lazyprop(
+                prop, lambda self, name=prop:
+                    self.parent.get_yaml(getattr(self, "_lazy_yaml_" + name))))
+        return cls
+
+    return modify_class
+
+
+AssetJoints = collections.namedtuple("AssetJoints", ("verts", "file"))
+
+
+def parse_joints(joints, d: DataDir):
+    if isinstance(joints, dict):
+        joints = (joints,)
+    if isinstance(joints, (list, tuple)):
+        return [AssetJoints(item["verts"], d.path(item["file"])) for item in joints]
+    return joints
+
+
+@_lazy_yaml_props("bones", "mixin_bones")
+class Armature:
+    type = "regular"
+    tweaks = ()
+    ik_limits: dict[str, dict] = {}
+    sliding_joints: dict[str, dict] = {}
+    mixin = ""
+    match: list[dict[str, str]] = []
+    mixin_bones: dict[str, dict]
+    weights: str = None
+    arp_reference_layer = 17
+    joints = None
+
+    def __init__(self, parent: DataDir, name: str, conf: dict):
+        self.title = name
+        self.parent = parent
+        self.obj_name = name
+        self.mixin_bones = {}
+
+        if isinstance(parent, Character):
+            self.file = parent.char_file
+            self.__dict__.update(parent.armature_defaults)
+
+        self.__dict__.update(conf)
+
+        for item in ("weights", "joints"):
+            value = getattr(self, item, None)
+            if value is None or isinstance(value, str):
+                setattr(self, item, parent.path(value) if value else parent.path(os.path.join(item, name + ".npz")))
+
+        self.name = name
+
+        if isinstance(parent, Asset):
+            self.joints = parse_joints(self.joints, parent)
+        if isinstance(self.match, dict):
+            self.match = (self.match,)
+
+        if "bones" not in self.__dict__ and isinstance(parent, Character):
+            self.bones = parent.bones  # Legacy
+
+    @utils.lazyproperty
+    def weights_npz(self):
+        return self.parent.get_np(self.weights)
 
 
 empty_char = Character("", DataDir(""))

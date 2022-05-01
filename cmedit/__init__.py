@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import logging
-import bpy, bmesh  # pylint: disable=import-error
+import logging, numpy
+import bpy, bpy_extras, bmesh  # pylint: disable=import-error
 
-from ..lib import morpher_cores, fit_calc, utils
+from ..lib import charlib, morpher_cores, fit_calc, utils
 from . import file_io, rigging, vg_calc, symmetry
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ class CMEDIT_PT_Assets(bpy.types.Panel):
         l.prop(ui, "retarg_sk_src")
         l.prop(ui, "retarg_sk_dst")
         l.operator("cmedit.retarget")
+        l.operator("cmedit.export_fold")
         l.operator("cmedit.final_to_sk")
 
 
@@ -75,7 +76,7 @@ def retarg_get_geom(obj, name):
 class OpRetarget(bpy.types.Operator):
     bl_idname = "cmedit.retarget"
     bl_label = "Retarget asset"
-    bl_description = "Refit asset from selected source shape key to destination one"
+    bl_description = "Refit asset from selected source shape key to target one"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -104,6 +105,46 @@ class OpRetarget(bpy.types.Operator):
         fit += utils.get_basis_numpy(ui.asset_obj)
         sk.data.foreach_set("co", fit.reshape(-1))
 
+        return {"FINISHED"}
+
+
+class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.export_fold"
+    bl_label = "Exoport fold"
+    bl_description = "Export data for fitting acceleration and correction. "\
+        "Use char as decimated asset, asset as full asset, target shape key for morphing"
+    filename_ext = ".npz"
+
+    filter_glob: bpy.props.StringProperty(default="*.npz", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        ui = context.window_manager.cmedit_ui
+        return ui.char_obj and ui.asset_obj
+
+    def execute(self, context):  # pylint: disable=no-self-use
+        ui = context.window_manager.cmedit_ui
+        f = fit_calc.FitCalculator(fit_calc.geom_mesh(ui.char_obj.data))
+        afd = fit_calc.AssetFitData()
+        afd.obj = ui.asset_obj
+        afd.geom = fit_calc.geom_mesh(ui.asset_obj.data)
+        weights = f.get_weights(afd)
+
+        if ui.retarg_sk_dst.startswith("sk_"):
+            verts = numpy.empty(len(ui.asset_obj.data.vertices) * 3)
+            ui.asset_obj.data.shape_keys.key_blocks[ui.retarg_sk_dst[3:]].data.foreach_get("co", verts)
+        else:
+            verts = f.geom.verts
+
+        faces = numpy.array(f.geom.faces, dtype=numpy.uint32)
+        faces = faces.astype(file_io.get_bits(faces.reshape(-1)), casting="same_kind")
+
+        numpy.savez_compressed(self.filepath,
+            verts=verts.reshape(3, -1).astype(numpy.float32, casting="same_kind"),
+            faces=faces,
+            pos=weights[0], idx=weights[1].astype(file_io.get_bits(weights[1]), casting="same_kind"),
+            weights=weights[2].astype(numpy.float32, casting="same_kind")
+        )
         return {"FINISHED"}
 
 
@@ -160,13 +201,13 @@ class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps):
         items=get_shape_keys,
     )
     retarg_sk_dst: bpy.props.EnumProperty(
-        name="Destination shape key",
+        name="Target shape key",
         description="Target shape key for retarget",
         items=get_shape_keys,
     )
 
 
-classes = [CMEditUIProps, VIEW3D_PT_CMEdit, OpRetarget, OpFinalToSk, CMEDIT_PT_Assets]
+classes = [CMEditUIProps, VIEW3D_PT_CMEdit, OpRetarget, OpExportFold, OpFinalToSk, CMEDIT_PT_Assets]
 
 for module in rigging, vg_calc, symmetry, file_io:
     classes.extend(module.classes)

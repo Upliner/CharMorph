@@ -139,7 +139,7 @@ class AssetFitData:
 
     def __init__(self):
         self.conf = None
-        self.morph = None
+        self.morph = charlib.Asset
 
 
 def mesh_faces(mesh):

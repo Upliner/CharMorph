@@ -441,6 +441,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         t = utils.Timer()
 
         verts = fit_calc.calc_fit(self.get_diff_arr(afd.morph), afd.weights)
+        t.time("reduce " + afd.obj.name)
         verts += afd.geom.verts
         self._get_target(afd.obj).foreach_set("co", verts.reshape(-1))
         afd.obj.data.update()

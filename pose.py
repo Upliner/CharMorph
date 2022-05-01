@@ -91,7 +91,7 @@ def scan_rigify_modules():
             continue
         rig_id = m.group(1)
         limbs = []
-        s = s[m.end(0)+1:]
+        s = s[m.end(0) + 1:]
         re_operator = re.compile(rf"^( *)props = [0-9a-z_]*\.operator\('pose.rigify_limb_ik2fk_{rig_id}'", re.MULTILINE)
 
         while True:
@@ -103,7 +103,7 @@ def scan_rigify_modules():
             props = {}
             while True:
                 s = s[m.end(0):]
-                s = s[s.find("\n")+1:]
+                s = s[s.find("\n") + 1:]
                 line = s[:s.find("\n")]
                 m = re_prop.match(line)
                 if not m:
