@@ -54,7 +54,9 @@ _empty_dict = object()
 
 
 class DataDir:
-    def __init__(self, dirpath):
+    dirpath: str = ""
+
+    def __init__(self, dirpath: str):
         self.dirpath = dirpath
 
     def path(self, file, *paths):
@@ -222,6 +224,10 @@ class Character(DataDir):
         return {k: Armature(self, k, v) for k, v in data.items()}
 
 
+AssetFold = collections.namedtuple("AssetFold", ("verts", "faces", "pos", "idx", "weights"))
+AssetJoints = collections.namedtuple("AssetJoints", ("verts", "file"))
+
+
 class Asset(DataDir):
     def __init__(self, name, file, path=None):
         super().__init__(path)
@@ -243,6 +249,18 @@ class Asset(DataDir):
     @utils.lazyproperty
     def mask(self):
         return self.get_np("mask.npy")
+
+    @utils.lazyproperty
+    def fold(self):
+        z = self.get_np("fold.npz")
+        if z is None:
+            return None
+        return AssetFold(
+            morphs.np_ro64(z["verts"]),
+            z["faces"].tolist(),
+            z["pos"], z["idx"],
+            morphs.np_ro64(z["weights"]),
+        )
 
     @utils.lazyproperty
     def armature(self):
@@ -311,9 +329,6 @@ def _lazy_yaml_props(*prop_lst):
         return cls
 
     return modify_class
-
-
-AssetJoints = collections.namedtuple("AssetJoints", ("verts", "file"))
 
 
 def parse_joints(joints, d: DataDir):

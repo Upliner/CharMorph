@@ -184,7 +184,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def __init__(self, mcore, morpher=None):
         super().__init__(mcore)
         self.morpher = morpher
-        self.weights_cache = {}
+        self.bind_cache = {}
 
     def add_mask_from_asset(self, afd: fit_calc.AssetFitData):
         vg_name = mask_name(afd.obj)
@@ -240,7 +240,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
                     cur_diff = diff
                     if afd.morph:
                         cur_diff = afd.morph.apply(cur_diff.copy())
-                    fitted_diff = fit_calc.calc_fit(cur_diff, afd.weights)
+                    fitted_diff = afd.binding.fit(cur_diff)
                     if (fitted_diff ** 2).sum(1).max() > 0.001:
                         bboxes.append(fit_to_bmesh(bm, afd, fitted_diff))
                         continue
@@ -275,17 +275,17 @@ class Fitter(fit_calc.MorpherFitCalculator):
             data["charmorph_fit_id"] = result
         return result
 
-    def get_weights(self, afd):
+    def get_binding(self, afd):
         fit_id = self._get_fit_id(afd)
 
-        result = self.weights_cache.get(fit_id)
+        result = self.bind_cache.get(fit_id)
         if result is not None:
             return result
 
         t = utils.Timer()
-        result = super().get_weights(afd)
-        t.time("weights " + afd.obj.name)
-        self.weights_cache[fit_id] = result
+        result = super().get_binding(afd)
+        t.time("binding " + afd.obj.name)
+        self.bind_cache[fit_id] = result
         return result
 
     def get_diff_arr(self, morph):
@@ -298,7 +298,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             return None
         fit_id = psys.settings.get("charmorph_fit_id")
         if fit_id:
-            data = self.weights_cache.get(fit_id)
+            data = self.bind_cache.get(fit_id)
             if data:
                 return data
 
@@ -314,9 +314,9 @@ class Fitter(fit_calc.MorpherFitCalculator):
             logger.error("Mismatch between current hairsyle and .npz!")
             return None
 
-        weights = self.calc_weights_hair(data)
-        self.weights_cache[fit_id] = (cnts, data, weights)
-        return cnts, data, weights
+        binding = self.calc_binding_hair(data)
+        self.bind_cache[fit_id] = (cnts, data, binding)
+        return cnts, data, binding
 
     # use separate get_diff function to support hair fitting for posed characters
     def get_diff_hair(self):
@@ -345,12 +345,12 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def fit_hair(self, obj, idx):
         t = utils.Timer()
         psys = obj.particle_systems[idx]
-        cnts, data, weights = self.get_hair_data(psys)
-        if cnts is None or data is None or not weights:
+        cnts, data, binding = self.get_hair_data(psys)
+        if cnts is None or data is None or not binding:
             return False
 
         morphed = numpy.empty((len(data) + 1, 3))
-        morphed[1:] = fit_calc.calc_fit(self.get_diff_hair(), weights)
+        morphed[1:] = binding.fit(self.get_diff_hair())
         morphed[1:] += data
 
         obj.particle_systems.active_index = idx
@@ -440,7 +440,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
             return
         t = utils.Timer()
 
-        verts = fit_calc.calc_fit(self.get_diff_arr(afd.morph), afd.weights)
+        verts = afd.binding.fit(self.get_diff_arr(afd.morph))
         t.time("reduce " + afd.obj.name)
         verts += afd.geom.verts
         self._get_target(afd.obj).foreach_set("co", verts.reshape(-1))
@@ -554,7 +554,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if "charmorph_fit_id" in asset.data:
             keys.append(asset.data["charmorph_fit_id"])
         for key in keys:
-            for cache in (self.weights_cache, self.geom_cache):
+            for cache in (self.bind_cache, self.geom_cache):
                 try:
                     del cache[key]
                 except KeyError:

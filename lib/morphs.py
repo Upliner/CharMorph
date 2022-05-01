@@ -59,10 +59,10 @@ class PartialMorph(FullMorph):
         return verts
 
 
-def np_ro64(a):
+def np_ro64(a: numpy.ndarray):
     if a is None:
         return None
-    a = a.astype(dtype=numpy.float64, casting="same_kind")
+    a = a.astype(numpy.float64, casting="same_kind")
     a.flags.writeable = False
     return a
 

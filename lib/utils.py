@@ -404,7 +404,7 @@ def vg_read(z):
         return ()
     if isinstance(z, str):
         return vg_read_npz(numpy.load(z))
-    if hasattr(z, "__dict__"):
+    if hasattr(z, "zip"):
         return vg_read_npz(z)
     if hasattr(z, "__next__"):
         return z

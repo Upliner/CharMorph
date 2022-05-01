@@ -101,7 +101,7 @@ class OpRetarget(bpy.types.Operator):
         sk.value = 1
 
         f = fit_calc.FitCalculator(geom_src)
-        fit = fit_calc.calc_fit(geom_dst.verts - geom_src.verts, f.get_weights(ui.asset_obj))
+        fit = f.get_binding(ui.asset_obj).fit(geom_dst.verts - geom_src.verts)
         fit += utils.get_basis_numpy(ui.asset_obj)
         sk.data.foreach_set("co", fit.reshape(-1))
 
@@ -128,7 +128,7 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         afd = fit_calc.AssetFitData()
         afd.obj = ui.asset_obj
         afd.geom = fit_calc.geom_mesh(ui.asset_obj.data)
-        weights = f.get_weights(afd)
+        weights = f.get_binding(afd)[0]
 
         if ui.retarg_sk_dst.startswith("sk_"):
             verts = numpy.empty(len(ui.asset_obj.data.vertices) * 3)
@@ -139,8 +139,8 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         faces = numpy.array(f.geom.faces, dtype=numpy.uint32)
         faces = faces.astype(file_io.get_bits(faces.reshape(-1)), casting="same_kind")
 
-        numpy.savez_compressed(self.filepath,
-            verts=verts.reshape(3, -1).astype(numpy.float32, casting="same_kind"),
+        numpy.savez(self.filepath,
+            verts=verts.reshape(-1, 3).astype(numpy.float32, casting="same_kind"),
             faces=faces,
             pos=weights[0], idx=weights[1].astype(file_io.get_bits(weights[1]), casting="same_kind"),
             weights=weights[2].astype(numpy.float32, casting="same_kind")

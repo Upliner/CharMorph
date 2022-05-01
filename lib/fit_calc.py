@@ -22,7 +22,7 @@ import logging, numpy
 
 import bpy, mathutils  # pylint: disable=import-error
 
-from . import morphs, charlib, utils
+from . import charlib, morphs, utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,26 @@ dist_thresh = 0.1
 epsilon = 1e-30
 
 
-def calc_fit(arr: numpy.ndarray, weights) -> numpy.ndarray:
-    return numpy.add.reduceat(arr[weights[1]] * weights[2], weights[0])
+class FitBinding(tuple):
+    __slots__ = ()
+
+    def __new__(cls, *args):
+        return super().__new__(cls, args)
+
+    def fit(self, arr: numpy.ndarray, is_weights=False):
+        for pos, idx, weights in self:
+            if is_weights:
+                weights = weights.reshape(-1)
+            arr = numpy.add.reduceat(arr[idx] * weights, pos)
+        return arr
 
 
-def weights_convert(weights, cut=True):
-    positions = numpy.empty((len(weights)), dtype=numpy.uint32)
+def _binding_convert(bind_dict, cut=True):
+    positions = numpy.empty((len(bind_dict)), dtype=numpy.uint32)
     idx = []
     wresult = []
     thresh = 0
-    for i, d in enumerate(weights):
+    for i, d in enumerate(bind_dict):
         if cut:
             thresh = max(d.values()) / 32
         positions[i] = len(idx)
@@ -52,7 +62,7 @@ def weights_convert(weights, cut=True):
     return positions, idx, wresult
 
 
-def weights_normalize(positions, wresult):
+def _binding_normalize(positions, wresult):
     cnt = numpy.empty((len(positions)), dtype=numpy.uint32)
     cnt[:-1] = positions[1:]
     cnt[:-1] -= positions[:-1]
@@ -60,8 +70,8 @@ def weights_normalize(positions, wresult):
     wresult /= numpy.add.reduceat(wresult, positions).repeat(cnt)
 
 
-# calculate weights based on distance from asset vertices to character faces
-def calc_weights_direct(weights, char_geom, asset_verts):
+# calculate binding based on distance from asset vertices to character faces
+def _calc_binding_direct(bind_dict, char_geom, asset_verts):
     verts = char_geom.verts
     faces = char_geom.faces
     bvh = char_geom.bvh
@@ -70,14 +80,14 @@ def calc_weights_direct(weights, char_geom, asset_verts):
         if loc is None:
             continue
         face = faces[idx]
-        d = weights[i]
+        d = bind_dict[i]
         fdist = (1 - fdist / dist_thresh) / max(fdist, epsilon)
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
             d[vi] = max(d.get(vi, 0), bw * fdist)
 
 
-# calculate weights based on distance from character vertices to assset faces
-def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
+# calculate binding based on distance from character vertices to assset faces
+def _calc_binding_reverse(bind_dict, char_geom, asset_geom, reduce_func=max):
     verts = asset_geom.verts
     faces = asset_geom.faces
     bvh = asset_geom.bvh
@@ -88,12 +98,12 @@ def calc_weights_reverse(weights, char_geom, asset_geom, reduce_func=max):
         face = faces[idx]
         fdist = (1 - fdist / dist_thresh) / max(fdist, 1e-15)  # using lower epsilon to avoid some artifacts
         for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc([verts[i] for i in face], loc)):
-            d = weights[vi]
+            d = bind_dict[vi]
             d[i] = reduce_func(d.get(i, 0), bw * fdist)
 
 
-# calculate weights based on nearest vertices
-def calc_weights_kd(kd, verts, _epsilon, n):
+# calculate binding based on nearest vertices
+def _calc_binding_kd(kd, verts, _epsilon, n):
     result = []
     for v in verts:
         pdata = kd.find_n(v, n)
@@ -130,16 +140,16 @@ class Geometry:
 
 
 class AssetFitData:
-    __slots__ = ("obj", "conf", "morph", "geom", "weights")
+    __slots__ = ("obj", "conf", "morph", "geom", "binding")
     obj: bpy.types.Object
     conf: charlib.Asset
     morph: morphs.Morph
     geom: Geometry
-    weights: tuple
+    binding: FitBinding
 
     def __init__(self):
-        self.conf = None
-        self.morph = charlib.Asset
+        self.conf = charlib.Asset
+        self.morph = None
 
 
 def mesh_faces(mesh):
@@ -213,17 +223,24 @@ class FitCalculator:
     def get_char_geom(self, _):
         return self.geom
 
-    def _get_asset_geom(self, data) -> Geometry:
-        data = get_mesh(data)
-        key = data.get("charmorph_fit_id", data.name)
+    def _cache_get(self, key, get_func):
         result = self.geom_cache.get(key)
         if result is None:
-            result = geom_mesh(data)
-            self.geom_cache[data] = result
+            result = get_func()
+            self.geom_cache[key] = result
         return result
 
-    @staticmethod
-    def _add_asset_data(_):
+    def _get_asset_geom(self, data) -> Geometry:
+        data = get_mesh(data)
+        return self._cache_get("obj_" + data.get("charmorph_fit_id", data.name), lambda: geom_mesh(data))
+
+    def _get_fold_geom(self, afd: AssetFitData) -> Geometry:
+        def get_func():
+            fold = afd.conf.fold
+            return Geometry(fold.verts, fold.faces)
+        return self._cache_get( "fold_" + afd.conf.dirpath, get_func)
+
+    def _add_asset_data(self, _asset):
         pass
 
     def _get_asset_data(self, obj):
@@ -231,49 +248,51 @@ class FitCalculator:
         afd.obj = obj
         self._add_asset_data(afd)
         afd.geom = self._get_asset_geom(obj)
-        afd.weights = self.get_weights(afd)
+        afd.binding = self.get_binding(afd)
         return afd
 
-    def _calc_weights_internal(self, asset_verts, afd=None):
+    def _calc_binding_internal(self, asset_verts, afd=None, asset_geom=None):
         t = utils.Timer()
         cg = self.get_char_geom(afd)
-        weights = calc_weights_kd(cg.kd, asset_verts, epsilon, 16)
+        bind_dict = _calc_binding_kd(cg.kd, asset_verts, epsilon, 16)
         t.time("kdtree")
-        calc_weights_direct(weights, cg, asset_verts)
+        _calc_binding_direct(bind_dict, cg, asset_verts)
         t.time("bvh direct")
-        if afd:
-            calc_weights_reverse(weights, cg, self._get_asset_geom(afd))
+        if asset_geom:
+            _calc_binding_reverse(bind_dict, cg, asset_geom)
             t.time("bvh reverse")
-        positions, idx, wresult = weights_convert(weights)
-        weights_normalize(positions, wresult)
+        positions, idx, wresult = _binding_convert(bind_dict)
+        _binding_normalize(positions, wresult)
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def get_weights(self, afd):
-        return self._calc_weights_internal(self._get_asset_geom(afd).verts, afd)
+    def get_binding(self, afd) -> FitBinding:
+        fold = afd.conf.fold
+        geom = self._get_asset_geom(afd) if fold is None else self._get_fold_geom(afd)
+        binding = self._calc_binding_internal(geom.verts, afd, geom)
+        return FitBinding(binding) if fold is None else FitBinding(
+            binding, (fold.pos, fold.idx, fold.weights))
 
-    def calc_weights_hair(self, arr):
-        return self._calc_weights_internal(arr)
+    def calc_binding_hair(self, arr):
+        return FitBinding(self._calc_binding_internal(arr))
 
-    def _transfer_weights_iter_arrays(self, weights, vg_data):
+    def _transfer_weights_iter_arrays(self, binding: FitBinding, vg_data):
         if self.tmp_buf is None:
             self.tmp_buf = numpy.empty(len(self.geom.verts))
-        # Reshape is needed because vertex arrays are 2D and weight arrays are 1D
-        weights = (weights[0], weights[1], weights[2].reshape(-1))
-        for name, vg_idx, vg_weights in utils.vg_read(vg_data):
+        for name, idx, weights in utils.vg_read(vg_data):
             self.tmp_buf.fill(0)
-            self.tmp_buf.put(vg_idx, vg_weights)
-            yield name, calc_fit(self.tmp_buf, weights)
+            self.tmp_buf.put(idx, weights)
+            yield name, binding.fit(self.tmp_buf, True)
 
-    def _transfer_weights_get(self, weights, vg_data, cutoff=1e-4):
-        for name, vg_weights in self._transfer_weights_iter_arrays(weights, vg_data):
-            idx = (vg_weights > cutoff).nonzero()[0]
+    def _transfer_weights_get(self, binding, vg_data, cutoff=1e-4):
+        for name, weights in self._transfer_weights_iter_arrays(binding, vg_data):
+            idx = (weights > cutoff).nonzero()[0]
             if len(idx) > 0:
-                yield name, idx, vg_weights[idx]
+                yield name, idx, weights[idx]
 
     def transfer_weights(self, afd: AssetFitData, vg_data):
         utils.import_vg(
-            afd.obj, self._transfer_weights_get(afd.weights, vg_data),
+            afd.obj, self._transfer_weights_get(afd.binding, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
 
@@ -310,22 +329,22 @@ class RiggerFitCalculator(FitCalculator):
 
     # when transferring joints to another geometry, we need to make sure
     # that every original vertex will be mapped to new topology
-    def _calc_weights_kd_reverse(self, weights, asset_verts):
+    def _calc_binding_kd_reverse(self, weights, asset_verts):
         kd = utils.kdtree_from_verts(asset_verts)
         for i, vert in self.geom.verts_enum():
             for _, vi, dist in kd.find_n(vert, 4):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1 / max(dist**2, repsilon)
 
-    def get_weights(self, afd: AssetFitData):
+    def get_binding(self, afd: AssetFitData):
         t = utils.Timer()
         cg = self.get_char_geom(afd)
         verts = afd.geom.verts
         # calculate weights based on nearest vertices
-        weights = calc_weights_kd(cg.kd, verts, repsilon, 16)
-        self._calc_weights_kd_reverse(weights, verts)
-        calc_weights_reverse(weights, cg.verts, afd.geom, lambda a, b: a + b)
-        result = weights_convert(weights, False)
+        bind_dict = _calc_binding_kd(cg.kd, verts, repsilon, 16)
+        self._calc_binding_kd_reverse(bind_dict, verts)
+        _calc_binding_reverse(bind_dict, cg.verts, afd.geom, lambda a, b: a + b)
+        result = _binding_convert(bind_dict, False)
         t.time("rigger calc time")
         return result
 

@@ -178,8 +178,8 @@ class OpBuildAltTopo(bpy.types.Operator):
             obj.data["cm_alt_topo"] = "sk"
             manager.update_morpher(morpher.get(obj))
             return {"FINISHED"}
-        weights = fit_calc.FitCalculator(fit_calc.geom_morpher_final(mcore)).get_weights(obj)
-        result = fit_calc.calc_fit(mcore.full_basis - mcore.get_final(), weights)
+        result = fit_calc.FitCalculator(fit_calc.geom_morpher_final(mcore))\
+            .get_binding(obj).fit(mcore.full_basis - mcore.get_final())
         result += utils.get_morphed_numpy(obj)
         result = result.reshape(-1)
         if btype == "K":
@@ -236,13 +236,16 @@ class UIProps:
         options={"SKIP_SAVE"})
     morph_category: bpy.props.EnumProperty(
         name="Category",
-        items=lambda _ui, _: [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")] + manager.morpher.categories,
+        items=lambda _ui, _:
+            [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")]
+            + manager.morpher.categories,
         description="Select morphing categories to show")
     morph_preset: bpy.props.EnumProperty(
         name="Presets",
         items=lambda _ui, _: manager.morpher.presets_list,
         description="Choose morphing preset",
-        update=lambda ui, _: manager.morpher.apply_morph_data(manager.morpher.presets.get(ui.morph_preset), ui.morph_preset_mix))
+        update=lambda ui, _: manager.morpher.apply_morph_data(
+            manager.morpher.presets.get(ui.morph_preset), ui.morph_preset_mix))
     morph_preset_mix: bpy.props.BoolProperty(
         name="Mix with current",
         description="Mix selected preset with current morphs",
