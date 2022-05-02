@@ -286,7 +286,7 @@ class OpCreateHair(bpy.types.Operator):
         cnt = len(dst_obj.modifiers)
         for m in list(dst_obj.modifiers):
             cnt -= 1
-            if utils.is_obstructive_modifier(m):
+            if m.type in utils.generative_modifiers:
                 for _ in range(cnt):
                     if bpy.ops.object.modifier_move_down.poll(override):
                         bpy.ops.object.modifier_move_down(override, modifier=m.name)

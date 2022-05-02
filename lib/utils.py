@@ -23,6 +23,10 @@ import bpy, mathutils  # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
 
+generative_modifiers = {
+    "ARRAY", "BEVEL", "BOOLEAN", "BUILD", "DECIMATE", "EDGE_SPLIT", "MASK", "MIRROR", "MULTIRES",
+    "REMESH", "SCREW", "SKIN", "SOLIDIFY", "SUBSURF", "WELD", "WIREFRAME"}
+
 # YAML stuff
 
 try:
@@ -37,8 +41,12 @@ class MyDumper(Dumper):
     pass
 
 
-MyDumper.add_representer(list, lambda dumper, value: dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style=True))
-MyDumper.add_representer(float, lambda dumper, value: dumper.represent_float(round(value, 5)))
+MyDumper.add_representer(
+    list, lambda dumper, value:
+        dumper.represent_sequence('tag:yaml.org,2002:seq', value, flow_style=True))
+MyDumper.add_representer(
+    float, lambda dumper, value:
+        dumper.represent_float(round(value, 5)))
 
 
 def load_yaml(data):
@@ -200,12 +208,8 @@ def get_target(obj):
     return sk.data
 
 
-def is_obstructive_modifier(m):
-    return m.type in ("SUBSURF", "MASK")
-
-
 # Temporarily disable all modifiers that can make vertex mapping impossible
-def disable_modifiers(obj, predicate=is_obstructive_modifier):
+def disable_modifiers(obj, predicate=lambda m: m.type in generative_modifiers):
     lst = []
     for m in obj.modifiers:
         if predicate(m) and m.show_viewport:

@@ -21,7 +21,7 @@
 import logging, numpy
 import bpy, bpy_extras, bmesh  # pylint: disable=import-error
 
-from ..lib import charlib, morpher_cores, fit_calc, utils
+from ..lib import morpher_cores, fit_calc, utils
 from . import file_io, rigging, vg_calc, symmetry
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class OpRetarget(bpy.types.Operator):
 
 class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "cmedit.export_fold"
-    bl_label = "Exoport fold"
+    bl_label = "Export fold"
     bl_description = "Export data for fitting acceleration and correction. "\
         "Use char as decimated asset, asset as full asset, target shape key for morphing"
     filename_ext = ".npz"
@@ -125,25 +125,23 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     def execute(self, context):  # pylint: disable=no-self-use
         ui = context.window_manager.cmedit_ui
         f = fit_calc.FitCalculator(fit_calc.geom_mesh(ui.char_obj.data))
-        afd = fit_calc.AssetFitData()
-        afd.obj = ui.asset_obj
-        afd.geom = fit_calc.geom_mesh(ui.asset_obj.data)
-        weights = f.get_binding(afd)[0]
+        binding = f.get_binding(ui.asset_obj)[0]
 
         if ui.retarg_sk_dst.startswith("sk_"):
-            verts = numpy.empty(len(ui.asset_obj.data.vertices) * 3)
-            ui.asset_obj.data.shape_keys.key_blocks[ui.retarg_sk_dst[3:]].data.foreach_get("co", verts)
+            verts = numpy.empty(len(ui.char_obj.data.vertices) * 3)
+            ui.char_obj.data.shape_keys.key_blocks[ui.retarg_sk_dst[3:]].data.foreach_get("co", verts)
         else:
             verts = f.geom.verts
 
         faces = numpy.array(f.geom.faces, dtype=numpy.uint32)
         faces = faces.astype(file_io.get_bits(faces.reshape(-1)), casting="same_kind")
 
-        numpy.savez(self.filepath,
+        numpy.savez(
+            self.filepath,
             verts=verts.reshape(-1, 3).astype(numpy.float32, casting="same_kind"),
             faces=faces,
-            pos=weights[0], idx=weights[1].astype(file_io.get_bits(weights[1]), casting="same_kind"),
-            weights=weights[2].astype(numpy.float32, casting="same_kind")
+            pos=binding[0], idx=binding[1].astype(file_io.get_bits(binding[1]), casting="same_kind"),
+            weights=binding[2].astype(numpy.float32, casting="same_kind")
         )
         return {"FINISHED"}
 
@@ -151,8 +149,9 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 class OpFinalToSk(bpy.types.Operator):
     bl_idname = "cmedit.final_to_sk"
     bl_label = "Final to shape key"
-    bl_description = "Add shape key from final form (shape keys + modifiers). Can be useful because of problems with applying of corrective smooth modifier."
     bl_options = {"UNDO"}
+    bl_description = "Add shape key from final form (shape keys + modifiers)."\
+        "Can be useful because of problems with applying of corrective smooth modifier."
 
     @classmethod
     def poll(cls, context):

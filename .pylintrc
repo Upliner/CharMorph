@@ -3,6 +3,7 @@ disable=c-extension-no-member,       # Suppress errors when using bpy imports
         invalid-name,                # Blender has its own naming conventions that doesn't match with pylint ones
         too-few-public-methods,      # Subclasses of Blender classes sometimes require too few public methods
         too-many-ancestors,          # It's not my fault that yaml uses so many ancestors
+        no-self-use,                 # self is often not used in methods that are meant to be overriden. And trying to convert them to static result in arguments-differ error
         eval-used,                   # I believe I use eval() in very safe way
         multiple-imports,
         missing-module-docstring,

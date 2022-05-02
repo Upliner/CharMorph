@@ -41,26 +41,28 @@ class MorpherCore:
         if self.rig:
             self.error = "Character is rigged.\nLive rig deform is not supported"
 
-    # these methods are overriden in subclass
-    @staticmethod
-    def _init_storage():
+    # these methods are overriden in subclasses so remove no-self-use
+    def _init_storage(self):
         pass
-    @staticmethod
-    def get_L1() -> tuple[str, dict]:
+
+    def get_L1(self) -> tuple[str, dict]:
         return "", {}
-    @staticmethod
-    def get_morphs_L2():
+
+    def get_morphs_L2(self):
         return []
-    @staticmethod
-    def _update_L1():
+
+    def _update_L1(self):
         pass
-    @staticmethod
-    def has_morphs():
+
+    def has_morphs(self):
         return False
+
     def get_co(self, i):
         return self.obj.data.vertices[i].co
+
     def update(self):
         pass
+
     def cleanup_asset_morphs(self):
         pass
 

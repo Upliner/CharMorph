@@ -139,6 +139,14 @@ class Geometry:
         return self.verts.min(axis=0), self.verts.max(axis=0)
 
 
+def mesh_faces(mesh):
+    return [f.vertices for f in mesh.polygons]
+
+
+def geom_mesh(mesh):
+    return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
+
+
 class AssetFitData:
     __slots__ = ("obj", "conf", "morph", "geom", "binding")
     obj: bpy.types.Object
@@ -147,17 +155,13 @@ class AssetFitData:
     geom: Geometry
     binding: FitBinding
 
-    def __init__(self):
+    def __init__(self, obj, geom=None):
+        self.obj = obj
         self.conf = charlib.Asset
         self.morph = None
-
-
-def mesh_faces(mesh):
-    return [f.vertices for f in mesh.polygons]
-
-
-def geom_mesh(mesh):
-    return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
+        if not geom:
+            geom = geom_mesh(obj.data)
+        self.geom = geom
 
 
 class SubsetGeometry(Geometry):
@@ -238,16 +242,14 @@ class FitCalculator:
         def get_func():
             fold = afd.conf.fold
             return Geometry(fold.verts, fold.faces)
-        return self._cache_get( "fold_" + afd.conf.dirpath, get_func)
+        return self._cache_get("fold_" + afd.conf.dirpath, get_func)
 
     def _add_asset_data(self, _asset):
         pass
 
     def _get_asset_data(self, obj):
-        afd = AssetFitData()
-        afd.obj = obj
+        afd = AssetFitData(obj, self._get_asset_geom(obj))
         self._add_asset_data(afd)
-        afd.geom = self._get_asset_geom(obj)
         afd.binding = self.get_binding(afd)
         return afd
 
@@ -266,10 +268,12 @@ class FitCalculator:
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def get_binding(self, afd) -> FitBinding:
-        fold = afd.conf.fold
-        geom = self._get_asset_geom(afd) if fold is None else self._get_fold_geom(afd)
-        binding = self._calc_binding_internal(geom.verts, afd, geom)
+    def get_binding(self, target) -> FitBinding:
+        if not isinstance(target, AssetFitData):
+            target = AssetFitData(target)
+        fold = target.conf.fold
+        geom = self._get_asset_geom(target) if fold is None else self._get_fold_geom(target)
+        binding = self._calc_binding_internal(geom.verts, target, geom)
         return FitBinding(binding) if fold is None else FitBinding(
             binding, (fold.pos, fold.idx, fold.weights))
 
@@ -290,9 +294,11 @@ class FitCalculator:
             if len(idx) > 0:
                 yield name, idx, weights[idx]
 
-    def transfer_weights(self, afd: AssetFitData, vg_data):
+    def transfer_weights(self, target, vg_data):
+        if not isinstance(target, AssetFitData):
+            target = self._get_asset_data(target)
         utils.import_vg(
-            afd.obj, self._transfer_weights_get(afd.binding, vg_data),
+            target.obj, self._transfer_weights_get(target.binding, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
 
 
