@@ -1,5 +1,5 @@
 [flake8]
-max-line-length = 120
+max-line-length = 128
 ignore=
     F722, # flake8 doesn't understand Blender's property annotations
     W503, # WTF W503 and W504 contradict each other

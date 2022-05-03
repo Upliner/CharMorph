@@ -65,15 +65,19 @@ class CharMorphPrefs(bpy.types.AddonPreferences):
         self.layout.prop(self, "adult_mode")
 
 
+def on_select():
+    morphing.manager.on_select()
+
+
 @bpy.app.handlers.persistent
 def load_handler(_):
     morphing.manager.del_charmorphs()
-    morphing.manager.on_select()
+    on_select()
 
 
 @bpy.app.handlers.persistent
 def select_handler(_):
-    morphing.manager.on_select()
+    on_select()
 
 
 classes: list[type] = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
@@ -101,7 +105,7 @@ def register():
         owner=owner,
         key=(bpy.types.LayerObjects, "active"),
         args=(),
-        notify=lambda: morphing.manager.on_select())  # pylint: disable=unnecessary-lambda  # this thing really doesn't work without lambda
+        notify=on_select)
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)

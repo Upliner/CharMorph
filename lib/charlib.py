@@ -119,6 +119,7 @@ class Character(DataDir):
         self.name = name
         self.__dict__.update(self.get_yaml("config.yaml"))
         self.name = name
+        self.pack_cache = {}
 
         if self.material_lib is None:
             self.material_lib = self.char_file
@@ -156,7 +157,7 @@ class Character(DataDir):
         return None if npy is None else npy.tolist()
 
     @utils.lazyproperty
-    def assets(self):
+    def assets(self) -> dict[str, "Asset"]:
         return load_assets_dir(self.path("assets"))
 
     @utils.lazyproperty

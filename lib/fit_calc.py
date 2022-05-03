@@ -342,14 +342,14 @@ class RiggerFitCalculator(FitCalculator):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1 / max(dist**2, repsilon)
 
-    def get_binding(self, afd: AssetFitData):
+    def get_binding(self, target: AssetFitData):
         t = utils.Timer()
-        cg = self.get_char_geom(afd)
-        verts = afd.geom.verts
+        cg = self.get_char_geom(target)
+        verts = target.geom.verts
         # calculate weights based on nearest vertices
         bind_dict = _calc_binding_kd(cg.kd, verts, repsilon, 16)
         self._calc_binding_kd_reverse(bind_dict, verts)
-        _calc_binding_reverse(bind_dict, cg.verts, afd.geom, lambda a, b: a + b)
+        _calc_binding_reverse(bind_dict, cg.verts, target.geom, lambda a, b: a + b)
         result = _binding_convert(bind_dict, False)
         t.time("rigger calc time")
         return result

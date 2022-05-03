@@ -184,7 +184,7 @@ def add_rig(ui, verts: numpy.ndarray, verts_alt: numpy.ndarray):
             attach_rig(obj, rig)
     except Exception:
         if conf and conf.weights_npz:
-            clear_vg_names(set(utils.vg_names(conf.weights_npz)), new_vgs)
+            clear_vg_names(set(utils.np_names(conf.weights_npz)), new_vgs)
         bpy.data.armatures.remove(rig.data)
         raise
     return err

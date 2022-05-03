@@ -266,9 +266,9 @@ class Morpher:
         self.update_presets()
 
         props = {}
-        if self.core.morphs_l2:
-            props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.core.morphs_l2 if morph.name)
-            props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.core.char.morphs_meta.items())
+
+        props.update(prefixed_prop("prop_", self.morph_prop(morph)) for morph in self.core.morphs_l2 if morph.name)
+        props.update(prefixed_prop("meta_", self.meta_prop(k, v)) for k, v in self.core.char.morphs_meta.items())
         props.update(prefixed_prop("sj_", prop) for prop in self.sj_calc.props())
         if not props:
             return

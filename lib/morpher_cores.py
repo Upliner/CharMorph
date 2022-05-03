@@ -68,6 +68,12 @@ class MorpherCore:
 
     ######
 
+    def _get_L2_morph_key(self):
+        if not self.L1:
+            return None
+        name = self.char.types.get(self.L1, {}).get("L2")
+        return name if name else self.L1
+
     def set_L1(self, value):
         self.L1 = value
         self._update_L1()
@@ -156,10 +162,12 @@ class ShapeKeysMorpher(MorpherCore):
         # clear old L2 shape keys
         if not self.obj.data.shape_keys:
             return
+
+        L2_key = self._get_L2_morph_key() or ""
         for sk in self.obj.data.shape_keys.key_blocks:
             if sk.name.startswith("L2_")\
                     and not sk.name.startswith("L2__")\
-                    and not sk.name.startswith(f"L2_{self.L1}_"):
+                    and not sk.name.startswith(f"L2_{L2_key}_"):
                 sk.value = 0
 
     # scan object shape keys and convert them to dictionary
@@ -199,12 +207,13 @@ class ShapeKeysMorpher(MorpherCore):
         def load_shape_keys_by_prefix(prefix):
             for sk in self.obj.data.shape_keys.key_blocks:
                 if sk.name.startswith(prefix):
-                    combiner.add_morph(morphs.MinMaxMorphData(sk.name[len(prefix):], sk.slider_min, sk.slider_max), sk)
+                    combiner.add_morph(morphs.MinMaxMorphData(sk.name[len(prefix):], sk, sk.slider_min, sk.slider_max))
 
         load_shape_keys_by_prefix("L2__")
 
-        if len(self.L1) > 0:
-            load_shape_keys_by_prefix(f"L2_{self.L1}_")
+        key = self._get_L2_morph_key()
+        if key:
+            load_shape_keys_by_prefix(f"L2_{key}_")
 
         for k, v in combiner.morphs_combo.items():
             names = list(enum_combo_names(k))
@@ -319,7 +328,9 @@ class NumpyMorpher(MorpherCore):
     def _update_L1(self):
         if self.L1:
             self.obj.data["cmorph_L1"] = self.L1
-            self.basis = self.storage.resolve_lazy_L1(self.morphs_l1.get(self.L1))
+            self.basis = self.morphs_l1.get(self.L1)
+            if isinstance(self.basis, morphs.LazyMorph):
+                self.basis = self.basis.resolve()
             if self.basis is not None:
                 self.morphs_l1[self.L1] = self.basis
 
@@ -327,12 +338,13 @@ class NumpyMorpher(MorpherCore):
             self.basis = self.full_basis
 
         if self.asset_morphs:
-            self.basis = self.basis.copy()
+            if self.basis is self.full_basis:
+                self.basis = self.basis.copy()
             for morph in self.asset_morphs.values():
                 morph.apply(self.basis)
 
     def get_L1(self):
-        morphs_l1 = {morph.name: self.storage.get_lazy(1, morph.name) for morph in self.storage.enum(1)}
+        morphs_l1 = {morph.name: morph.data for morph in self.storage.enum(1)}
         L1 = self.obj.data.get("cmorph_L1", "")
         if L1 not in morphs_l1:
             L1 = ""
@@ -341,10 +353,12 @@ class NumpyMorpher(MorpherCore):
     def get_morphs_L2(self):
         combiner = morphs.MorphCombiner()
         for morph in self.storage.enum(2):
-            combiner.add_morph(morph, self.storage.get_lazy(2, morph.name))
-        if self.L1:
-            for morph in self.storage.enum(2, self.L1):
-                combiner.add_morph(morph, self.storage.get_lazy(2, self.L1, morph.name))
+            combiner.add_morph(morph)
+
+        key = self._get_L2_morph_key()
+        if key:
+            for morph in self.storage.enum(2, key):
+                combiner.add_morph(morph)
         self.morphs_combo = combiner.morphs_combo
         return combiner.morphs_list
 
@@ -417,7 +431,7 @@ class NumpyMorpher(MorpherCore):
         else:
             self._del_asset_morphs()
 
-    def _get_asset_morphs(self):
+    def _get_asset_morphs(self) -> dict[str, morphs.Morph]:
         lst = self.obj.data.get("charmorph_asset_morphs")
         if not isinstance(lst, list):
             return {}

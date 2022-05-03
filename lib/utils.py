@@ -23,9 +23,9 @@ import bpy, mathutils  # pylint: disable=import-error
 
 logger = logging.getLogger(__name__)
 
-generative_modifiers = {
+generative_modifiers = frozenset((
     "ARRAY", "BEVEL", "BOOLEAN", "BUILD", "DECIMATE", "EDGE_SPLIT", "MASK", "MIRROR", "MULTIRES",
-    "REMESH", "SCREW", "SKIN", "SOLIDIFY", "SUBSURF", "WELD", "WIREFRAME"}
+    "REMESH", "SCREW", "SKIN", "SOLIDIFY", "SUBSURF", "WELD", "WIREFRAME"))
 
 # YAML stuff
 
@@ -387,7 +387,7 @@ def vg_weights_to_arrays(obj, name_filter):
     return names, idx, weights
 
 
-def vg_names(file):
+def np_names(file):
     if isinstance(file, str):
         file = numpy.load(file)
     return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]
@@ -397,7 +397,7 @@ def vg_read_npz(z):
     idx = z["idx"]
     weights = z["weights"]
     i = 0
-    for name, cnt in zip(vg_names(z), z["cnt"]):
+    for name, cnt in zip(np_names(z), z["cnt"]):
         i2 = i + cnt
         yield name, idx[i:i2], weights[i:i2]
         i = i2
@@ -432,7 +432,7 @@ def char_weights_npz(obj, char):
 def char_rig_vg_names(char, rig):
     weights = char_weights_npz(rig, char)
     if weights:
-        return vg_names(weights)
+        return np_names(weights)
     return []
 
 
