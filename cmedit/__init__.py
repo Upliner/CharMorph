@@ -128,8 +128,7 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         binding = f.get_binding(ui.asset_obj)[0]
 
         if ui.retarg_sk_dst.startswith("sk_"):
-            verts = numpy.empty(len(ui.char_obj.data.vertices) * 3)
-            ui.char_obj.data.shape_keys.key_blocks[ui.retarg_sk_dst[3:]].data.foreach_get("co", verts)
+            verts = utils.verts_to_numpy(ui.char_obj.data.shape_keys.key_blocks[ui.retarg_sk_dst[3:]].data)
         else:
             verts = f.geom.verts
 
@@ -138,7 +137,7 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         numpy.savez(
             self.filepath,
-            verts=verts.reshape(-1, 3).astype(numpy.float32, casting="same_kind"),
+            verts=verts.astype(numpy.float32, casting="same_kind"),
             faces=faces,
             pos=binding[0], idx=binding[1].astype(file_io.get_bits(binding[1]), casting="same_kind"),
             weights=binding[2].astype(numpy.float32, casting="same_kind")

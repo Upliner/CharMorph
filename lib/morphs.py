@@ -313,6 +313,8 @@ class MorphStorage:
 class MorphImporter:
     _counter_lev: int
     _counter_cnt: int
+    _L1_data: dict = None
+    basis: numpy.ndarray
 
     def __init__(self, storage: MorphStorage, obj):
         self.storage = storage
@@ -327,7 +329,7 @@ class MorphImporter:
 
         if basis is None:
             basis = utils.get_basis_numpy(self.obj)
-        return basis
+        self.basis = basis
 
     def _create_morph_sk(self, prefix, morph):
         if morph is Separator:
@@ -340,63 +342,69 @@ class MorphImporter:
         sk.slider_max = morph.max
         return sk
 
-    def _import_to_sk(self, morph: MinMaxMorphData, basis: numpy.ndarray, level, *names):
+    def _import_to_sk(self, morph: MinMaxMorphData, level, *names):
         sk = self._create_morph_sk("_".join((f"L{level}",) + names) + "_", morph)
         if not sk:
             return "--separator--", None
 
+        basis = self.basis
+        if level > 1 and names[0]:
+            data = self._L1_data.get(names[0])
+            if data:
+                sk.relative_key = data[0]
+                basis = data[1]
+            else:
+                sk_rel = self.obj.data.shape_keys.key_blocks.get("L1_" + names[0])
+                if sk_rel:
+                    sk.relative_key = sk_rel
+                    basis = utils.verts_to_numpy(sk_rel.data)
+                    self._L1_data[names[0]] = (sk_rel, basis)
+
         data = morph.data.resolve()
         if isinstance(data, Morph):
             data = data.apply(basis.copy())
-        if level == 2 and names[0]:
-            sk.relative_key = self.obj.data.shape_keys.key_blocks["L1_" + names[0]]
 
         sk.data.foreach_set("co", data.reshape(-1))
-        return sk.name, data
+        return sk, data
 
     def import_morphs(self, progress):
-        basis = self._ensure_basis()
+        self._ensure_basis()
 
-        cnt = 0
         L1 = []
-        L1_children = []
-        for L1_morph in list(self.storage.enum(1)):
-            L2_list = list(self.storage.enum(2, L1_morph.name))
-            cnt += len(L2_list) + 1
-            L1.append(L1_morph)
-            L1_children.append(L2_list)
-
-        L2_base = list(self.storage.enum(2))
-        cnt += len(L2_base)
+        L2 = [(morph, "") for morph in self.storage.enum(2)]
+        for morph in list(self.storage.enum(1)):
+            L1.append(morph)
+            L2.extend((morph2, morph.name) for morph2 in self.storage.enum(2, morph.name))
 
         self._counter_lev = 2
         self._counter_cnt = 1
 
-        progress.enter_substeps(cnt, "Importing morphs")
+        progress.enter_substeps(len(L1)+len(L2), "Importing morphs")
 
-        L1_data = []
+        self._L1_data = {}
         for morph in L1:
-            name, data = self._import_to_sk(morph, None, 1)
-            L1_data.append(data)
-            progress.step(name)
+            data = self._import_to_sk(morph, 1)
+            self._L1_data[morph.name] = data
+            progress.step(data[0].name)
 
-        for morph in L2_base:
-            progress.step(self._import_to_sk(morph, basis, 2, "")[0])
-
-        for L1_morph, basis, children in zip(L1, L1_data, L1_children):
-            for morph in children:
-                progress.step(self._import_to_sk(morph, basis, 2, L1_morph.name)[0])
+        for morph, L1_name in L2:
+            progress.step(self._import_to_sk(morph, 2, L1_name)[0].name)
 
         progress.leave_substeps("Morphs done")
 
     def import_expressions(self, progress):
-        basis = self._ensure_basis()
-        lst = list(self.storage.enum(3))
+        self._ensure_basis()
+        lst = [(morph, "") for morph in self.storage.enum(3)]
+        lst.extend(
+            (morph3, morph1.name)
+            for morph1 in self.storage.enum(1)
+            for morph3 in self.storage.enum(3, morph1.name))
+
         self._counter_lev = 3
         self._counter_cnt = 1
         progress.enter_substeps(len(lst), "Importing expressions")
-        for morph in lst:
-            progress.step(self._import_to_sk(morph, basis, 3)[0])
+        for morph, L1_name in lst:
+            progress.step(self._import_to_sk(morph, 3, L1_name)[0].name)
         progress.leave_substeps("Expressions done")
 
 
