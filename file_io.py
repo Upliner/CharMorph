@@ -74,7 +74,7 @@ def morphs_to_data():
 
     return {
         "type": typ,
-        "morphs": {m.name: m.core.prop_get(m.name) for m in m.core.morphs_l2 if m.name},
+        "morphs": {morph.name: m.core.prop_get(morph.name) for morph in m.core.morphs_l2 if morph.name},
         "meta": {k: m.meta_get(k) for k in m.core.char.morphs_meta},
         "materials": m.materials.as_dict()
     }

@@ -21,7 +21,7 @@
 import logging
 import bpy  # pylint: disable=import-error
 
-from . import assets, library, morphing, randomize, file_io, hair, finalize, rigify, pose, cmedit
+from . import assets, library, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
 from .lib import charlib
 
 logger = logging.getLogger(__name__)
@@ -49,20 +49,8 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_category = "CharMorph"
     bl_order = 1
 
-    def draw(self, context):
-        pass
-
-
-class CharMorphPrefs(bpy.types.AddonPreferences):
-    bl_idname = "CharMorph"
-
-    adult_mode: bpy.props.BoolProperty(
-        name="Adult mode",
-        description="No censors, enable adult assets (genitails, pubic hair)",
-    )
-
     def draw(self, _):
-        self.layout.prop(self, "adult_mode")
+        pass
 
 
 def on_select():
@@ -80,11 +68,11 @@ def select_handler(_):
     on_select()
 
 
-classes: list[type] = [None, CharMorphPrefs, VIEW3D_PT_CharMorph]
+classes: list[type] = [None, prefs.CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-for module in [library, morphing, randomize, file_io, assets, hair, finalize, rigify, pose]:
+for module in [library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose]:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)

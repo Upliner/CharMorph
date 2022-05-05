@@ -18,11 +18,11 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import re, logging
+import re, typing, logging
 
-import bpy  # pylint: disable=import-error
+import bpy, mathutils  # pylint: disable=import-error
 
-from . import morpher_cores, materials, fitting, sliding_joints
+from . import charlib, morpher_cores, materials, fitting, fit_calc, sliding_joints, rigging, utils
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,20 @@ def calc_meta_val(coeffs, val):
     return coeffs[1] * val if val > 0 else -coeffs[0] * val
 
 
+def match_armature(main: charlib.Armature, match: dict[str, charlib.Armature]) -> charlib.Armature:
+    for k, values in match.items():
+        if not isinstance(values, list):
+            values = (values,)
+        match_value = getattr(main, k)
+        if not any(match_value == value for value in values):
+            return False
+    return True
+
+
+def matching_armatures(main: charlib.Armature, candidates: list[charlib.Armature]) -> typing.Iterable[charlib.Armature]:
+    return (c for c in candidates if any(match_armature(main, match) for match in c.match))
+
+
 # Delete morphs property group
 def del_charmorphs_L2():
     if not hasattr(bpy.types.WindowManager, "charmorphs"):
@@ -69,6 +83,7 @@ class Morpher:
     L1_idx = 0
     meta_prev: dict[str, float]
     categories: list[tuple[str, str, str]] = []
+    rfc: fit_calc.RiggerFitCalculator = None
 
     presets: dict[str, dict] = {}
     presets_list = [("_", "(reset)", "")]
@@ -83,16 +98,24 @@ class Morpher:
         ]
         self.update_L1_idx()
 
+        self.rig = self.core.obj.find_armature() if self.core.obj else None
+        self.rig_handler = self._get_rig_handler()
+        if self.rig and not isinstance(self.rig_handler, rigging.RigUpdateHandler):
+            self.core.error = "Character is rigged.\nMorphing is not supported\n for this rig type"
+
         self.materials = materials.Materials(core.obj)
         if self.core.obj:
-            self.fitter = fitting.Fitter(self.core, self)
-        self.sj_calc = sliding_joints.SJCalc(self.core.char, self.core.rig, self.core.get_co)
+            self.fitter = fitting.Fitter(self)
+        self.sj_calc = sliding_joints.SJCalc(self.core.char, self.rig, self.get_co)
 
     def __bool__(self):
         return self.core.obj is not None
 
     def __getattr__(self, attr):
         return getattr(self.core, attr)
+
+    def get_co(self, i):
+        return mathutils.Vector(self.core.get_final()[i])
 
     def update_L1_idx(self):
         try:
@@ -123,9 +146,12 @@ class Morpher:
         self._set_L1(self.L1_list[idx][0], True)
 
     def update(self):
+        if self.core.error:
+            return
         self.core.update()
         self.fitter.refit_all()
         self.sj_calc.recalc()
+        self.update_rig()
 
     def apply_morph_data(self, data, preset_mix):
         if data is None:
@@ -138,7 +164,7 @@ class Morpher:
                 value = meta_props.get(name, 0)
                 self.meta_prev[name] = value
                 self.core.obj.data["cmorph_meta_" + name] = value
-        morph_props = data.get("morphs", {})
+        morph_props = data.get("morphs", {}).copy()
         for morph in self.core.morphs_l2:
             if not morph.name:
                 continue
@@ -146,6 +172,9 @@ class Morpher:
             if preset_mix:
                 value = (value + self.core.prop_get(morph.name)) / 2
             self.core.prop_set(morph.name, value)
+            del morph_props[morph.name]
+        for prop in morph_props:
+            logger.error("Unknown morph name: %s", prop)
         self.materials.apply(data.get("materials"))
         self.update()
 
@@ -281,8 +310,98 @@ class Morpher:
     def set_clamp(self, clamp):
         self.core.clamp = clamp
 
+    def get_rig_type(self):
+        if self.rig is None:
+            return None
+        rig_type = self.rig.data.get("charmorph_rig_type")
+        if not rig_type:
+            rig_type = self.core.obj.data.get("charmorph_rig_type")
+        return rig_type
+
+    def _get_rig_handler(self, conf=None) -> rigging.RigHandler:
+        if conf is None:
+            conf = self.core.char.armature.get(self.get_rig_type())
+        if conf is None:
+            return None
+        cls = rigging.handlers.get(conf.type)
+        if not cls:
+            return None
+        return cls(self, self.rig, conf)
+
+    def add_rig(self, conf: charlib.Armature):
+        cls = rigging.handlers.get(conf.type)
+        if not cls:
+            raise rigging.RigException(rigging.rig_errors.get(
+                conf.type, f"Rig type {conf.type} is not supported"))
+        self.rig = utils.import_obj(self.core.char.path(conf.file), conf.obj_name, "ARMATURE")
+        if not self.rig:
+            raise rigging.RigException("Rig import failed")
+
+        self.rig_handler = cls(self, self.rig, conf)
+        return self.rig
+
+    def update_rig(self):
+        if self.rig is None:
+            return
+        bpy.context.view_layer.objects.active = self.rig
+        self.run_rigger()
+
+    def run_rigger(self, manual_sculpt=False):
+        if self.rig_handler is None:
+            self.rig_handler = self._get_rig_handler()
+        if self.rig_handler is None:
+            return None, None
+
+        verts = self.core.get_final()
+        verts_alt = self.core.get_final_alt_topo()
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        rig = bpy.context.object
+        rig.data.use_mirror_x = False
+        rigger = rigging.Rigger(bpy.context)
+        conf = self.rig_handler.conf
+
+        def add_char_joints(joints):
+            if self.core.alt_topo and manual_sculpt:
+                if self.rfc is None:
+                    self.rfc = fit_calc.RiggerFitCalculator(self)
+                joints = self.rfc.transfer_weights_get(self.core.obj, joints)
+                rigger.joints_from_file(joints, verts_alt)
+            else:
+                rigger.joints_from_file(joints, verts)
+
+        if conf.joints:
+            add_char_joints(conf.joints)
+        else:
+            rigger.joints_from_char(self.core.obj, verts_alt)
+
+        self.rig_handler.tweaks = rigging.unpack_tweaks(conf.parent.dirpath, conf.tweaks)
+        rigger.set_opts(conf.bones)
+        for afd in self.fitter.get_assets():
+            for a in matching_armatures(conf, afd.conf.armature):
+                rigger.set_opts(a.bones)
+                rigging.unpack_tweaks(a.parent.dirpath, a.tweaks, self.rig_handler.tweaks)
+                for j in a.asset_joints:
+                    if j.verts == "char":
+                        add_char_joints(j.file)
+                    elif j.verts == "asset":
+                        rigger.joints_from_file(j.file, afd.geom.verts)
+                    else:
+                        logger.error('Unknown verts source "%s" for asset %s', j["verts"], afd.obj.name)
+
+        if not rigger.run(self.rig_handler.get_bones()):
+            raise rigging.RigException("Rig fitting failed")
+
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        if isinstance(self.rig_handler, rigging.RigUpdateHandler):
+            self.rig_handler.update()
+
+        return rigger
+
 
 null_morpher = Morpher(morpher_cores.MorpherCore(None))
+null_morpher.core.error="Null"
 
 
 def get(obj, storage=None):

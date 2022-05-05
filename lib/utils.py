@@ -228,19 +228,8 @@ def is_true(value):
     return False
 
 
-def get_prefs():
-    return bpy.context.preferences.addons.get("CharMorph")
-
-
 def visible_mesh_poll(_, obj):
     return obj.type == "MESH" and obj.visible_get()
-
-
-def is_adult_mode():
-    prefs = get_prefs()
-    if not prefs:
-        return False
-    return prefs.preferences.adult_mode
 
 
 def reposition_modifier(obj, i):
@@ -410,23 +399,9 @@ def vg_read(z):
         return vg_read_npz(numpy.load(z))
     if hasattr(z, "zip"):
         return vg_read_npz(z)
-    if hasattr(z, "__next__"):
+    if hasattr(z, "__next__") or isinstance(z, list):
         return z
     raise Exception("Invalid type for vg_read: " + z)
-
-
-def char_weights_npz(obj, char):
-    rig_type = obj.data.get("charmorph_rig_type")
-    if rig_type is None:
-        obj = obj.find_armature()
-        if obj:
-            rig_type = obj.data.get("charmorph_rig_type")
-    if rig_type is None:
-        return None
-    conf = char.armature.get(rig_type)
-    if conf is None:
-        return None
-    return conf.weights_npz
 
 
 def char_rig_vg_names(char, rig):

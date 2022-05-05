@@ -335,9 +335,7 @@ def _lazy_yaml_props(*prop_lst):
 def parse_joints(joints, d: DataDir):
     if isinstance(joints, dict):
         joints = (joints,)
-    if isinstance(joints, (list, tuple)):
-        return [AssetJoints(item["verts"], d.path(item["file"])) for item in joints]
-    return joints
+    return [AssetJoints(item["verts"], d.path(item["file"])) for item in joints]
 
 
 @_lazy_yaml_props("bones", "mixin_bones")
@@ -349,9 +347,16 @@ class Armature:
     mixin = ""
     match: list[dict[str, str]] = []
     mixin_bones: dict[str, dict]
-    weights: str = None
     arp_reference_layer = 17
-    joints = None
+
+    asset_joints: list[AssetJoints] = None
+
+    def _default_path(self, item):
+        path = self.__dict__.get(item)
+        if path:
+            return self.parent.path(path)
+
+        return self.parent.path(os.path.join(item, self.name + ".npz"))
 
     def __init__(self, parent: DataDir, name: str, conf: dict):
         self.title = name
@@ -364,21 +369,26 @@ class Armature:
             self.__dict__.update(parent.armature_defaults)
 
         self.__dict__.update(conf)
-
-        for item in ("weights", "joints"):
-            value = getattr(self, item, None)
-            if value is None or isinstance(value, str):
-                setattr(self, item, parent.path(value) if value else parent.path(os.path.join(item, name + ".npz")))
-
         self.name = name
+        self.weights = self._default_path("weights")
 
         if isinstance(parent, Asset):
-            self.joints = parse_joints(self.joints, parent)
+            self.asset_joints = parse_joints(self.__dict__.get("joints"), parent)
+        else:
+            self.joints_file = self._default_path("joints")
+
+        if "joints" in self.__dict__:
+            del self.__dict__["joints"]
+
         if isinstance(self.match, dict):
             self.match = (self.match,)
 
         if "bones" not in self.__dict__ and isinstance(parent, Character):
             self.bones = parent.bones  # Legacy
+
+    @utils.lazyproperty
+    def joints(self):
+        return list(utils.vg_read(self.joints_file))
 
     @utils.lazyproperty
     def weights_npz(self):

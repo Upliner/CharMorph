@@ -21,7 +21,7 @@
 import os, logging
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import fitting, morpher_cores, utils
+from .lib import fitting, morpher, utils
 from .lib.charlib import library, Asset
 from .morphing import manager as mm
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def get_fitter(obj):
     if obj is mm.morpher.core.obj:
         return mm.morpher.fitter
-    return fitting.Fitter(morpher_cores.get(obj))
+    return morpher.get(obj).fitter
 
 
 def get_asset_conf(context):
@@ -274,7 +274,7 @@ class OpUnfit(bpy.types.Operator):
                 name = asset.data.get("charmorph_asset")
                 if name:
                     f.mcore.remove_asset_morph(name)
-                    f.update_char()
+                    f.morpher.update()
         try:
             del asset.data['charmorph_fit_id']
         except KeyError:

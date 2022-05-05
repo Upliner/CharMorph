@@ -18,8 +18,6 @@
 #
 # Copyright (C) 2022 Michael Vigovsky
 
-from genericpath import isfile
-from ntpath import join
 import os, abc, json, logging, numpy
 
 from . import utils
@@ -161,7 +159,7 @@ class MorphPack:
         part_pos = 0
         for name, i in zip(names, z["cnt"]):
             if i >= 0:
-                pos2 = part_pos+i
+                pos2 = part_pos + i
                 item = (idx[part_pos:pos2], delta[part_pos:pos2])
                 part_pos = pos2
             else:
@@ -172,7 +170,6 @@ class MorphPack:
                     item = Separator
             self.namedict[name] = len(self.data)
             self.data.append(item)
-
 
     def __getitem__(self, idx):
         if self.data is None:
@@ -235,8 +232,7 @@ class MorphStorage:
             return None
 
         file = os.path.join(self.path, f"L{level}_packed", *names) + ".npz"
-        if os.path.isfile(file):
-            return file
+        return file if os.path.isfile(file) else None
 
     def _get_pack(self, level, *names):
         pack = self.packs.get((level, *names))
@@ -313,12 +309,12 @@ class MorphStorage:
 class MorphImporter:
     _counter_lev: int
     _counter_cnt: int
-    _L1_data: dict = None
     basis: numpy.ndarray
 
     def __init__(self, storage: MorphStorage, obj):
         self.storage = storage
         self.obj = obj
+        self._L1_data = {}
 
     def _ensure_basis(self):
         basis = self.storage.char.np_basis
@@ -379,9 +375,9 @@ class MorphImporter:
         self._counter_lev = 2
         self._counter_cnt = 1
 
-        progress.enter_substeps(len(L1)+len(L2), "Importing morphs")
+        progress.enter_substeps(len(L1) + len(L2), "Importing morphs")
 
-        self._L1_data = {}
+        self._L1_data.clear()
         for morph in L1:
             data = self._import_to_sk(morph, 1)
             self._L1_data[morph.name] = data

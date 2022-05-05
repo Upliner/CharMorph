@@ -18,11 +18,19 @@
 #
 # Copyright (C) 2022 Michael Vigovsky
 
-import numpy
-import mathutils  # pylint: disable=import-error
+import typing, numpy
 
 from . import charlib, morphs, utils
 
+
+class FinalVertsGetter:
+    obj: typing.Any
+    alt_topo_verts: numpy.ndarray = None
+
+    def get_final_alt_topo(self):
+        if self.alt_topo_verts is None:
+            self.alt_topo_verts = utils.get_morphed_numpy(self.obj)
+        return self.alt_topo_verts
 
 class MorpherCore:
     error = None
@@ -37,9 +45,6 @@ class MorpherCore:
         self._init_storage()
         self.L1, self.morphs_l1 = self.get_L1()
         self.update_morphs_L2()
-        self.rig = obj.find_armature() if obj else None
-        if self.rig:
-            self.error = "Character is rigged.\nLive rig deform is not supported"
 
     # these methods are overriden in subclasses so remove no-self-use
     def _init_storage(self):
@@ -57,10 +62,16 @@ class MorpherCore:
     def has_morphs(self):
         return False
 
-    def get_co(self, i):
-        return self.obj.data.vertices[i].co
-
     def update(self):
+        pass
+
+    def ensure(self):
+        pass
+
+    def get_final(self):
+        pass
+
+    def get_final_alt_topo(self):
         pass
 
     def cleanup_asset_morphs(self):
@@ -90,6 +101,9 @@ class MorpherCore:
 
     def get_basis_alt_topo(self):
         return self.full_basis
+
+    def get_diff(self):
+        return self.get_final() - self.full_basis
 
     def _del_asset_morphs(self):
         try:
@@ -152,8 +166,14 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 
-class ShapeKeysMorpher(MorpherCore):
+class ShapeKeysMorpher(MorpherCore, FinalVertsGetter):
     morphs_l2_dict: dict[str, morphs.MinMaxMorph] = {}
+
+    def get_final(self):
+        return self.get_final_alt_topo()
+
+    def update(self):
+        self.alt_topo_verts = None
 
     def _update_L1(self):
         for name, sk in self.morphs_l1.items():
@@ -268,11 +288,6 @@ class ShapeKeysMorpher(MorpherCore):
             self._prop_set_combo(morph, value)
         else:
             self._prop_set_simple(morph, value)
-
-    def get_diff(self):
-        result = utils.get_morphed_numpy(self.obj)
-        result -= self.full_basis
-        return result
 
     def _ensure_basis(self):
         if not self.obj.data.shape_keys or not self.obj.data.shape_keys.key_blocks:
@@ -402,21 +417,12 @@ class NumpyMorpher(MorpherCore):
     def prop_set(self, name, value):
         self.obj.data["cmorph_L2_" + name] = value
 
-    def _get_co(self, i):
+    def ensure(self):
         if self.morphed is None:
             self._do_all_morphs()
-        return mathutils.Vector(self.morphed[i])
-
-    def get_diff(self):
-        if self.morphed is None:
-            self._do_all_morphs()
-        return self.morphed - self.full_basis
 
     def get_final(self):
-        if not self.has_morphs():
-            return None
-        if self.morphed is None:
-            self._do_all_morphs()
+        self.ensure()
         return self.morphed
 
     def cleanup_asset_morphs(self):
@@ -459,7 +465,7 @@ class NumpyMorpher(MorpherCore):
         self.basis = None
 
 
-class AltTopoMorpher(NumpyMorpher):
+class AltTopoMorpher(NumpyMorpher, FinalVertsGetter):
     def __init__(self, obj, storage=None):
         self.alt_topo = True
         self.alt_topo_basis = charlib.get_basis(obj)
@@ -467,6 +473,10 @@ class AltTopoMorpher(NumpyMorpher):
 
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
+
+    def update(self):
+        self.alt_topo_verts = None
+        super().update()
 
 
 def get(obj, storage=None):

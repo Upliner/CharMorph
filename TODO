@@ -1,6 +1,5 @@
 General:
   - Proper context handling (use bpy.context only if really necessary)
-  - Split finalize panel to apply and rig panels
 
 Character management:
   - Unzipper for character/asset packages
@@ -49,6 +48,7 @@ Hair:
   - Hair refitting after edit
 
 Fitting:
+  - Fix folds: support weight-only morphs
   - Hybrid mode: store asset morphs in shapekeys even in numpy mode (probably not activating them),
       get asset morph data from morpher-code, not charlib!
   - BMesh instead of creating from_mix shapekey?
@@ -76,7 +76,6 @@ Rigging:
   - Size and limb length morphs for Antonia
   - Relative rigger instead of current absolute one?
   - Head pivot shift
-  - Live regular rig deform
   - Deformation cage support? (it seems that better fitting algorighm is needed for it)
   - Rigify morphing? Maybe even create an own Rigify-like rig system?
   - Blenrig?

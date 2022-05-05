@@ -59,7 +59,116 @@ def selected_joints(context):
         if bone.select_tail:
             joints[f"joint_{bone.name}_tail"] = (bone.tail, bone, "tail")
     return joints
-####
+
+
+def attach_rig(morpher, rig):
+    obj = morpher.core.obj
+    utils.copy_transforms(rig, obj)
+    utils.reset_transforms(obj)
+    obj.parent = rig
+
+    utils.lock_obj(obj, True)
+
+    mod = obj.modifiers.new("charmorph_rig", "ARMATURE")
+    mod.use_vertex_groups = True
+    mod.object = rig
+    utils.reposition_armature_modifier(obj)
+    if "preserve_volume" in obj.vertex_groups or "preserve_volume_inv" in obj.vertex_groups:
+        mod2 = obj.modifiers.new("charmorph_rig_pv", "ARMATURE")
+        mod2.use_vertex_groups = True
+        mod2.use_deform_preserve_volume = True
+        mod2.use_multi_modifier = True
+        mod2.object = rig
+        if "preserve_volume_inv" in obj.vertex_groups:
+            mod2.vertex_group = "preserve_volume_inv"
+        else:
+            mod2.vertex_group = "preserve_volume"
+            mod2.invert_vertex_group = True
+        utils.reposition_armature_modifier(obj)
+    else:
+        mod.use_deform_preserve_volume = True
+
+    morpher.fitter.transfer_new_armature()
+
+
+def _clear_vg_names(vgs, vg_names):
+    if not vg_names:
+        return
+    for vg in list(vgs):
+        if vg.name in vg_names:
+            vgs.remove(vg)
+
+
+def _remove_armature_modifiers(obj):
+    for m in list(obj.modifiers):
+        if m.type == "ARMATURE":
+            obj.modifiers.remove(m)
+
+
+class RigHandler:
+    tweaks = ((), (), ())
+    err = None
+
+    def __init__(self, morpher, rig, conf):
+        self.morpher = morpher
+        self.rig = rig
+        self.conf = conf
+
+    def _vg_names(self):
+        return utils.np_names(self.conf.weights_npz)
+
+    def _clear_weights(self, obj):
+        vgs = obj.vertex_groups
+        for bone in self.rig.data.bones:
+            if bone.use_deform:
+                vg = vgs.get(bone.name)
+                if vg:
+                    vgs.remove(vg)
+        _clear_vg_names(vgs, set(self._vg_names()))
+
+    def clear_weights(self):
+        self._clear_weights(self.morpher.core.obj)
+        for afd in self.morpher.fitter.get_assets():
+            self._clear_weights(afd.obj)
+
+    def delete_rig(self):
+        bpy.data.armatures.remove(self.rig.data)
+        for afd in self.morpher.fitter.get_assets():
+            _remove_armature_modifiers(afd.obj)
+
+    def get_bones(self):
+        return None
+
+    def finalize(self, _rigger: "Rigger"):
+        attach_rig(self.morpher, self.rig)
+
+
+class RigUpdateHandler():
+    def update(self):
+        pass
+
+
+class RegularRigRandler(RigHandler, RigUpdateHandler):
+    pass
+
+
+class ArpRigRandler(RigHandler, RigUpdateHandler):
+    def get_bones(self):
+        return layer_joints(self.rig, self.conf.arp_reference_layer)
+
+    def update(self):
+        t = utils.Timer()
+        bpy.ops.arp.match_to_rig()
+        t.time("ARP refit")
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+
+handlers = {"regular": RegularRigRandler}
+rig_errors = {}
+if hasattr(bpy.ops, "arp") and "match_to_rig" in dir(bpy.ops.arp):
+    handlers["arp"] = ArpRigRandler
+else:
+    rig_errors["arp"] = "Auto-Rig Pro addon is not found. You need to install it to use this rig."
 
 
 def bb_prev_roll(bone):

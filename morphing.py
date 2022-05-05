@@ -42,14 +42,12 @@ class Manager:
         ui = bpy.context.window_manager.charmorph_ui
         c = m.core.char
 
-        if ui.fin_rig not in c.armature:
+        if ui.rig not in c.armature:
             if c.default_armature:
-                ui.fin_rig = c.default_armature
-            else:
-                ui.fin_rig = "-"
+                ui.rig = c.default_armature
 
         if not m.core.L1 and c.default_type:
-            m.set_L1(c.default_type)
+            m.set_L1(c.default_type, False)
 
         if c.randomize_incl_regex is not None:
             ui.randomize_incl = c.randomize_incl_regex

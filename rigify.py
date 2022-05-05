@@ -24,20 +24,10 @@
 #
 
 import math, typing
-import bpy          # pylint: disable=import-error
-import rna_prop_ui  # pylint: disable=import-error
+import bpy, rna_prop_ui  # pylint: disable=import-error
 
-from .lib import charlib, rigging, sliding_joints, utils
+from .lib import rigging, sliding_joints, utils
 from .morphing import manager as mm
-
-
-def remove_rig(rig):
-    try:
-        ui = rig.get("rig_ui")
-        if ui:
-            bpy.data.texts.remove(ui)
-    finally:
-        bpy.data.armatures.remove(rig.data)
 
 
 def apply_metarig_parameters(metarig):
@@ -124,64 +114,86 @@ def add_mixin(char, conf, rig):
     return (bones, joints)
 
 
-def do_rig(m, conf: charlib.Armature, rigger: rigging.Rigger, tweaks: tuple[list, list, list]):
-    obj = m.core.obj
-    metarig = bpy.context.object
-    if hasattr(metarig.data, "rigify_generate_mode"):
-        metarig.data.rigify_generate_mode = "new"
-    if hasattr(metarig.data, "rigify_target_rig"):
-        metarig.data.rigify_target_rig = None
-    t = utils.Timer()
-    bpy.ops.pose.rigify_generate()
-    t.time("rigify part")
-    rig = bpy.context.object
-    try:
-        bpy.data.armatures.remove(metarig.data)
-        rig.name = obj.name + "_rig"
+class RigifyHandler(rigging.RigHandler):
+    def delete_rig(self):
+        try:
+            ui = self.rig.get("rig_ui")
+            if ui:
+                bpy.data.texts.remove(ui)
+        finally:
+            super().delete_rig()
 
-        rigging.rigify_finalize(rig, obj)
-        apply_rig_parameters(rig, conf)
+    def finalize(self, rigger: rigging.Rigger):
+        ui = bpy.context.window_manager.charmorph_ui
+        obj = self.morpher.core.obj
+        apply_metarig_parameters(self.rig)
+        metarig_only = ui.rigify_metarig_only
+        if metarig_only\
+            or (not hasattr(self.rig.data, "rigify_generate_mode")
+                and not hasattr(self.rig.data, "rigify_target_rig")):
+            if not metarig_only:
+                self.err = "Rigify is not found! Generating metarig only"
+            utils.copy_transforms(self.rig, obj)
+            return
+        conf = self.conf
+        metarig = bpy.context.object
+        if hasattr(metarig.data, "rigify_generate_mode"):
+            metarig.data.rigify_generate_mode = "new"
+        if hasattr(metarig.data, "rigify_target_rig"):
+            metarig.data.rigify_target_rig = None
+        t = utils.Timer()
+        bpy.ops.pose.rigify_generate()
+        t.time("rigify part")
+        rig = bpy.context.object
+        try:
+            self.rig = rig
+            bpy.data.armatures.remove(metarig.data)
+            rig.name = obj.name + "_rig"
 
-        new_bones, new_joints = add_mixin(m.core.char, conf, rig)
+            rigging.rigify_finalize(rig, obj)
+            apply_rig_parameters(rig, conf)
 
-        for tweak in tweaks[0]:
-            rigging.apply_tweak(rig, tweak)
+            new_bones, new_joints = add_mixin(self.morpher.core.char, conf, rig)
 
-        sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
-        if len(tweaks[1]) > 0 or len(conf.sliding_joints) > 0 or new_joints:
-            bpy.ops.object.mode_set(mode="EDIT")
+            for tweak in self.tweaks[0]:
+                rigging.apply_tweak(rig, tweak)
 
-            if new_joints:
-                rigger.set_opts(conf.mixin_bones)
-                if not rigger.run(new_joints):
-                    raise rigging.RigException("Mixin fitting failed")
+            sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
+            if len(self.tweaks[1]) > 0 or len(conf.sliding_joints) > 0 or new_joints:
+                bpy.ops.object.mode_set(mode="EDIT")
 
-            for tweak in tweaks[1]:
-                rigging.apply_editmode_tweak(bpy.context, tweak)
+                if new_joints:
+                    rigger.set_opts(conf.mixin_bones)
+                    if not rigger.run(new_joints):
+                        raise rigging.RigException("Mixin fitting failed")
 
-            sj_list = sliding_joints.create_from_conf(m.sj_calc, conf)
+                for tweak in self.tweaks[1]:
+                    rigging.apply_editmode_tweak(bpy.context, tweak)
 
-            bpy.ops.object.mode_set(mode="OBJECT")
+                sj_list = sliding_joints.create_from_conf(self.morpher.sj_calc, conf)
 
-        for tweak in tweaks[2]:
-            rigging.apply_tweak(rig, tweak)
+                bpy.ops.object.mode_set(mode="OBJECT")
 
-        for data in sj_list:
-            sliding_joints.finalize(rig, *data)
+            for tweak in self.tweaks[2]:
+                rigging.apply_tweak(rig, tweak)
 
-        # adjust bone constraints for mixin
-        if new_bones:
-            for name in new_bones:
-                bone = rig.pose.bones.get(name)
-                if not bone:
-                    continue
-                for c in bone.constraints:
-                    if c.type == "STRETCH_TO":
-                        c.rest_length = bone.length
-    except Exception:
-        remove_rig(rig)
-        raise
-    return rig
+            for data in sj_list:
+                sliding_joints.finalize(rig, *data)
+
+            # adjust bone constraints for mixin
+            if new_bones:
+                for name in new_bones:
+                    bone = rig.pose.bones.get(name)
+                    if not bone:
+                        continue
+                    for c in bone.constraints:
+                        if c.type == "STRETCH_TO":
+                            c.rest_length = bone.length
+        except Exception:
+            self.delete_rig()
+            raise
+
+        super().finalize(rigger)
 
 
 class UIProps:
@@ -207,7 +219,8 @@ class UIProps:
     )
     rigify_disable_ik_stretch: bpy.props.BoolProperty(
         name="Disable IK stretch",
-        description="Totally disable IK stretch. If IK stretch is enabled it can squeeze bones even if you don't try to stretch them.",
+        description="Totally disable IK stretch. "
+                    "If IK stretch is enabled it can squeeze bones even if you don't try to stretch them.",
         default=True,
     )
     rigify_limit_ik: bpy.props.BoolProperty(
@@ -217,13 +230,13 @@ class UIProps:
     )
 
 
-class FinalizeSubpanel(bpy.types.Panel):
-    bl_parent_id = "CHARMORPH_PT_Finalize"
+class RigSubpanel(bpy.types.Panel):
+    bl_parent_id = "CHARMORPH_PT_Rig"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
 
 
-class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
+class CHARMORPH_PT_SlidingJoints(RigSubpanel):
     bl_label = "Sliding joints"
     bl_order = 1
 
@@ -232,7 +245,7 @@ class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
         m = mm.morpher
         if not m or not hasattr(context.window_manager, "charmorphs"):
             return False
-        for _ in m.sj_calc.rig_joints(context.window_manager.charmorph_ui.fin_rig)[1]:
+        for _ in m.sj_calc.rig_joints(context.window_manager.charmorph_ui.rig)[1]:
             return True
         return False
 
@@ -241,18 +254,21 @@ class CHARMORPH_PT_SlidingJoints(FinalizeSubpanel):
         col.label(text="You can adjust these values")
         col.label(text="if joint bending looks strange")
         col = self.layout.column()
-        rig, items = mm.morpher.sj_calc.rig_joints(context.window_manager.charmorph_ui.fin_rig)
+        rig, items = mm.morpher.sj_calc.rig_joints(context.window_manager.charmorph_ui.rig)
         for name in items:
             col.prop(context.window_manager.charmorphs, f"sj_{rig}_{name}", text=name, slider=True)
 
 
-class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
+class CHARMORPH_PT_RigifySettings(RigSubpanel):
     bl_label = "Rigify settings"
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 2
 
     @classmethod
     def poll(cls, context):
-        rig = mm.morpher.core.char.armature.get(context.window_manager.charmorph_ui.fin_rig)
+        if context.mode != "OBJECT":
+            return False
+        rig = mm.morpher.core.char.armature.get(context.window_manager.charmorph_ui.rig)
         if not rig:
             return False
         result = rig.type == "rigify"
@@ -263,4 +279,5 @@ class CHARMORPH_PT_RigifySettings(FinalizeSubpanel):
             self.layout.prop(context.window_manager.charmorph_ui, prop)
 
 
+rigging.handlers["rigify"] = RigifyHandler
 classes = [CHARMORPH_PT_SlidingJoints, CHARMORPH_PT_RigifySettings]

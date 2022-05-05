@@ -24,6 +24,7 @@ import bpy  # pylint: disable=import-error
 
 from .charlib import Character
 from . import utils
+from .. import prefs
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ def load_materials(obj, char: Character):
     ui = bpy.context.window_manager.charmorph_ui
     materials_to_load = set()
     load_ids = []
-    adult_mode = utils.is_adult_mode()
+    adult_mode = prefs.is_adult_mode()
 
     for i, mtl_name in enumerate(mtllist):
         if not mtl_name:

@@ -257,4 +257,5 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l.operator("cmedit.joints_to_vg")
 
 
-classes = [OpJointsToVG, OpCalcVg, OpRigifyFinalize, OpCleanupJoints, OpStoreRollX, OpStoreRollZ, OpBBoneHandles, OpRigifyTweaks, CMEDIT_PT_Rigging]
+classes = [OpJointsToVG, OpCalcVg, OpRigifyFinalize, OpCleanupJoints, OpBBoneHandles, OpRigifyTweaks,
+           OpStoreRollX, OpStoreRollZ, CMEDIT_PT_Rigging]

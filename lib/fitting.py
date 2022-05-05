@@ -181,8 +181,8 @@ class Fitter(fit_calc.MorpherFitCalculator):
     transfer_calc: fit_calc.FitCalculator = None
     diff_arr: numpy.ndarray = None
 
-    def __init__(self, mcore, morpher=None):
-        super().__init__(mcore)
+    def __init__(self, morpher):
+        super().__init__(morpher.core)
         self.morpher = morpher
         self.bind_cache = {}
 
@@ -374,7 +374,9 @@ class Fitter(fit_calc.MorpherFitCalculator):
         return has_fit
 
     def _transfer_weights_orig(self, afd: fit_calc.AssetFitData):
-        self.transfer_weights(afd, utils.char_weights_npz(self.mcore.obj, self.mcore.char))
+        handler = self.morpher.rig_handler
+        if handler:
+            self.transfer_weights(afd, handler.conf.weights_npz)
 
     def _transfer_weights_obj(self, afd, vgs):
         if afd.obj.data is self.mcore.obj.data:
@@ -427,6 +429,8 @@ class Fitter(fit_calc.MorpherFitCalculator):
             utils.reposition_armature_modifier(afd.obj)
 
     def transfer_new_armature(self):
+        if bpy.context.window_manager.charmorph_ui.fitting_weights == "NONE":
+            return
         for afd in self.get_assets():
             self._transfer_armature(afd)
         self.tmp_buf = None
@@ -443,6 +447,8 @@ class Fitter(fit_calc.MorpherFitCalculator):
         verts = afd.binding.fit(self.get_diff_arr(afd.morph))
         t.time("reduce " + afd.obj.name)
         verts += afd.geom.verts
+        if self.mcore.alt_topo and afd.obj is self.mcore.obj:
+            self.mcore.alt_topo_verts = verts
         self._get_target(afd.obj).foreach_set("co", verts.reshape(-1))
         afd.obj.data.update()
 
@@ -481,19 +487,12 @@ class Fitter(fit_calc.MorpherFitCalculator):
                     break
 
         if any(afd.morph is not None for afd in afd_list):
-            self.update_char()
+            self.morpher.update()
         else:
             for afd in afd_list:
                 self.fit(afd)
 
         self.transfer_calc = None
-
-    def update_char(self):
-        if self.morpher:
-            self.morpher.update()
-        else:
-            self.mcore.update()
-            self.refit_all()
 
     def fit_import(self, lst):
         result = True

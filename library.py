@@ -22,7 +22,7 @@ import os, logging
 import bpy  # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
-from . import morphing
+from . import morphing, prefs
 from .lib import morpher, materials, morphs, utils
 from .lib.charlib import library, empty_char
 
@@ -131,15 +131,12 @@ class OpImport(bpy.types.Operator):
         context.view_layer.objects.active = obj
         ui.fitting_char = obj
 
-        if char.default_armature and ui.fin_rig == '-':
-            ui.fin_rig = char.default_armature
-
         asset_list = []
 
         def add_assets(lst):
             asset_list.extend((char.assets[name] for name in lst))
         add_assets(char.default_assets)
-        if not utils.is_adult_mode():
+        if not prefs.is_adult_mode():
             add_assets(char.underwear)
 
         m.fitter.fit_import(asset_list)
@@ -198,7 +195,8 @@ class UIProps:
         description="Take 3D cursor Z rotation into account when creating the character")
     use_sk: bpy.props.BoolProperty(
         name="Use shape keys for morphing", default=False,
-        description="Use shape keys during morphing (should be on if you plan to resume morphing later, maybe with other versions of CharMorph)")
+        description="Use shape keys during morphing"
+                    "(should be on if you plan to resume morphing later, maybe with other versions of CharMorph)")
     import_morphs: bpy.props.BoolProperty(
         name="Import morphing shape keys", default=False,
         description="Import and morph character using shape keys")
@@ -276,7 +274,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
 
         l.alignment = "CENTER"
         c = l.column(align=True)
-        if utils.is_adult_mode():
+        if prefs.is_adult_mode():
             labels = ["Adult mode is on", "The character will be naked"]
         else:
             labels = ["Adult mode is off", "Default underwear will be added"]

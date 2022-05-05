@@ -148,7 +148,8 @@ class OpRandomize(bpy.types.Operator):
                 if ui.randomize_mode == "OVR":
                     m.reset_meta()
                 if ui.randomize_mode == "SEG":
-                    val = (math.floor((m.core.prop_get(name) + 1) * ui.randomize_segs / 2) + random_func()) * 2 / ui.randomize_segs - 1
+                    val = (math.floor((m.core.prop_get(name) + 1) * ui.randomize_segs / 2)
+                           + random_func()) * 2 / ui.randomize_segs - 1
                 else:
                     val = max(min((ui.randomize_strength * (random_func() * 2 - 1)), 1), -1)
                 if ui.randomize_mode == "RL1":
