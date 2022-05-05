@@ -115,6 +115,55 @@ def add_mixin(char, conf, rig):
 
 
 class RigifyHandler(rigging.RigHandler):
+    slow = True
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.backup_metarig_name = f"charmorph_metarig_{self.morpher.core.char.name}_{self.conf.name}"
+
+    def is_morphable(self):
+        return not self.conf.mixin and hasattr(self.rig.data, "rigify_generate_mode")\
+               and hasattr(self.rig.data, "rigify_target_rig")
+
+    def on_update(self, rigger):
+        t = utils.Timer()
+        metarig = bpy.data.objects.get(self.backup_metarig_name)
+        if not metarig:
+            metarig = bpy.data.armatures.get(self.backup_metarig_name)
+            if metarig:
+                metarig = bpy.data.objects.new(self.backup_metarig_name, metarig)
+        if not metarig:
+            metarig = utils.import_obj(
+                self.morpher.core.char.path(self.conf.file),
+                self.conf.obj_name, "ARMATURE", False)
+            if metarig:
+                metarig.name = self.backup_metarig_name
+        if not metarig:
+            return
+
+        vl = bpy.context.view_layer
+        vl.layer_collection.collection.objects.link(metarig)
+        try:
+            vl.objects.active = metarig
+
+            bpy.ops.object.mode_set(mode="EDIT")
+            try:
+                result = rigger.run(self.get_bones())
+            finally:
+                bpy.ops.object.mode_set(mode="OBJECT")
+            if not result:
+                return
+            t.time("rigger part")
+            metarig.data.rigify_generate_mode = "overwrite"
+            metarig.data.rigify_target_rig = self.rig
+            bpy.ops.pose.rigify_generate()
+        finally:
+            vl.layer_collection.collection.objects.unlink(metarig)
+        t.time("rigify part")
+
+        self._do_rig(rigger)
+        t.time("rigify after part")
+
     def delete_rig(self):
         try:
             ui = self.rig.get("rig_ui")
@@ -123,9 +172,53 @@ class RigifyHandler(rigging.RigHandler):
         finally:
             super().delete_rig()
 
+    def _do_rig(self, rigger: rigging.Rigger):
+        rig = self.rig
+        obj = self.morpher.core.obj
+        conf = self.conf
+
+        rigging.rigify_finalize(rig, obj)
+        apply_rig_parameters(rig, conf)
+
+        new_bones, new_joints = add_mixin(self.morpher.core.char, conf, rig)
+
+        for tweak in self.tweaks[0]:
+            rigging.apply_tweak(rig, tweak)
+
+        sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
+        if len(self.tweaks[1]) > 0 or len(conf.sliding_joints) > 0 or new_joints:
+            bpy.ops.object.mode_set(mode="EDIT")
+
+            if new_joints:
+                rigger.set_opts(conf.mixin_bones)
+                if not rigger.run(new_joints):
+                    raise rigging.RigException("Mixin fitting failed")
+
+            for tweak in self.tweaks[1]:
+                rigging.apply_editmode_tweak(bpy.context, tweak)
+
+            sj_list = sliding_joints.create_from_conf(self.morpher.sj_calc, conf)
+
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+        for tweak in self.tweaks[2]:
+            rigging.apply_tweak(rig, tweak)
+
+        for data in sj_list:
+            sliding_joints.finalize(rig, *data)
+
+        # adjust bone constraints for mixin
+        if new_bones:
+            for name in new_bones:
+                bone = rig.pose.bones.get(name)
+                if not bone:
+                    continue
+                for c in bone.constraints:
+                    if c.type == "STRETCH_TO":
+                        c.rest_length = bone.length
+
     def finalize(self, rigger: rigging.Rigger):
         ui = bpy.context.window_manager.charmorph_ui
-        obj = self.morpher.core.obj
         apply_metarig_parameters(self.rig)
         metarig_only = ui.rigify_metarig_only
         if metarig_only\
@@ -133,9 +226,8 @@ class RigifyHandler(rigging.RigHandler):
                 and not hasattr(self.rig.data, "rigify_target_rig")):
             if not metarig_only:
                 self.err = "Rigify is not found! Generating metarig only"
-            utils.copy_transforms(self.rig, obj)
+            utils.copy_transforms(self.rig, self.morpher.core.obj)
             return
-        conf = self.conf
         metarig = bpy.context.object
         if hasattr(metarig.data, "rigify_generate_mode"):
             metarig.data.rigify_generate_mode = "new"
@@ -144,53 +236,22 @@ class RigifyHandler(rigging.RigHandler):
         t = utils.Timer()
         bpy.ops.pose.rigify_generate()
         t.time("rigify part")
-        rig = bpy.context.object
         try:
-            self.rig = rig
-            bpy.data.armatures.remove(metarig.data)
-            rig.name = obj.name + "_rig"
-
-            rigging.rigify_finalize(rig, obj)
-            apply_rig_parameters(rig, conf)
-
-            new_bones, new_joints = add_mixin(self.morpher.core.char, conf, rig)
-
-            for tweak in self.tweaks[0]:
-                rigging.apply_tweak(rig, tweak)
-
-            sj_list: typing.Iterable[tuple[str, str, str, float]] = ()
-            if len(self.tweaks[1]) > 0 or len(conf.sliding_joints) > 0 or new_joints:
-                bpy.ops.object.mode_set(mode="EDIT")
-
-                if new_joints:
-                    rigger.set_opts(conf.mixin_bones)
-                    if not rigger.run(new_joints):
-                        raise rigging.RigException("Mixin fitting failed")
-
-                for tweak in self.tweaks[1]:
-                    rigging.apply_editmode_tweak(bpy.context, tweak)
-
-                sj_list = sliding_joints.create_from_conf(self.morpher.sj_calc, conf)
-
-                bpy.ops.object.mode_set(mode="OBJECT")
-
-            for tweak in self.tweaks[2]:
-                rigging.apply_tweak(rig, tweak)
-
-            for data in sj_list:
-                sliding_joints.finalize(rig, *data)
-
-            # adjust bone constraints for mixin
-            if new_bones:
-                for name in new_bones:
-                    bone = rig.pose.bones.get(name)
-                    if not bone:
-                        continue
-                    for c in bone.constraints:
-                        if c.type == "STRETCH_TO":
-                            c.rest_length = bone.length
+            self.rig = bpy.context.object
+            if self.is_morphable()\
+                    and self.backup_metarig_name not in bpy.data.objects:
+                metarig.name = self.backup_metarig_name
+                for c in metarig.users_collection:
+                    c.objects.unlink(metarig)
+            else:
+                bpy.data.armatures.remove(metarig.data)
+            self.rig.name = self.morpher.core.obj.name + "_rig"
+            self._do_rig(rigger)
         except Exception:
-            self.delete_rig()
+            try:
+                bpy.data.armatures.remove(metarig.data)
+            finally:
+                self.delete_rig()
             raise
 
         super().finalize(rigger)

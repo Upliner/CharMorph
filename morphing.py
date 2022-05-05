@@ -155,6 +155,21 @@ class OpResetChar(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class OpProceedSlowMorphing(bpy.types.Operator):
+    bl_idname = "charmorph.proceed_slow"
+    bl_label = "Proceed"
+    bl_description = "Proceed to morphing desite it will be very slow"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and manager.morpher and manager.morpher.slow
+
+    def execute(self, _):
+        manager.morpher.is_slow = False
+        return {"FINISHED"}
+
+
 class OpBuildAltTopo(bpy.types.Operator):
     bl_idname = "charmorph.build_alt_topo"
     bl_label = "Build alt topo"
@@ -278,6 +293,16 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         m = mm.core
         ui = context.window_manager.charmorph_ui
 
+        if mm.is_slow:
+            col = self.layout.column()
+            col.label(text="Warning:")
+            col.label(text="Morphing a rigged character")
+            col.label(text="with this rig type")
+            col.label(text="can be very slow")
+            col.label(text="Proceed with caution")
+            self.layout.operator("charmorph.proceed_slow")
+            return
+
         if mm.error:
             self.layout.label(text="Morphing is impossible:")
             col = self.layout.column()
@@ -371,4 +396,4 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
                 self.layout.prop(prop, "default_value", text=prop.node.label)
 
 
-classes = [OpResetChar, OpBuildAltTopo, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]
+classes = [OpResetChar, OpBuildAltTopo, OpProceedSlowMorphing, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]

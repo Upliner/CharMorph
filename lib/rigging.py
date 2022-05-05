@@ -108,11 +108,29 @@ def _remove_armature_modifiers(obj):
 class RigHandler:
     tweaks = ((), (), ())
     err = None
+    slow = False
 
     def __init__(self, morpher, rig, conf):
         self.morpher = morpher
         self.rig = rig
         self.conf = conf
+
+    def get_bones(self):
+        return None
+
+    def is_morphable(self):
+        return True
+
+    def on_update(self, rigger: "Rigger"):
+        bpy.context.view_layer.objects.active = self.rig
+        bpy.ops.object.mode_set(mode="EDIT")
+        try:
+            rigger.run(self.get_bones())
+        finally:
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+    def after_update(self):
+        pass
 
     def _vg_names(self):
         return utils.np_names(self.conf.weights_npz)
@@ -136,37 +154,27 @@ class RigHandler:
         for afd in self.morpher.fitter.get_assets():
             _remove_armature_modifiers(afd.obj)
 
-    def get_bones(self):
-        return None
-
     def finalize(self, _rigger: "Rigger"):
         attach_rig(self.morpher, self.rig)
 
 
-class RigUpdateHandler():
-    def update(self):
-        pass
+class ArpRigHandler(RigHandler):
+    slow = True
 
-
-class RegularRigRandler(RigHandler, RigUpdateHandler):
-    pass
-
-
-class ArpRigRandler(RigHandler, RigUpdateHandler):
     def get_bones(self):
         return layer_joints(self.rig, self.conf.arp_reference_layer)
 
-    def update(self):
+    def after_update(self):
         t = utils.Timer()
         bpy.ops.arp.match_to_rig()
         t.time("ARP refit")
         bpy.ops.object.mode_set(mode="OBJECT")
 
 
-handlers = {"regular": RegularRigRandler}
+handlers = {"regular": RigHandler}
 rig_errors = {}
 if hasattr(bpy.ops, "arp") and "match_to_rig" in dir(bpy.ops.arp):
-    handlers["arp"] = ArpRigRandler
+    handlers["arp"] = ArpRigHandler
 else:
     rig_errors["arp"] = "Auto-Rig Pro addon is not found. You need to install it to use this rig."
 

@@ -100,7 +100,8 @@ class Morpher:
 
         self.rig = self.core.obj.find_armature() if self.core.obj else None
         self.rig_handler = self._get_rig_handler()
-        if self.rig and not isinstance(self.rig_handler, rigging.RigUpdateHandler):
+        self.is_slow = bool(self.rig_handler) and self.rig_handler.slow
+        if self.rig and (not self.rig_handler or not self.rig_handler.is_morphable()):
             self.core.error = "Character is rigged.\nMorphing is not supported\n for this rig type"
 
         self.materials = materials.Materials(core.obj)
@@ -343,21 +344,29 @@ class Morpher:
     def update_rig(self):
         if self.rig is None:
             return
-        bpy.context.view_layer.objects.active = self.rig
-        self.run_rigger()
+        self.run_rigger(run_func=self.rig_handler.on_update)
 
-    def run_rigger(self, manual_sculpt=False):
+    def _run_rigger(self, rigger):
+        bpy.context.view_layer.objects.active = self.rig
+        bpy.ops.object.mode_set(mode="EDIT")
+        try:
+            if not rigger.run(self.rig_handler.get_bones()):
+                raise rigging.RigException("Rig fitting failed")
+        finally:
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+    def run_rigger(self, manual_sculpt=False, run_func=None):
         if self.rig_handler is None:
             self.rig_handler = self._get_rig_handler()
         if self.rig_handler is None:
-            return None, None
+            return None
+        if run_func is None:
+            run_func = self._run_rigger
 
         verts = self.core.get_final()
         verts_alt = self.core.get_final_alt_topo()
 
-        bpy.ops.object.mode_set(mode="EDIT")
-        rig = bpy.context.object
-        rig.data.use_mirror_x = False
+        self.rig.data.use_mirror_x = False
         rigger = rigging.Rigger(bpy.context)
         conf = self.rig_handler.conf
 
@@ -389,13 +398,8 @@ class Morpher:
                     else:
                         logger.error('Unknown verts source "%s" for asset %s', j["verts"], afd.obj.name)
 
-        if not rigger.run(self.rig_handler.get_bones()):
-            raise rigging.RigException("Rig fitting failed")
-
-        bpy.ops.object.mode_set(mode="OBJECT")
-
-        if isinstance(self.rig_handler, rigging.RigUpdateHandler):
-            self.rig_handler.update()
+        run_func(rigger)
+        self.rig_handler.after_update()
 
         return rigger
 

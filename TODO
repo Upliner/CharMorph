@@ -77,7 +77,7 @@ Rigging:
   - Relative rigger instead of current absolute one?
   - Head pivot shift
   - Deformation cage support? (it seems that better fitting algorighm is needed for it)
-  - Rigify morphing? Maybe even create an own Rigify-like rig system?
+  - Fork and optimize Rigify for really realtime morphing?
   - Blenrig?
 
 Editing:
