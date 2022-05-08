@@ -24,10 +24,40 @@ import bpy  # pylint: disable=import-error
 from .lib import charlib, morpher, fit_calc, utils
 
 logger = logging.getLogger(__name__)
+undo_push = None
+
+
+class UndoHandler:
+    dragging = False
+    name = None
+    value = None
+
+    def __call__(self, name, value):
+        self.value = value
+        if not self.dragging:
+            self.name = name
+            self.dragging = True
+            bpy.ops.charmorph.on_prop_change("INVOKE_DEFAULT")
+
+    def finish(self):
+        self.dragging = False
+        if isinstance(self.value, float):
+            self.value = f"{self.value:.3}"
+        if self.name:
+            result = f"{self.name}: {self.value}"
+        else:
+            result = OpMorphCharacter.bl_label
+        self.name = None
+        self.value = None
+        return result
+
+
+undo_handler = UndoHandler()
 
 
 class Manager:
     last_object = None
+    old_morpher = None
 
     def __init__(self):
         self.morpher = morpher.null_morpher
@@ -36,6 +66,7 @@ class Manager:
         return charlib.get_basis(data, self.morpher, True)
 
     def update_morpher(self, m: morpher.Morpher):
+        self.old_morpher = None
         self.morpher = m
         self.last_object = m.core.obj
 
@@ -58,10 +89,20 @@ class Manager:
 
         m.create_charmorphs_L2()
 
+    def _get_old_storage(self, obj):
+        for m in (self.morpher, self.old_morpher):
+            if m and hasattr(m.core, "storage") and m.core.char is charlib.library.obj_char(obj):
+                if m.core.storage:
+                    return m.core.storage
+        return None
+
+    def _get_morpher(self, obj):
+        return morpher.get(obj, self._get_old_storage(obj), undo_handler)
+
     def recreate_charmorphs(self):
         if not self.morpher:
             return
-        self.morpher = morpher.get(self.morpher.core.obj)
+        self.morpher = self._get_morpher(self.morpher.core.obj)
         self.morpher.create_charmorphs_L2()
 
     def create_charmorphs(self, obj):
@@ -71,28 +112,18 @@ class Manager:
         if self.morpher.core.obj is obj and not self.morpher.error:
             return
 
-        storage = None
-        if hasattr(self.morpher.core, "storage") and self.morpher.core.char is charlib.library.obj_char(obj):
-            storage = self.morpher.core.storage
+        self.update_morpher(self._get_morpher(obj))
 
-        self.update_morpher(morpher.get(obj, storage))
-
-    def del_charmorphs(self, ):
+    def del_charmorphs(self):
         self.last_object = None
         self.morpher = morpher.null_morpher
         morpher.del_charmorphs_L2()
 
-    def bad_object(self):
-        if not self.morpher:
-            return False
-        try:
-            return bpy.data.objects.get(self.morpher.core.obj.name) is not self.morpher.core.obj
-        except ReferenceError:
-            logger.warning("Current morphing object is bad, resetting...")
-            return True
-
     def on_select(self):
-        if self.bad_object():
+        self.old_morpher = None
+        if self.morpher is not morpher.null_morpher and not self.morpher.check_obj():
+            logger.warning("Current morphing object is bad, resetting...")
+            self.old_morpher = self.morpher
             self.del_charmorphs()
         if bpy.context.mode != "OBJECT":
             return
@@ -126,6 +157,32 @@ class Manager:
 
 
 manager = Manager()
+
+
+class OpMorphCharacter(bpy.types.Operator):
+    bl_idname = "charmorph.on_prop_change"
+    bl_label = "Morph CharMorph character"
+    bl_description = "Helper operator to make undo work with CharMorph"
+
+    def modal(self, _, event):
+        if not undo_handler.dragging:
+            return {'FINISHED'}
+        if event.value == 'RELEASE':
+            msg = undo_handler.finish()
+            if undo_push:
+                undo_push(message=msg)
+
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, _):
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+
+if "undo_push" in dir(bpy.ops.ed):
+    undo_push = bpy.ops.ed.undo_push
+else:
+    OpMorphCharacter.bl_options = {"UNDO"}
 
 
 class OpResetChar(bpy.types.Operator):
@@ -391,9 +448,8 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
         return manager.morpher and manager.morpher.materials and manager.morpher.materials.props
 
     def draw(self, _):
-        for prop in manager.morpher.materials.props.values():
-            if prop.node:
-                self.layout.prop(prop, "default_value", text=prop.node.label)
+        for _, prop in manager.morpher.materials.get_node_outputs():
+            self.layout.prop(prop, "default_value", text=prop.node.label)
 
 
-classes = [OpResetChar, OpBuildAltTopo, OpProceedSlowMorphing, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]
+classes = [OpResetChar, OpBuildAltTopo, OpMorphCharacter, OpProceedSlowMorphing, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]

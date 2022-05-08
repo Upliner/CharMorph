@@ -57,8 +57,19 @@ def on_select():
     morphing.manager.on_select()
 
 
+def subscribe_select_obj():
+    bpy.msgbus.clear_by_owner(owner)
+    bpy.msgbus.subscribe_rna(
+        owner=owner,
+        key=(bpy.types.LayerObjects, "active"),
+        args=(),
+        options={"PERSISTENT"},
+        notify=on_select)
+
+
 @bpy.app.handlers.persistent
 def load_handler(_):
+    subscribe_select_obj()
     morphing.manager.del_charmorphs()
     on_select()
 
@@ -88,12 +99,7 @@ def register():
     charlib.library.load()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
-
-    bpy.msgbus.subscribe_rna(
-        owner=owner,
-        key=(bpy.types.LayerObjects, "active"),
-        args=(),
-        notify=on_select)
+    subscribe_select_obj()
 
     bpy.app.handlers.load_post.append(load_handler)
     bpy.app.handlers.undo_post.append(select_handler)

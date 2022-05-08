@@ -123,7 +123,7 @@ class RigifyHandler(rigging.RigHandler):
 
     def is_morphable(self):
         return not self.conf.mixin and hasattr(self.rig.data, "rigify_generate_mode")\
-               and hasattr(self.rig.data, "rigify_target_rig")
+            and hasattr(self.rig.data, "rigify_target_rig")
 
     def on_update(self, rigger):
         t = utils.Timer()

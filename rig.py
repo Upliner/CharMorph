@@ -147,7 +147,8 @@ class CHARMORPH_PT_Rig(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode in ("OBJECT", "POSE") and mm.morpher
+        # FIXME: Allow to unrig even if no rigs available?
+        return context.mode in ("OBJECT", "POSE") and mm.morpher.core.char.armature
 
     def draw(self, context):
         l = self.layout

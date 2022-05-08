@@ -228,28 +228,34 @@ def load_textures(obj, char):
 
 def get_props(obj):
     if not obj.data.materials:
-        return None
+        return {}
     colors = []
     values = []
     groups = set()
 
-    def scan_nodes(nodes):
+    def scan_nodes(data_type, name, nodes):
         for node in nodes:
             if node.type == "GROUP" and node.name == "charmorph_settings" and node.node_tree.name not in groups:
                 groups.add(node.node_tree.name)
-                scan_nodes(node.node_tree.nodes.values())
+                scan_nodes(1, node.node_tree.name, node.node_tree.nodes.values())
             if node.label == "":
                 continue
             if node.type == "RGB" and not node.name.startswith("RGB."):
-                colors.append((node.name, node.outputs[0]))
+                colors.append((node.name, (data_type, name)))
             elif node.type == "VALUE":
-                values.append((node.name, node.outputs[0]))
+                values.append((node.name, (data_type, name)))
 
     for mtl in obj.data.materials:
         if not mtl or not mtl.node_tree:
             continue
-        scan_nodes(mtl.node_tree.nodes.values())
+        scan_nodes(0, mtl.name, mtl.node_tree.nodes.values())
     return dict(colors + values)
+
+
+tree_types = (
+    lambda name: bpy.data.materials[name].node_tree,
+    lambda name: bpy.data.node_trees[name]
+)
 
 
 class Materials:
@@ -260,7 +266,18 @@ class Materials:
             self.props = get_props(obj)
 
     def as_dict(self):
-        return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in self.props.items()}
+        return {k: (list(v.default_value) if v.node.type == "RGB" else v.default_value) for k, v in self.get_node_outputs()}
+
+    def get_node_outputs(self):
+        return ((k, self.get_node_output(k, v)) for k, v in self.props.items())
+
+    def get_node_output(self, node_name: str, tree_data: tuple[str, str] = None):
+        try:
+            if tree_data is None:
+                tree_data = self.props[node_name]
+            return tree_types[tree_data[0]](tree_data[1]).nodes[node_name].outputs[0]
+        except KeyError:
+            return None
 
     def apply(self, data):
         if not data:
@@ -268,7 +285,7 @@ class Materials:
         if isinstance(data, dict):
             data = data.items()
         for k, v in data:
-            prop = self.props.get(k)
+            prop = self.get_node_output(k)
             if not prop:
                 continue
             if prop.node.type == "RGB":

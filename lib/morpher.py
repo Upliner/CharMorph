@@ -45,12 +45,6 @@ def morph_category_name(name):
     return name
 
 
-def calc_meta_val(coeffs, val):
-    if not coeffs:
-        return 0
-    return coeffs[1] * val if val > 0 else -coeffs[0] * val
-
-
 def match_armature(main: charlib.Armature, match: dict[str, charlib.Armature]) -> charlib.Armature:
     for k, values in match.items():
         if not isinstance(values, list):
@@ -78,6 +72,10 @@ def del_charmorphs_L2():
     bpy.utils.unregister_class(propGroup)
 
 
+def _null_handler(_name, _value):
+    pass
+
+
 class Morpher:
     version = 0
     L1_idx = 0
@@ -88,9 +86,10 @@ class Morpher:
     presets: dict[str, dict] = {}
     presets_list = [("_", "(reset)", "")]
 
-    def __init__(self, core: morpher_cores.MorpherCore):
+    def __init__(self, core: morpher_cores.MorpherCore, undo_handler=_null_handler):
         self.core = core
-        self.meta_prev = {}
+        self.push_undo = undo_handler
+        self._obj_name = self.core.obj
 
         self.L1_list = [
             (name, core.char.types.get(name, {}).get("title", name), "")
@@ -108,6 +107,16 @@ class Morpher:
         if self.core.obj:
             self.fitter = fitting.Fitter(self)
         self.sj_calc = sliding_joints.SJCalc(self.core.char, self.rig, self.get_co)
+
+    def check_obj(self):
+        if self.core.obj is None:
+            return False
+        try:
+            self._obj_name = self.core.obj.name
+        except ReferenceError:
+            self.core.obj = bpy.data.objects.get(self._obj_name)
+            return self.core.obj is not None
+        return True
 
     def __bool__(self):
         return self.core.obj is not None
@@ -163,7 +172,6 @@ class Morpher:
             for name in self.core.char.morphs_meta:
                 # TODO handle preset_mix?
                 value = meta_props.get(name, 0)
-                self.meta_prev[name] = value
                 self.core.obj.data["cmorph_meta_" + name] = value
         morph_props = data.get("morphs", {}).copy()
         for morph in self.core.morphs_l2:
@@ -185,68 +193,28 @@ class Morpher:
         for k, v in self.core.char.morphs_meta.items():
             if bpy.context.window_manager.charmorph_ui.meta_materials != "N":
                 self.materials.apply((name, 0) for name in v.get("materials", ()))
-            self.meta_prev[k] = 0
             pname = "cmorph_meta_" + k
             if pname in d:
                 del d[pname]
-
-    def _calc_meta_abs_val(self, prop):
-        return sum(
-            calc_meta_val(self.core.char.morphs_meta[meta_prop].get("morphs", {}).get(prop), val)
-            for meta_prop, val in self.meta_prev.items()
-        )
 
     def meta_get(self, name):
         return self.core.obj.data.get("cmorph_meta_" + name, 0.0)
 
     def meta_prop(self, name, data):
-        pname = "cmorph_meta_" + name
-
-        value = self.core.obj.data.get(pname, 0.0)
-        self.meta_prev[name] = value
+        mprop = MetaProp(name, data, self)
 
         def setter(_, new_value):
-            nonlocal value
-            value = new_value
-            self.core.obj.data[pname] = value
+            mprop.update_prev()
+            mprop.value = new_value
+            self.core.obj.data[mprop.pname] = new_value
 
         def update(_, context):
-            prev_value = self.meta_prev.get(name, 0.0)
-            if value == prev_value:
+            if not self.check_obj():
                 return
-            self.meta_prev[name] = value
             ui = context.window_manager.charmorph_ui
-
-            self.version += 1
-            for prop, coeffs in data.get("morphs", {}).items():
-                if not ui.relative_meta:
-                    self.core.prop_set(prop, self._calc_meta_abs_val(prop))
-                    continue
-
-                propval = self.core.prop_get(prop)
-
-                val_prev = calc_meta_val(coeffs, prev_value)
-                val_cur = calc_meta_val(coeffs, value)
-
-                # assign absolute prop value if current property value is out of range
-                # or add a delta if it is within (-0.999 .. 0.999)
-                sign = -1 if val_cur - val_prev < 0 else 1
-                if propval * sign < -0.999 and val_prev * sign < -1:
-                    propval = self._calc_meta_abs_val(prop)
-                else:
-                    propval += val_cur - val_prev
-                self.core.prop_set(prop, propval)
-
-            mtl_items = data.get("materials", {}).items()
-            if ui.meta_materials == "R":
-                for pname, coeffs in mtl_items:
-                    prop = self.materials.props.get(pname)
-                    if prop:
-                        prop.default_value += calc_meta_val(coeffs, value) - calc_meta_val(coeffs, prev_value)
-            elif ui.meta_materials == "A":
-                self.materials.apply((name, calc_meta_val(coeffs, value)) for name, coeffs in mtl_items)
-
-            self.update()
+            if mprop.update(ui.relative_meta, ui.meta_materials):
+                self.version += 1
+                self.update()
 
         return bpy.props.FloatProperty(
             name=name,
@@ -257,6 +225,9 @@ class Morpher:
             update=update)
 
     def prop_set(self, name, value):
+        if not self.check_obj():
+            return
+        self.push_undo(name, value)
         self.version += 1
         self.core.prop_set(name, value)
         self.update()
@@ -404,9 +375,74 @@ class Morpher:
         return rigger
 
 
+def _calc_meta_val(coeffs, val):
+    if not coeffs:
+        return 0
+    return coeffs[1] * val if val > 0 else -coeffs[0] * val
+
+
+class MetaProp:
+    prev_value: float
+
+    def __init__(self, name, data, morpher: Morpher):
+        self.name = name
+        self.data = data
+        self.pname = "cmorph_meta_" + name
+        self.morpher = morpher
+
+        self.update_prev()
+        self.value = self.prev_value
+
+    def update_prev(self):
+        self.prev_value = self.morpher.core.obj.data.get(self.pname, 0.0)
+
+    def _calc_meta_abs_val(self, prop, mvals):
+        metadict = self.morpher.core.char.morphs_meta
+        return sum(
+            _calc_meta_val(metadict[meta_prop].get("morphs", {}).get(prop), val)
+            for meta_prop, val in mvals
+        )
+
+    def update(self, relative_meta, meta_materials):
+        if self.value == self.prev_value:
+            return False
+        self.morpher.push_undo(self.name, self.value)
+        mvals = {(k, self.morpher.meta_get(k)) for k in self.morpher.core.char.morphs_meta}
+
+        for prop, coeffs in self.data.get("morphs", {}).items():
+            if not relative_meta:
+                self.morpher.core.prop_set(prop, self._calc_meta_abs_val(prop, mvals))
+                continue
+
+            propval = self.morpher.core.prop_get(prop)
+
+            val_prev = _calc_meta_val(coeffs, self.prev_value)
+            val_cur = _calc_meta_val(coeffs, self.value)
+
+            # assign absolute prop value if current property value is out of range
+            # or add a delta if it is within (-0.999 .. 0.999)
+            sign = -1 if val_cur - val_prev < 0 else 1
+            if propval * sign < -0.999 and val_prev * sign < -1:
+                propval = self._calc_meta_abs_val(prop, mvals)
+            else:
+                propval += val_cur - val_prev
+            self.morpher.core.prop_set(prop, propval)
+
+        mtl_items = self.data.get("materials", {}).items()
+        if meta_materials == "R":
+            for pname, coeffs in mtl_items:
+                prop = self.morpher.materials.get_node_output(pname)
+                if prop:
+                    prop.default_value += _calc_meta_val(coeffs, self.value) - _calc_meta_val(coeffs, self.prev_value)
+        elif meta_materials == "A":
+            self.morpher.materials.apply((name, _calc_meta_val(coeffs, self.value)) for name, coeffs in mtl_items)
+
+        return True
+
+
 null_morpher = Morpher(morpher_cores.MorpherCore(None))
-null_morpher.core.error="Null"
+null_morpher.core.error = "Null"
 
 
-def get(obj, storage=None):
-    return Morpher(morpher_cores.get(obj, storage))
+def get(obj, storage=None, undo_handler=_null_handler):
+    return Morpher(morpher_cores.get(obj, storage), undo_handler)

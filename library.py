@@ -125,7 +125,7 @@ class OpImport(bpy.types.Operator):
         if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
-        m = morpher.get(obj, storage)
+        m = morpher.get(obj, storage, morphing.undo_handler)
         morphing.manager.update_morpher(m)
 
         context.view_layer.objects.active = obj

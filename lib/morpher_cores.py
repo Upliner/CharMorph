@@ -32,6 +32,7 @@ class FinalVertsGetter:
             self.alt_topo_verts = utils.get_morphed_numpy(self.obj)
         return self.alt_topo_verts
 
+
 class MorpherCore:
     error = None
     clamp = True
