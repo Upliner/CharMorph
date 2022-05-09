@@ -254,7 +254,7 @@ def get_props(obj):
 
 tree_types = (
     lambda name: bpy.data.materials[name].node_tree,
-    lambda name: bpy.data.node_trees[name]
+    lambda name: bpy.data.node_groups[name]
 )
 
 
