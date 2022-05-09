@@ -275,7 +275,9 @@ class Fitter(fit_calc.MorpherFitCalculator):
             data["charmorph_fit_id"] = result
         return result
 
-    def get_binding(self, target: fit_calc.AssetFitData):
+    def get_binding(self, target):
+        if not isinstance(target, fit_calc.AssetFitData):
+            target = fit_calc.AssetFitData(target)
         fit_id = self._get_fit_id(target)
 
         result = self.bind_cache.get(fit_id)

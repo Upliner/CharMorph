@@ -227,19 +227,27 @@ class Morpher:
     def prop_set(self, name, value):
         if not self.check_obj():
             return
-        self.push_undo(name, value)
         self.version += 1
         self.core.prop_set(name, value)
         self.update()
 
     def morph_prop(self, morph):
+        saved_value = None
+
+        def setter(_, value):
+            nonlocal saved_value
+            if self.core.clamp:
+                value = max(min(value, morph.max), morph.min)
+            saved_value = value
+            self.prop_set(morph.name, value)
+
         return bpy.props.FloatProperty(
             name=morph.name,
             soft_min=morph.min, soft_max=morph.max,
             precision=3,
             get=lambda _: self.core.prop_get(morph.name),
-            set=lambda _, value:
-                self.prop_set(morph.name, max(min(value, morph.max), morph.min) if self.core.clamp else value)
+            set=setter,
+            update=lambda _ui, _ctx: self.push_undo(morph.name, saved_value)
         )
 
     def get_presets(self):

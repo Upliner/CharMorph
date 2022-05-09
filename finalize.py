@@ -164,6 +164,75 @@ def _do_vg_cleanup():
             obj.vertex_groups.remove(vg)
 
 
+def _bbox_correction_coeffs(mcore, bbox):
+    def calc_boxes(data: numpy.ndarray):
+        boxes = data[bbox.reshape(-1)].reshape(bbox.shape+(3,))
+        axis = len(bbox.shape)-1
+        result = boxes.max(axis)
+        result -= boxes.min(axis)
+        return result
+
+    coeffs = calc_boxes(mcore.get_final())
+    coeffs /= calc_boxes(mcore.full_basis)
+    return coeffs
+
+
+def _ensure_basis(obj):
+    if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+        obj.shape_key_add(name="Basis", from_mix=False)
+
+def get_exp_sk(obj, name):
+    name = "Exp_" + name
+    sk = obj.data.shape_keys.key_blocks.get(name)
+    if sk:
+        return sk
+    return obj.shape_key_add(name=name, from_mix=False)
+
+
+def _import_expresions(add_assets):
+    mc = mm.morpher.core
+    fitter = mm.morpher.fitter
+
+    _ensure_basis(mc.obj)
+    if add_assets:
+        for afd in fitter.get_assets():
+            _ensure_basis(afd.obj)
+
+    bbox = mc.char.bbox
+    if bbox is not None:
+        bb_idx = bbox["idx"]
+        bb_coeffs = _bbox_correction_coeffs(mc, bbox["bbox"])
+
+    if mc.alt_topo:
+        binding = fitter.get_binding(fitter.alt_topo_afd)
+
+    basis = utils.get_basis_numpy(mc.obj)
+
+    for name, data in mc.enum_expressions():
+        if bbox is not None:
+            data[bb_idx] *= bb_coeffs
+
+        if mc.alt_topo:
+            fitted_data = binding.fit(data)
+        elif add_assets:
+            fitted_data = data.copy()
+        else:
+            fitted_data = data
+
+        fitted_data += basis
+        sk = get_exp_sk(mc.obj, name)
+        sk.data.foreach_set("co", fitted_data.reshape(-1))
+
+        if add_assets:
+            for afd in fitter.get_assets():
+                fitted_data = afd.binding.fit(data)
+                if ((fitted_data ** 2).sum(1) < 1e-6).all():
+                    continue
+                fitted_data += afd.geom.verts
+                sk = get_exp_sk(afd.obj, name)
+                sk.data.foreach_set("co", fitted_data.reshape(-1))
+
+
 class OpFinalize(bpy.types.Operator):
     bl_idname = "charmorph.finalize"
     bl_label = "Finalize"
@@ -192,10 +261,14 @@ class OpFinalize(bpy.types.Operator):
         t = utils.Timer()
         ui = context.window_manager.charmorph_ui
         mm.morpher.core.ensure()
+
         apply_morphs(ui)
         self.vg_cleanup = ui.fin_vg_cleanup
         if not self._do_rig(ui):
             return {"CANCELLED"}
+
+        if ui.fin_expressions != "NO":
+            _import_expresions(ui.fin_expressions == "CA")
 
         # Show warning if fin_morph == "AL" and some shapekeys are present?
 
@@ -228,6 +301,16 @@ class UIProps:
             ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
         ],
         description="Use subdivision surface for smoother look")
+    fin_expressions: bpy.props.EnumProperty(
+        name="Expressions",
+        description="Import or correct facial and other expression shape keys",
+        default="NO",
+        items=[
+            ("NO", "No", "Don't import expresion shape keys"),
+            ("CH", "Character", "Import expression shape keys for character only"),
+            ("CA", "Character+Assets", "Import expression shape keys for assets if they affect them (breathing for example)"),
+        ],
+    )
     fin_rig: bpy.props.BoolProperty(
         name="Rig",
         description="Add rig to the character as a part of finalization process",

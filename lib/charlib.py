@@ -151,6 +151,10 @@ class Character(DataDir):
         return os.path.isfile(self.path("faces.npy"))
 
     @utils.lazyproperty
+    def bbox(self):
+        return self.get_np("morphs/bbox.npz")
+
+    @utils.lazyproperty
     def faces(self):
         npy = self.get_np("faces.npy")
         # Use regular python array instead of numpy for compatibility with BVHTree

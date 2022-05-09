@@ -18,19 +18,21 @@
 #
 # Copyright (C) 2022 Michael Vigovsky
 
-import typing, numpy
+import numpy
 
 from . import charlib, morphs, utils
 
 
 class FinalVertsGetter:
-    obj: typing.Any
-    alt_topo_verts: numpy.ndarray = None
+    verts: numpy.ndarray = None
 
-    def get_final_alt_topo(self):
-        if self.alt_topo_verts is None:
-            self.alt_topo_verts = utils.get_morphed_numpy(self.obj)
-        return self.alt_topo_verts
+    def __init__(self, obj):
+        self.obj = obj
+
+    def get(self):
+        if self.verts is None:
+            self.verts = utils.get_morphed_numpy(self.obj)
+        return self.verts
 
 
 class MorpherCore:
@@ -47,7 +49,7 @@ class MorpherCore:
         self.L1, self.morphs_l1 = self.get_L1()
         self.update_morphs_L2()
 
-    # these methods are overriden in subclasses so remove no-self-use
+    # these methods are overriden in subclasses
     def _init_storage(self):
         pass
 
@@ -70,7 +72,7 @@ class MorpherCore:
         pass
 
     def get_final(self):
-        pass
+        return self.get_final_alt_topo()
 
     def get_final_alt_topo(self):
         pass
@@ -167,14 +169,17 @@ class ShapeKeysComboMorpher:
             sk.value = get_combo_item_value(arr_idx, self.values) * self.coeff
 
 
-class ShapeKeysMorpher(MorpherCore, FinalVertsGetter):
+class ShapeKeysMorpher(MorpherCore):
     morphs_l2_dict: dict[str, morphs.MinMaxMorph] = {}
+    atv = None
 
-    def get_final(self):
-        return self.get_final_alt_topo()
+    def get_final_alt_topo(self):
+        if self.atv is None:
+            self.atv = utils.get_morphed_numpy(self.obj)
+        return self.atv
 
     def update(self):
-        self.alt_topo_verts = None
+        self.atv = None
 
     def _update_L1(self):
         for name, sk in self.morphs_l1.items():
@@ -316,6 +321,21 @@ class ShapeKeysMorpher(MorpherCore, FinalVertsGetter):
             if sk:
                 self.obj.shape_key_remove(sk)
         super().remove_asset_morph(name)
+
+    def enum_expressions(self):
+        if not self.obj.data.shape_keys:
+            return
+
+        L2_key = self._get_L2_morph_key() or ""
+        full_basis = self.full_basis.reshape(-1)
+        arr = numpy.empty(len(self.full_basis) * 3)
+
+        prefix = f"L3_{L2_key}_"
+        for sk in self.obj.data.shape_keys.key_blocks:
+            if sk.name.startswith(prefix):
+                sk.data.foreach_get("co", arr)
+                arr -= full_basis
+                yield (sk.name[len(prefix):], arr.reshape(-1, 3))
 
 
 class NumpyMorpher(MorpherCore):
@@ -465,18 +485,31 @@ class NumpyMorpher(MorpherCore):
             pass
         self.basis = None
 
+    def enum_expressions(self):
+        arr = numpy.empty(self.full_basis.shape)
+        for morph in self.storage.enum(3, self._get_L2_morph_key()):
+            arr[:] = 0
+            morph.data.resolve().apply(arr)
+            yield morph.name, arr
+
 
 class AltTopoMorpher(NumpyMorpher, FinalVertsGetter):
     def __init__(self, obj, storage=None):
         self.alt_topo = True
         self.alt_topo_basis = charlib.get_basis(obj)
+        self.atv = None
         super().__init__(obj, storage)
 
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
 
+    def get_final_alt_topo(self):
+        if self.atv is None:
+            self.atv = utils.get_morphed_numpy(self.obj)
+        return self.atv
+
     def update(self):
-        self.alt_topo_verts = None
+        self.atv = None
         super().update()
 
 

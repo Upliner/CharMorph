@@ -65,11 +65,11 @@ Assets:
   - Image browser for clothes and hair
 
 Rigging:
-  - Fix Reom's eyelashes
+  - Fix Reom's eyelashes in ARP
   - Force bone bending angle
   - Generate rig from metarig
   - Use VertexWeightProximity for folding knees, elbows and belly
-  - Import MB-Lab and Antonia expression shape keys alongside with Rigify
+  - Import Antonia expression shape keys
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia
