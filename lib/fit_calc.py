@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 dist_thresh = 0.125
 epsilon = 1e-30
 epsilon2 = 1e-15
+bigval = 1/epsilon
 
 
 class FitBinding(tuple):
@@ -189,44 +190,50 @@ class Binder:
     def __init__(self, char_geom: Geometry, asset_verts: numpy.ndarray):
         self.char_geom = char_geom
         self.asset_verts = asset_verts
-        self.bindings = [{} for _ in range(len(asset_verts))]
+        self.bindings = []
+        self.dists_asset = []
         self.revset = set()
 
-    # calculate binding based on distance from asset vertices to character faces
-    def calc_dists(self):
+    def calc_binding_kd(self):
         kd = self.char_geom.kd
-        self.dists_asset = [kd.find_n(v.tolist(), 1)[0][2] for v in self.asset_verts]
+        for v in self.asset_verts:
+            pdata = kd.find_n(v.tolist(), 16)
+            dists = [p[2] for p in pdata]
+            mindist = min(dists)
+            maxdist = max(dists)
+            if mindist < epsilon2:
+                self.dists_asset.append(-1)
+                self.bindings.append({pdata[1]: bigval})
+            else:
+                self.dists_asset.append(mindist)
+                self.bindings.append({idx: (1 - (dist / maxdist)) / (max(dist, epsilon)) for _, idx, dist in pdata})
 
     # calculate binding based on distance from asset vertices to character faces
     def calc_binding_direct(self):
+        if max(self.dists_asset) < epsilon2:
+            return
         verts = self.char_geom.verts
         faces = self.char_geom.faces
         bvh = self.char_geom.bvh
         for i, (v, bdist, binding) in enumerate(zip(self.asset_verts, self.dists_asset, self.bindings)):
-            for loc, _, idx, fdist in bvh.find_nearest_range(v.tolist(), self.dists_asset[i] * 0.5):
-                face = faces[idx]
-                self.revset.update(face)
-                bdist = min(bdist, fdist)
-                fdist = 1 / max(fdist, epsilon)
-                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-                    binding[vi] = max(binding.get(vi, 0), bw*fdist)
-            self.dists_asset[i] = bdist
-
-
-    def calc_binding_kd(self):
-        kd = self.char_geom.kd
-        for v, fdist, binding in zip(self.asset_verts, self.dists_asset, self.bindings):
-            if fdist >= epsilon2:
-                fdist = min(fdist * 1.5, fdist + dist_thresh)
-                for _, idx, dist in kd.find_range(v, fdist):
-                    self.revset.add(idx)
-                    binding[idx] = max(binding.get(idx, 0), (1 - (dist / fdist)) / max(dist, epsilon))
+            if bdist < epsilon2:
+                continue
+            bdist = bdist * 0.5
+            loc, _, idx, fdist = bvh.find_nearest(v.tolist(), bdist)
+            if loc is None:
+                continue
+            face = faces[idx]
+            self.revset.update(face)
+            self.dists_asset[i] = fdist
+            fdist = (1 - fdist / bdist) / max(fdist, epsilon)
+            for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
+                binding[vi] = max(binding.get(vi, 0), bw*fdist)
 
     def calc_binding_reverse(self, asset_geom):
-        self.char_geom.verts_filter_set(self.revset)
-        dthresh = min(self.dists_asset)
+        dthresh = max(self.dists_asset)
         if dthresh < epsilon2:
             return
+        self.char_geom.verts_filter_set(self.revset)
         cverts = self.char_geom.verts
         verts = asset_geom.verts
         faces = asset_geom.faces
@@ -307,12 +314,10 @@ class FitCalculator:
     def _calc_binding_internal(self, asset_verts, afd=None, asset_geom=None):
         t = utils.Timer()
         b = Binder(self.get_char_geom(afd), asset_verts)
-        b.calc_dists()
-        t.time("dists")
+        b.calc_binding_kd()
+        t.time("kdtree")
         b.calc_binding_direct()
         t.time("bvh direct")
-        b.calc_binding_kd()
-        t.time("kd")
         if asset_geom:
             b.calc_binding_reverse(asset_geom)
             t.time("bvh reverse")

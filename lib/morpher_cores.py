@@ -307,6 +307,7 @@ class ShapeKeysMorpher(MorpherCore):
         sk = self.obj.data.shape_keys.key_blocks.get(sk_name)
         if not sk:
             sk = self.obj.shape_key_add(name=sk_name, from_mix=False)
+        sk.value = 1
         data = utils.get_basis_numpy(self.obj)
         morph.apply(data)
         sk.data.foreach_set("co", data.reshape(-1))
@@ -374,8 +375,7 @@ class NumpyMorpher(MorpherCore):
             self.basis = self.full_basis
 
         if self.asset_morphs:
-            if self.basis is self.full_basis:
-                self.basis = self.basis.copy()
+            self.basis = self.basis.copy()
             for morph in self.asset_morphs.values():
                 morph.apply(self.basis)
 
