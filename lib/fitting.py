@@ -220,7 +220,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         mask = set()
         for afd in assets:
             if afd.conf.mask is not None:
-                mask.update(afd.mask.tolist())
+                mask.update(afd.conf.mask.tolist())
             if afd.morph:
                 morph_cnt += 1
                 morph_afd = afd

@@ -266,12 +266,15 @@ def reposition_armature_modifier(char):
 
 
 def reposition_cs_modifier(char):
-    i = len(char.modifiers) - 1
-    while i >= 0:
-        if char.modifiers[i].type == "ARMATURE":
-            reposition_modifier(char, i + 1)
-            return
-        i -= 1
+    pos = -1
+    for i, mod in enumerate(char.modifiers):
+        if mod.type in generative_modifiers:
+            pos = i
+            break
+        if mod.type == "ARMATURE":
+            pos = i + 1
+    if pos >= 0:
+        reposition_modifier(char, pos)
 
 
 def reposition_subsurf_modifier(char):
