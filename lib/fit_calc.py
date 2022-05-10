@@ -184,43 +184,38 @@ def geom_morph(geom: Geometry, *morph_list):
 
 class Binder:
     bindings: list[dict[int, float]]
-    dists_asset: list[float]
 
     def __init__(self, char_geom: Geometry, asset_verts: numpy.ndarray):
         self.char_geom = char_geom
         self.asset_verts = asset_verts
-        self.bindings = [{} for _ in range(len(asset_verts))]
+        self.bindings = []
+        self.dists_asset = []
         self.revset = set()
-
-    # calculate binding based on distance from asset vertices to character faces
-    def calc_dists(self):
-        kd = self.char_geom.kd
-        self.dists_asset = [kd.find_n(v.tolist(), 1)[0][2] for v in self.asset_verts]
 
     # calculate binding based on distance from asset vertices to character faces
     def calc_binding_direct(self):
         verts = self.char_geom.verts
         faces = self.char_geom.faces
         bvh = self.char_geom.bvh
-        for i, (v, bdist, binding) in enumerate(zip(self.asset_verts, self.dists_asset, self.bindings)):
-            for loc, _, idx, fdist in bvh.find_nearest_range(v.tolist(), self.dists_asset[i] * 0.5):
-                face = faces[idx]
-                self.revset.update(face)
-                bdist = min(bdist, fdist)
-                fdist = 1 / max(fdist, epsilon)
-                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-                    binding[vi] = max(binding.get(vi, 0), bw*fdist)
-            self.dists_asset[i] = bdist
-
+        for v in self.asset_verts:
+            loc, _, idx, fdist = bvh.find_nearest(v.tolist())
+            if loc is None:
+                continue
+            face = faces[idx]
+            self.revset.update(face)
+            self.dists_asset.append(fdist)
+            fdist = 1 / max(fdist ** 2, epsilon)
+            self.bindings.append({vi: bw*fdist
+                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc))})
 
     def calc_binding_kd(self):
         kd = self.char_geom.kd
         for v, fdist, binding in zip(self.asset_verts, self.dists_asset, self.bindings):
-            if fdist >= epsilon2:
+            if fdist > epsilon2:
                 fdist = min(fdist * 1.5, fdist + dist_thresh)
                 for _, idx, dist in kd.find_range(v, fdist):
                     self.revset.add(idx)
-                    binding[idx] = max(binding.get(idx, 0), (1 - (dist / fdist)) / max(dist, epsilon))
+                    binding[idx] = max(binding.get(idx, 0), 1 / max(dist ** 2, epsilon))
 
     def calc_binding_reverse(self, asset_geom):
         self.char_geom.verts_filter_set(self.revset)
@@ -236,7 +231,7 @@ class Binder:
             if idx is None:
                 continue
             face = faces[idx]
-            coeff = (1 - fdist / dthresh) / max(fdist, epsilon2)
+            coeff = (1 - fdist / dthresh) / max(fdist ** 2, epsilon2)
             for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
                 if self.dists_asset[vi] > fdist:
                     d = self.bindings[vi]
@@ -244,7 +239,6 @@ class Binder:
 
 
 class AssetFitData(utils.ObjTracker):
-    obj: bpy.types.Object
     conf: charlib.Asset
     morph: morphs.Morph
     geom: Geometry
@@ -307,8 +301,6 @@ class FitCalculator:
     def _calc_binding_internal(self, asset_verts, afd=None, asset_geom=None):
         t = utils.Timer()
         b = Binder(self.get_char_geom(afd), asset_verts)
-        b.calc_dists()
-        t.time("dists")
         b.calc_binding_direct()
         t.time("bvh direct")
         b.calc_binding_kd()
