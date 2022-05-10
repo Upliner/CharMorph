@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 3, 0),
+    "version": (0, 3, 1),
     "blender": (2, 93, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing, cloth fitting and rigging tools",
@@ -37,13 +37,14 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
+VERSION_ANNEX = "-beta"
 
 owner = object()
 
 
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CharMorph"
-    bl_label = "CharMorph " + ".".join(str(item) for item in bl_info["version"])
+    bl_label = "".join(("CharMorph ", ".".join(str(item) for item in bl_info["version"]), VERSION_ANNEX))
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"

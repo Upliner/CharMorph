@@ -162,7 +162,7 @@ class OpFinalToSk(bpy.types.Operator):
         sk = context.object.shape_key_add(name="final", from_mix=False)
         bm = bmesh.new()
         try:
-            bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
+            utils.bmesh_cage_object(bm, context)
             a = [v.co[i] for v in bm.verts for i in range(3)]
             sk.data.foreach_set("co", a)
         finally:

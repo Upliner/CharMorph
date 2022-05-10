@@ -220,7 +220,7 @@ class OpProceedSlowMorphing(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and manager.morpher and manager.morpher.slow
+        return context.mode == "OBJECT" and manager.morpher and manager.morpher.is_slow
 
     def execute(self, _):
         manager.morpher.is_slow = False

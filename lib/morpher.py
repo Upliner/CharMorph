@@ -108,16 +108,6 @@ class Morpher:
             self.fitter = fitting.Fitter(self)
         self.sj_calc = sliding_joints.SJCalc(self.core.char, self.rig, self.get_co)
 
-    def check_obj(self):
-        if self.core.obj is None:
-            return False
-        try:
-            self._obj_name = self.core.obj.name
-        except ReferenceError:
-            self.core.obj = bpy.data.objects.get(self._obj_name)
-            return self.core.obj is not None
-        return True
-
     def __bool__(self):
         return self.core.obj is not None
 
@@ -181,7 +171,10 @@ class Morpher:
             if preset_mix:
                 value = (value + self.core.prop_get(morph.name)) / 2
             self.core.prop_set(morph.name, value)
-            del morph_props[morph.name]
+            try:
+                del morph_props[morph.name]
+            except KeyError:
+                pass
         for prop in morph_props:
             logger.error("Unknown morph name: %s", prop)
         self.materials.apply(data.get("materials"))

@@ -35,7 +35,7 @@ class FinalVertsGetter:
         return self.verts
 
 
-class MorpherCore:
+class MorpherCore(utils.ObjTracker):
     error = None
     clamp = True
     alt_topo = False
@@ -43,7 +43,7 @@ class MorpherCore:
     morphs_l2: list[morphs.MinMaxMorph]
 
     def __init__(self, obj):
-        self.obj = obj
+        super().__init__(obj)
         self.char = charlib.library.obj_char(obj)
         self._init_storage()
         self.L1, self.morphs_l1 = self.get_L1()

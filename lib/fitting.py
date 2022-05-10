@@ -444,10 +444,13 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def fit(self, afd: fit_calc.AssetFitData):
         if not afd:
             return
+        if not afd.check_obj():
+            logger.warning("Missing fitting object %s, resetting fitter", afd.obj_name)
+            self.children = None
+            return
         t = utils.Timer()
 
         verts = afd.binding.fit(self.get_diff_arr(afd.morph))
-        t.time("reduce " + afd.obj.name)
         verts += afd.geom.verts
         if self.mcore.alt_topo and afd.obj is self.mcore.obj:
             self.mcore.alt_topo_verts = verts

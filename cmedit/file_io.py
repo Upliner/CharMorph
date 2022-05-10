@@ -398,7 +398,7 @@ class OpMorphExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         elif self.mode == "BC":
             bm = bmesh.new()
             try:
-                bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
+                utils.bmesh_cage_object(bm, context)
                 export_morph(
                     [v.co for v in bm.verts] - utils.get_basis_numpy(context.object),
                     self.filepath, self.cutoff, float_dtype(self.precision))

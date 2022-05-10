@@ -56,6 +56,22 @@ def load_yaml(data):
 def dump_yaml(data, f):
     return ydump(data, f, Dumper=MyDumper)
 
+class ObjTracker:
+    def __init__(self, obj):
+        self.obj = obj
+        if obj:
+            self.obj_name = obj.name
+
+    def check_obj(self):
+        if self.obj is None:
+            return False
+        try:
+            self.obj_name = self.obj.name
+        except ReferenceError:
+            self.obj = bpy.data.objects.get(self.obj_name)
+            return self.obj is not None
+        return True
+
 
 #########
 class Timer:
@@ -404,13 +420,6 @@ def vg_read(z):
     raise Exception("Invalid type for vg_read: " + z)
 
 
-def char_rig_vg_names(char, rig):
-    weights = char_weights_npz(rig, char)
-    if weights:
-        return np_names(weights)
-    return []
-
-
 def import_vg(obj, file, overwrite):
     for name, idx, weights in vg_read(file):
         if name in obj.vertex_groups:
@@ -421,3 +430,11 @@ def import_vg(obj, file, overwrite):
         vg = obj.vertex_groups.new(name=name)
         for i, weight in zip(idx, weights):
             vg.add([int(i)], weight, 'REPLACE')
+
+
+# Different Blender versions have different parameter count for bmesh.from_object()
+def bmesh_cage_object(bm, context):
+    try:
+        bm.from_object(context.object, context.evaluated_depsgraph_get(), True, False, False)
+    except TypeError:
+        bm.from_object(context.object, context.evaluated_depsgraph_get(), cage=True, face_normals=False)
