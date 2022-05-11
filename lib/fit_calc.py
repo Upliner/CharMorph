@@ -204,18 +204,25 @@ class Binder:
             face = faces[idx]
             self.revset.update(face)
             self.dists_asset.append(fdist)
-            fdist = 1 / max(fdist ** 2, epsilon)
+            fdist = 1 / max(fdist, epsilon)
             self.bindings.append({vi: bw*fdist
                 for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc))})
 
     def calc_binding_kd(self):
         kd = self.char_geom.kd
         for v, fdist, binding in zip(self.asset_verts, self.dists_asset, self.bindings):
-            if fdist > epsilon2:
-                fdist = min(fdist * 1.5, fdist + dist_thresh)
-                for _, idx, dist in kd.find_range(v, fdist):
-                    self.revset.add(idx)
-                    binding[idx] = max(binding.get(idx, 0), 1 / max(dist ** 2, epsilon))
+            if fdist < epsilon2:
+                continue
+            fdist = min(fdist * 1.5, fdist + dist_thresh)
+            kdata = kd.find_range(v, fdist)
+            if len(kdata) < 2:
+                continue
+            if len(kdata)>24:
+                kdata = kdata[:24]
+            coeff = 2 / (fdist - min([item[2] for item in kdata]))
+            for _, idx, dist in kdata:
+                self.revset.add(idx)
+                binding[idx] = max(binding.get(idx, 0), (fdist - dist) * coeff / max(dist, epsilon))
 
     def calc_binding_reverse(self, asset_geom):
         self.char_geom.verts_filter_set(self.revset)
@@ -231,7 +238,7 @@ class Binder:
             if idx is None:
                 continue
             face = faces[idx]
-            coeff = (1 - fdist / dthresh) / max(fdist ** 2, epsilon2)
+            coeff = (1 - fdist / dthresh) / max(fdist, epsilon2)
             for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
                 if self.dists_asset[vi] > fdist:
                     d = self.bindings[vi]

@@ -432,7 +432,7 @@ class Library(DataDir):
             logger.error("Charmorph data is not found at %s", self.dirpath)
         self.chars.clear()
         self.hair_colors = self.get_yaml("hair_colors.yaml")
-        aliases = self.get_yaml("aliases.yaml")
+        aliases = self.get_yaml("characters/aliases.yaml")
         self.char_aliases.clear()
         for k, v in aliases.items():
             for k2 in v if isinstance(v, list) else (v,):
