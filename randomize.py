@@ -21,7 +21,7 @@
 import re, random, math
 import bpy  # pylint: disable=import-error
 
-from .morphing import manager as mm
+from .common import manager as mm
 
 saved_props: dict[str, float] = {}
 

@@ -411,6 +411,9 @@ class Fitter(fit_calc.MorpherFitCalculator):
 
         t = utils.Timer()
         source = bpy.context.window_manager.charmorph_ui.fitting_weights
+        if afd.conf.fold and afd.conf.fold.wmorph:
+            afd = self._get_asset_data(afd.obj, fit_calc.geom_morph(afd.geom, afd.conf.fold.wmorph))
+
         if source == "ORIG":
             self._transfer_weights_orig(afd)
         elif source == "OBJ":
@@ -478,7 +481,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         if ui.fitting_mask == "SEPR" and masking_enabled(asset):
             self.add_mask_from_asset(afd)
 
-        if ui.fitting_weights != "NONE":
+        if ui.fitting_weights != "NONE" and self.mcore.obj.find_armature():
             self._transfer_armature(afd)
 
         return afd

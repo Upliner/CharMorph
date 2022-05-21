@@ -24,7 +24,7 @@ import bpy  # pylint: disable=import-error
 
 from . import rig
 from .lib import rigging, utils
-from .morphing import manager as mm
+from .common import manager as mm, MorpherCheckOperator
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +181,7 @@ def _ensure_basis(obj):
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
         obj.shape_key_add(name="Basis", from_mix=False)
 
+
 def get_exp_sk(obj, name):
     name = "Exp_" + name
     sk = obj.data.shape_keys.key_blocks.get(name)
@@ -233,16 +234,11 @@ def _import_expresions(add_assets):
                 sk.data.foreach_set("co", fitted_data.reshape(-1))
 
 
-class OpFinalize(bpy.types.Operator):
+class OpFinalize(MorpherCheckOperator):
     bl_idname = "charmorph.finalize"
     bl_label = "Finalize"
     bl_description = "Finalize character (add rig, modifiers, cleanup)"
-    bl_options = {"UNDO"}
     vg_cleanup: bool
-
-    @classmethod
-    def poll(cls, _):
-        return mm.morpher
 
     def _do_rig(self, ui):
         if not ui.fin_rig:
@@ -257,9 +253,8 @@ class OpFinalize(bpy.types.Operator):
             return False
         return True
 
-    def execute(self, context):
+    def exec(self, _, ui):
         t = utils.Timer()
-        ui = context.window_manager.charmorph_ui
         mm.morpher.core.ensure()
 
         apply_morphs(ui)

@@ -27,7 +27,7 @@ import math, typing
 import bpy, rna_prop_ui  # pylint: disable=import-error
 
 from .lib import rigging, sliding_joints, utils
-from .morphing import manager as mm
+from .common import manager as mm
 
 
 def apply_metarig_parameters(metarig):
@@ -122,8 +122,8 @@ class RigifyHandler(rigging.RigHandler):
         self.backup_metarig_name = f"charmorph_metarig_{self.morpher.core.char.name}_{self.conf.name}"
 
     def is_morphable(self):
-        return not self.conf.mixin and hasattr(self.rig.data, "rigify_generate_mode")\
-            and hasattr(self.rig.data, "rigify_target_rig")
+        return not self.conf.mixin and hasattr(self.obj.data, "rigify_generate_mode")\
+            and hasattr(self.obj.data, "rigify_target_rig")
 
     def on_update(self, rigger):
         t = utils.Timer()
@@ -155,7 +155,7 @@ class RigifyHandler(rigging.RigHandler):
                 return
             t.time("rigger part")
             metarig.data.rigify_generate_mode = "overwrite"
-            metarig.data.rigify_target_rig = self.rig
+            metarig.data.rigify_target_rig = self.obj
             bpy.ops.pose.rigify_generate()
         finally:
             vl.layer_collection.collection.objects.unlink(metarig)
@@ -166,14 +166,14 @@ class RigifyHandler(rigging.RigHandler):
 
     def delete_rig(self):
         try:
-            ui = self.rig.get("rig_ui")
+            ui = self.obj.get("rig_ui")
             if ui:
                 bpy.data.texts.remove(ui)
         finally:
             super().delete_rig()
 
     def _do_rig(self, rigger: rigging.Rigger):
-        rig = self.rig
+        rig = self.obj
         obj = self.morpher.core.obj
         conf = self.conf
 
@@ -219,14 +219,14 @@ class RigifyHandler(rigging.RigHandler):
 
     def finalize(self, rigger: rigging.Rigger):
         ui = bpy.context.window_manager.charmorph_ui
-        apply_metarig_parameters(self.rig)
+        apply_metarig_parameters(self.obj)
         metarig_only = ui.rigify_metarig_only
         if metarig_only\
-            or (not hasattr(self.rig.data, "rigify_generate_mode")
-                and not hasattr(self.rig.data, "rigify_target_rig")):
+            or (not hasattr(self.obj.data, "rigify_generate_mode")
+                and not hasattr(self.obj.data, "rigify_target_rig")):
             if not metarig_only:
                 self.err = "Rigify is not found! Generating metarig only"
-            utils.copy_transforms(self.rig, self.morpher.core.obj)
+            utils.copy_transforms(self.obj, self.morpher.core.obj)
             return
         metarig = bpy.context.object
         if hasattr(metarig.data, "rigify_generate_mode"):
@@ -237,7 +237,7 @@ class RigifyHandler(rigging.RigHandler):
         bpy.ops.pose.rigify_generate()
         t.time("rigify part")
         try:
-            self.rig = bpy.context.object
+            self.obj = bpy.context.object
             if self.is_morphable()\
                     and self.backup_metarig_name not in bpy.data.objects:
                 metarig.name = self.backup_metarig_name
@@ -245,7 +245,7 @@ class RigifyHandler(rigging.RigHandler):
                     c.objects.unlink(metarig)
             else:
                 bpy.data.armatures.remove(metarig.data)
-            self.rig.name = self.morpher.core.obj.name + "_rig"
+            self.obj.name = self.morpher.core.obj.name + "_rig"
             self._do_rig(rigger)
         except Exception:
             try:

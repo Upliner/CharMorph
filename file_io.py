@@ -22,7 +22,7 @@ import json
 import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import morphs, utils
-from .morphing import manager as mm
+from .common import manager as mm
 
 
 class UIProps:

@@ -23,7 +23,7 @@ import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import fitting, morpher, utils
 from .lib.charlib import library, Asset
-from .morphing import manager as mm
+from .common import manager as mm
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,14 @@ class UIProps:
         description="Asset for fitting",
         type=bpy.types.Object,
         poll=lambda ui, obj: utils.visible_mesh_poll(ui, obj) and ("charmorph_template" not in obj.data))
+    fitting_binder: bpy.props.EnumProperty(
+        name="Algorighm",
+        default="SOFT",
+        items=[
+            ("SOFT", "Soft", "This algorithm tries to make softer look for clothing but can cause more intersections with character"),
+            ("HARD", "Hard", "This algorighm is better for tight clothing but can cause more artifacts"),
+        ],
+        description="Fitting algorighm")
     fitting_mask: bpy.props.EnumProperty(
         name="Mask",
         default="COMB",
@@ -122,6 +130,7 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
         col = l.column(align=True)
         col.prop(ui, "fitting_char")
         col.prop(ui, "fitting_asset")
+        l.prop(ui, "fitting_binder")
         l.prop(ui, "fitting_mask")
         col = l.column(align=True)
         col.prop(ui, "fitting_weights")

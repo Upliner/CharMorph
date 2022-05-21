@@ -157,7 +157,7 @@ def geom_morph(geom: Geometry, *morph_list):
     return result
 
 
-class Binder:
+class SoftBinder:
     bindings: list[dict[int, float]]
     dists_asset: list[float]
 
@@ -177,7 +177,7 @@ class Binder:
             maxdist = max(dists)
             if mindist < epsilon2:
                 self.dists_asset.append(-1)
-                self.bindings.append({pdata[1]: bigval})
+                self.bindings.append({item[1]: bigval for item in pdata if item[2] < epsilon2})
             else:
                 self.dists_asset.append(mindist)
                 self.revset.update(p[1] for p in pdata)
@@ -202,7 +202,7 @@ class Binder:
                     binding[vi] = max(binding.get(vi, 0), bw*fdist)
 
     def calc_binding_reverse(self, asset_geom):
-        dthresh = max(self.dists_asset)
+        dthresh = min(max(self.dists_asset), dist_thresh)
         if dthresh < epsilon2:
             return
         self.char_geom.verts_filter_set(self.revset)
@@ -220,6 +220,52 @@ class Binder:
                 if self.dists_asset[vi] > fdist:
                     d = self.bindings[vi]
                     d[i] = max(d.get(i, 0), bw * coeff)
+
+    def initial_bind(self, t: utils.Timer):
+        self.calc_binding_kd()
+        t.time("kdtree")
+        self.calc_binding_direct()
+        t.time("bvh direct")
+
+
+class HardBinder(SoftBinder):
+    # calculate binding based on distance from asset vertices to character faces
+    def calc_binding_direct(self):
+        verts = self.char_geom.verts
+        faces = self.char_geom.faces
+        bvh = self.char_geom.bvh
+        for v in self.asset_verts:
+            loc, _, idx, fdist = bvh.find_nearest(v.tolist())
+            if loc is None:
+                continue
+            face = faces[idx]
+            self.revset.update(face)
+            self.dists_asset.append(fdist)
+            fdist = 1 / max(fdist, epsilon)
+            self.bindings.append({vi: bw*fdist
+                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc))})
+
+    def calc_binding_kd(self):
+        kd = self.char_geom.kd
+        for v, fdist, binding in zip(self.asset_verts, self.dists_asset, self.bindings):
+            if fdist < epsilon2:
+                continue
+            fdist = min(fdist * 1.5, fdist + dist_thresh)
+            kdata = kd.find_range(v, fdist)
+            if len(kdata) < 2:
+                continue
+            if len(kdata)>24:
+                kdata = kdata[:24]
+            coeff = 2 / (fdist - min([item[2] for item in kdata]))
+            for _, idx, dist in kdata:
+                self.revset.add(idx)
+                binding[idx] = max(binding.get(idx, 0), (fdist - dist) * coeff / max(dist, epsilon))
+
+    def initial_bind(self, t: utils.Timer):
+        self.calc_binding_direct()
+        t.time("bvh direct")
+        self.calc_binding_kd()
+        t.time("kdtree")
 
 
 class AssetFitData(utils.ObjTracker):
@@ -277,19 +323,27 @@ class FitCalculator:
     def _add_asset_data(self, _asset):
         pass
 
-    def _get_asset_data(self, obj):
-        afd = AssetFitData(obj, self._get_asset_geom(obj))
+    def _get_asset_data(self, obj, geom=None):
+        geom2 = geom
+        if not geom:
+            geom2 = self._get_asset_geom(obj)
+        afd = AssetFitData(obj, geom2)
         self._add_asset_data(afd)
-        afd.binding = self.get_binding(afd)
+        if geom:
+            # skip caching if custom geom is present
+            afd.binding = self._get_binding(afd)
+        else:
+            afd.binding = self.get_binding(afd)
         return afd
 
     def _calc_binding_internal(self, asset_verts, afd=None, asset_geom=None):
         t = utils.Timer()
+        if bpy.context.window_manager.charmorph_ui.fitting_binder == "HARD":
+            Binder = HardBinder
+        else:
+            Binder = SoftBinder
         b = Binder(self.get_char_geom(afd), asset_verts)
-        b.calc_binding_kd()
-        t.time("kdtree")
-        b.calc_binding_direct()
-        t.time("bvh direct")
+        b.initial_bind(t)
         if asset_geom:
             b.calc_binding_reverse(asset_geom)
             t.time("bvh reverse")
@@ -298,7 +352,7 @@ class FitCalculator:
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def get_binding(self, target) -> FitBinding:
+    def _get_binding(self, target) -> FitBinding:
         if not isinstance(target, AssetFitData):
             target = AssetFitData(target)
         fold = target.conf.fold
@@ -306,6 +360,9 @@ class FitCalculator:
         binding = self._calc_binding_internal(geom.verts, target, geom)
         return FitBinding(binding) if fold is None else FitBinding(
             binding, (fold.pos, fold.idx, fold.weights))
+
+    def get_binding(self, target) -> FitBinding:
+        return self._get_binding(target)
 
     def calc_binding_hair(self, arr):
         return FitBinding(self._calc_binding_internal(arr))

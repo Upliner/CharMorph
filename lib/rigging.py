@@ -105,14 +105,14 @@ def _remove_armature_modifiers(obj):
             obj.modifiers.remove(m)
 
 
-class RigHandler:
+class RigHandler(utils.ObjTracker):
     tweaks = ((), (), ())
     err = None
     slow = False
 
     def __init__(self, morpher, rig, conf):
+        super().__init__(rig)
         self.morpher = morpher
-        self.rig = rig
         self.conf = conf
 
     def get_bones(self):
@@ -122,7 +122,7 @@ class RigHandler:
         return True
 
     def on_update(self, rigger: "Rigger"):
-        bpy.context.view_layer.objects.active = self.rig
+        bpy.context.view_layer.objects.active = self.obj
         bpy.ops.object.mode_set(mode="EDIT")
         try:
             rigger.run(self.get_bones())
@@ -137,7 +137,7 @@ class RigHandler:
 
     def _clear_weights(self, obj):
         vgs = obj.vertex_groups
-        for bone in self.rig.data.bones:
+        for bone in self.obj.data.bones:
             if bone.use_deform:
                 vg = vgs.get(bone.name)
                 if vg:
@@ -150,19 +150,19 @@ class RigHandler:
             self._clear_weights(afd.obj)
 
     def delete_rig(self):
-        bpy.data.armatures.remove(self.rig.data)
+        bpy.data.armatures.remove(self.obj.data)
         for afd in self.morpher.fitter.get_assets():
             _remove_armature_modifiers(afd.obj)
 
     def finalize(self, _rigger: "Rigger"):
-        attach_rig(self.morpher, self.rig)
+        attach_rig(self.morpher, self.obj)
 
 
 class ArpRigHandler(RigHandler):
     slow = True
 
     def get_bones(self):
-        return layer_joints(self.rig, self.conf.arp_reference_layer)
+        return layer_joints(self.obj, self.conf.arp_reference_layer)
 
     def after_update(self):
         t = utils.Timer()

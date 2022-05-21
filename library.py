@@ -22,7 +22,7 @@ import os, logging
 import bpy  # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
-from . import morphing, prefs
+from . import common, prefs
 from .lib import morpher, materials, morphs, utils
 from .lib.charlib import library, empty_char
 
@@ -36,7 +36,7 @@ class OpReloadLib(bpy.types.Operator):
 
     def execute(self, _):  # pylint: disable=no-self-use
         library.load()
-        morphing.manager.recreate_charmorphs()
+        common.manager.recreate_charmorphs()
         return {"FINISHED"}
 
 
@@ -125,8 +125,8 @@ class OpImport(bpy.types.Operator):
         if (ui.use_sk or char.np_basis is None) and (not obj.data.shape_keys or not obj.data.shape_keys.key_blocks):
             obj.shape_key_add(name="Basis", from_mix=False)
 
-        m = morpher.get(obj, storage, morphing.undo_handler)
-        morphing.manager.update_morpher(m)
+        m = morpher.get(obj, storage, common.undo_handler)
+        common.manager.update_morpher(m)
 
         context.view_layer.objects.active = obj
         ui.fitting_char = obj

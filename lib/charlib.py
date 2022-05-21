@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, json, collections, logging, traceback, numpy
+import os, json, collections, logging, numpy
 
 import bpy  # pylint: disable=import-error
 
@@ -229,7 +229,7 @@ class Character(DataDir):
         return {k: Armature(self, k, v) for k, v in data.items()}
 
 
-AssetFold = collections.namedtuple("AssetFold", ("verts", "faces", "pos", "idx", "weights"))
+AssetFold = collections.namedtuple("AssetFold", ("verts", "faces", "pos", "idx", "weights", "wmorph"))
 AssetJoints = collections.namedtuple("AssetJoints", ("verts", "file"))
 
 
@@ -260,11 +260,15 @@ class Asset(DataDir):
         z = self.get_np("fold.npz")
         if z is None:
             return None
+        wmorph = z.get("wmorph_idx")
+        if wmorph is not None:
+            wmorph = morphs.PartialMorph(wmorph, morphs.np_ro64(z["wmorph_delta"]))
         return AssetFold(
             morphs.np_ro64(z["verts"]),
             z["faces"].tolist(),
             z["pos"], z["idx"],
             morphs.np_ro64(z["weights"]),
+            wmorph
         )
 
     @utils.lazyproperty

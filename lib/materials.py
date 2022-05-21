@@ -155,7 +155,7 @@ def apply_tex_settings(img, settings):
         return
     if settings == "Non-Color":
         if "Linear" in colorspaces:
-            img.colorspace_settings = "Linear"
+            img.colorspace_settings.name = "Linear"
         img.colorspace_settings.is_data = True
         return
     logger.error("Color settings %s is not available!", settings)

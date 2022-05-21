@@ -331,4 +331,4 @@ class CMEDIT_PT_Symmetry(bpy.types.Panel):
         l.operator("cmedit.symmetrize_offsets")
 
 
-classes = [OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, CMEDIT_PT_Symmetry]
+classes = OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, CMEDIT_PT_Symmetry

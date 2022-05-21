@@ -19,11 +19,11 @@
 # Copyright (C) 2020 Michael Vigovsky
 
 import logging, random
-import bpy, bmesh  # pylint: disable=import-error
+import bpy, bmesh # pylint: disable=import-error
 
 from .lib import utils
 from .lib.charlib import library, empty_char
-from . import assets, morphing
+from . import common, assets
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def attach_scalp(char, obj):
 def create_scalp(name, char, vgi):
     vmap = {}
     verts = []
-    for mv, bv in zip(char.data.vertices, morphing.manager.get_basis(char)):
+    for mv, bv in zip(char.data.vertices, common.manager.get_basis(char)):
         for g in mv.groups:
             if g.group == vgi:
                 vmap[mv.index] = len(verts)
@@ -376,7 +376,7 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
 
     def draw(self, context):
         ui = context.window_manager.charmorph_ui
-        char = morphing.manager.morpher.core.char
+        char = common.manager.morpher.core.char
         if not char:
             char = empty_char
         l = self.layout

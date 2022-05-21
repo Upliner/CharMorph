@@ -123,6 +123,12 @@ class Morpher:
         except StopIteration:
             pass
 
+    def check_obj(self):
+        result = self.core.check_obj()
+        if self.rig_handler:
+            result &= self.rig_handler.check_obj()
+        return result
+
     def set_L1(self, L1, update=True):
         result = self._set_L1(L1, update)
         if result:

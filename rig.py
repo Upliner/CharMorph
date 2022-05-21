@@ -23,7 +23,7 @@ import logging
 import bpy  # pylint: disable=import-error
 
 from .lib import rigging, utils
-from .morphing import manager as mm
+from .common import manager as mm, MorpherCheckOperator
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +50,9 @@ def add_rig(ui):
 
         m.rig_handler.finalize(rigger)
 
-        m.rig_handler.rig.data["charmorph_template"] =\
+        m.rig_handler.obj.data["charmorph_template"] =\
             m.core.char.name or m.core.obj.data.get("charmorph_template", "")
-        m.rig_handler.rig.data["charmorph_rig_type"] = conf.name
+        m.rig_handler.obj.data["charmorph_rig_type"] = conf.name
         m.core.obj.data["charmorph_rig_type"] = conf.name
 
     except Exception:
@@ -64,7 +64,7 @@ def add_rig(ui):
     return m.rig_handler.err
 
 
-class OpRig(bpy.types.Operator):
+class OpRig(MorpherCheckOperator):
     bl_idname = "charmorph.rig"
     bl_label = "Add rig"
     bl_description = "Add or update character rig"
@@ -72,12 +72,13 @@ class OpRig(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and mm.morpher.core.char.armature
+        m = super().poll(context)
+        return m and m.core.char.armature
 
-    def execute(self, context):
+    def exec(self, _, ui):
         t = utils.Timer()
         try:
-            err = add_rig(context.window_manager.charmorph_ui)
+            err = add_rig(ui)
             if err is not None:
                 self.report({"ERROR"}, err)
         except rigging.RigException as e:
@@ -88,7 +89,7 @@ class OpRig(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OpUnrig(bpy.types.Operator):
+class OpUnrig(MorpherCheckOperator):
     bl_idname = "charmorph.unrig"
     bl_label = "Unrig"
     bl_description = "Remove all riging data from the character and all its assets so you can continue morphing it"
@@ -96,12 +97,10 @@ class OpUnrig(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if context.mode != "OBJECT":
-            return False
-        obj = mm.morpher.core.obj
-        return obj and obj.find_armature()
+        m = super().poll(context)
+        return m and m.core.obj.find_armature()
 
-    def execute(self, _):  # pylint: disable=no-self-use
+    def exec(self, _ctx, _ui):
         m = mm.morpher
         obj = m.core.obj
         handler = m.rig_handler

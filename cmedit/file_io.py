@@ -305,6 +305,11 @@ class OpExportL1(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         return {"FINISHED"}
 
 
+def morph_idx_epsilon(diff: numpy.ndarray, epsilon: float) -> numpy.ndarray:
+    idx = ((diff ** 2).sum(1) > epsilon ** 2).nonzero()[0]
+    return idx.astype(get_bits(idx))
+
+
 def export_morph(m, path, epsilon, dtype):
     def save_npy():
         numpy.save(path, m.astype(dtype=dtype, casting="same_kind"))
@@ -313,9 +318,9 @@ def export_morph(m, path, epsilon, dtype):
         save_npy()
         return
 
-    idx = ((m ** 2).sum(1) > epsilon ** 2).nonzero()[0]
+    idx = morph_idx_epsilon(m, epsilon)
     if (path[-4:] == ".npz") or len(idx) * 5 <= len(m) * 4:
-        numpy.savez(path, idx=idx.astype(dtype=numpy.uint16), delta=m[idx].astype(dtype=dtype, casting="same_kind"))
+        numpy.savez(path, idx=idx, delta=m[idx].astype(dtype=dtype, casting="same_kind"))
     else:
         save_npy()
 
@@ -592,10 +597,10 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_import")
 
 
-classes = [
+classes = (
     OpFaceExport, OpSubsetExport, OpBoneExport,
     OpHairExport, OpAllHairExport, OpHairImport,
     OpVgExport, OpVgImport,
     OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpMorphsImport,
     CHARMORPH_PT_FileIO
-]
+)

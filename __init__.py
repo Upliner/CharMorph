@@ -21,7 +21,7 @@
 import logging
 import bpy  # pylint: disable=import-error
 
-from . import assets, library, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
+from . import common, library, assets, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
 from .lib import charlib
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class VIEW3D_PT_CharMorph(bpy.types.Panel):
 
 
 def on_select():
-    morphing.manager.on_select()
+    common.manager.on_select()
 
 
 def subscribe_select_obj():
@@ -71,7 +71,7 @@ def subscribe_select_obj():
 @bpy.app.handlers.persistent
 def load_handler(_):
     subscribe_select_obj()
-    morphing.manager.del_charmorphs()
+    common.manager.del_charmorphs()
     on_select()
 
 
@@ -84,7 +84,7 @@ classes: list[type] = [None, prefs.CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-for module in [library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose]:
+for module in common, library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)
@@ -124,7 +124,7 @@ def unregister():
 
     bpy.msgbus.clear_by_owner(owner)
     del bpy.types.WindowManager.charmorph_ui
-    morphing.manager.del_charmorphs()
+    common.manager.del_charmorphs()
 
     class_unregister()
 

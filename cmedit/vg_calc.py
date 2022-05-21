@@ -747,4 +747,4 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
         l.prop(ui, "vg_shift", slider=True)
 
 
-classes = [CMEDIT_PT_VGCalc]
+classes = CMEDIT_PT_VGCalc,
