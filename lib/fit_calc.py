@@ -331,7 +331,7 @@ class FitCalculator:
         self._add_asset_data(afd)
         if geom:
             # skip caching if custom geom is present
-            afd.binding = self._get_binding(afd)
+            afd.binding = self._get_binding(afd, True)
         else:
             afd.binding = self.get_binding(afd)
         return afd
@@ -352,11 +352,11 @@ class FitCalculator:
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def _get_binding(self, target) -> FitBinding:
+    def _get_binding(self, target, custom_geom=False) -> FitBinding:
         if not isinstance(target, AssetFitData):
             target = AssetFitData(target)
         fold = target.conf.fold
-        geom = target.geom if fold is None else self._get_fold_geom(target)
+        geom = target.geom if custom_geom or fold is None else self._get_fold_geom(target)
         binding = self._calc_binding_internal(geom.verts, target, geom)
         return FitBinding(binding) if fold is None else FitBinding(
             binding, (fold.pos, fold.idx, fold.weights))

@@ -46,6 +46,13 @@ def get_asset_conf(context):
     return None
 
 
+def do_refit(_ui, _ctx):
+    f = mm.morpher.fitter
+    if f:
+        f.clear_cache()
+        f.refit_all()
+
+
 def get_assets(ui, _):
     char = library.obj_char(ui.fitting_char)
     return [("char_" + k, k, '') for k in sorted(char.assets.keys())]\
@@ -73,6 +80,7 @@ class UIProps:
             ("SOFT", "Soft", "This algorithm tries to make softer look for clothing but can cause more intersections with character"),
             ("HARD", "Hard", "This algorighm is better for tight clothing but can cause more artifacts"),
         ],
+        update=do_refit,
         description="Fitting algorighm")
     fitting_mask: bpy.props.EnumProperty(
         name="Mask",
