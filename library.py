@@ -265,7 +265,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         c.prop(ui, "import_morphs")
         c.prop(ui, "import_expressions")
         c = l.column()
-        c.enabled = char and char.basis and char.has_faces
+        c.enabled = bool(char and char.basis and char.has_faces)
         c.prop(ui, "alt_topo")
         if ui.alt_topo == "<Custom>":
             c.prop(ui, "alt_topo_obj")

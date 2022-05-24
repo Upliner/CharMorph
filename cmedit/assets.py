@@ -169,6 +169,9 @@ class OpExportFold(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
     def execute(self, context):
         ui = context.window_manager.cmedit_ui
+        for obj in ui.char_obj, ui.asset_obj:
+            if obj.data.is_editmode:
+                obj.update_from_editmode()
         f = fit_calc.FitCalculator(fit_calc.geom_mesh(ui.char_obj.data))
         binding = f.get_binding(ui.asset_obj)[0]
 

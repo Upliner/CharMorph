@@ -14,7 +14,7 @@ Art:
   - More hairstyles
 
 Char creation:
-  - Asset list in creation panel
+  - Asset list in creation panel?
   - Alternative topologies from library
 
 Morphing:
@@ -47,7 +47,6 @@ Hair:
   - Hair refitting after edit
 
 Fitting:
-  - Fix folds: support weight-only morphs
   - Hybrid mode: store asset morphs in shapekeys even in numpy mode (probably not activating them),
       get asset morph data from morpher-code, not charlib!
   - BMesh instead of creating from_mix shapekey?
@@ -60,7 +59,6 @@ Fitting:
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
 
 Assets:
-  - Asset-defined heels and morphs
   - Use default underwear assets instead of censors -- done for Antonia
   - Image browser for clothes and hair
 
@@ -69,7 +67,6 @@ Rigging:
   - Force bone bending angle
   - Generate rig from metarig
   - Use VertexWeightProximity for folding knees, elbows and belly
-  - Import Antonia expression shape keys
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia
