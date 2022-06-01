@@ -341,7 +341,7 @@ class MorphImporter:
     def _import_to_sk(self, morph: MinMaxMorphData, level, *names):
         sk = self._create_morph_sk("_".join((f"L{level}",) + names) + "_", morph)
         if not sk:
-            return "--separator--", None
+            return Separator, None
 
         basis = self.basis
         if level > 1 and names[0]:
