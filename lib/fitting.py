@@ -444,10 +444,12 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def _get_target(self, asset):
         return utils.get_target(asset) if asset.data is self.mcore.obj.data else get_fitting_shapekey(asset)
 
-    def fit(self, afd: fit_calc.AssetFitData):
+    def fit(self, afd):
         if not afd:
             return
-        if not afd.check_obj():
+        if not isinstance(afd, fit_calc.AssetFitData):
+            afd = self._get_asset_data(afd)
+        elif not afd.check_obj():
             logger.warning("Missing fitting object %s, resetting fitter", afd.obj_name)
             self.children = None
             return
