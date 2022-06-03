@@ -25,6 +25,7 @@ import bpy, bmesh, mathutils  # pylint: disable=import-error
 from . import fit_calc, utils
 
 logger = logging.getLogger(__name__)
+special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
 
 def masking_enabled(asset):
@@ -168,12 +169,22 @@ def fit_to_bmesh(bm, afd, fitted_diff):
     return morphed.min(axis=0), morphed.max(axis=0)
 
 
-special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
-
-
 class EmptyAsset:
     author = ""
     license = ""
+
+
+class HairData:
+    __slots__ = "cnts", "data", "binding"
+    cnts: numpy.ndarray
+    data: numpy.ndarray
+    binding: fit_calc.FitBinding
+
+    def get_morphed(self, diff: numpy.ndarray):
+        result = numpy.empty((len(self.data) + 1, 3))
+        result[1:] = self.binding.fit(diff)
+        result[1:] += self.data
+        return result
 
 
 class Fitter(fit_calc.MorpherFitCalculator):
@@ -281,7 +292,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         fit_id = self._get_fit_id(target)
 
         result = self.bind_cache.get(fit_id)
-        if result is not None:
+        if isinstance(result, fit_calc.FitBinding):
             return result
 
         t = utils.Timer()
@@ -301,7 +312,7 @@ class Fitter(fit_calc.MorpherFitCalculator):
         fit_id = psys.settings.get("charmorph_fit_id")
         if fit_id:
             data = self.bind_cache.get(fit_id)
-            if data:
+            if isinstance(data, HairData):
                 return data
 
         z = self.mcore.char.get_np(f"hairstyles/{psys.settings.get('charmorph_hairstyle','')}.npz")
@@ -309,16 +320,17 @@ class Fitter(fit_calc.MorpherFitCalculator):
             logger.error("Hairstyle npz file is not found")
             return None
 
-        cnts = z["cnt"]
-        data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
+        hd = HairData()
+        hd.cnts = z["cnt"]
+        hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
 
-        if len(cnts) != len(psys.particles):
+        if len(hd.cnts) != len(psys.particles):
             logger.error("Mismatch between current hairsyle and .npz!")
             return None
 
-        binding = self.calc_binding_hair(data)
-        self.bind_cache[fit_id] = (cnts, data, binding)
-        return cnts, data, binding
+        hd.binding = self.calc_binding_hair(hd.data)
+        self.bind_cache[fit_id] = hd
+        return hd
 
     # use separate get_diff function to support hair fitting for posed characters
     def get_diff_hair(self):
@@ -347,26 +359,20 @@ class Fitter(fit_calc.MorpherFitCalculator):
     def fit_hair(self, obj, idx):
         t = utils.Timer()
         psys = obj.particle_systems[idx]
-        cnts, data, binding = self.get_hair_data(psys)
-        if cnts is None or data is None or not binding:
+        hd = self.get_hair_data(psys)
+        if not hd:
             return False
-
-        morphed = numpy.empty((len(data) + 1, 3))
-        morphed[1:] = binding.fit(self.get_diff_hair())
-        morphed[1:] += data
 
         obj.particle_systems.active_index = idx
 
-        t.time("hair_fit_calc")
-
         restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type == "SHRINKWRAP")
         try:
-            utils.set_hair_points(obj, cnts, morphed)
+            utils.set_hair_points(obj, hd.cnts, hd.get_morphed(self.get_diff_hair()))
         finally:
             for m in restore_modifiers:
                 m.show_viewport = True
 
-        t.time("hair_fit_set")
+        t.time("hair_fit")
         return True
 
     def fit_obj_hair(self, obj):
