@@ -47,20 +47,6 @@ def layer_joints(obj, layer):
     return get_joints(obj, lambda bone: bone.layers[layer])
 
 
-def selected_joints(context):
-    joints = {}
-    for bone in context.object.edit_bones:
-        if bone.select_head:
-            if bone.use_connect:
-                b = bone.parent
-                joints[f"joint_{b.name}_tail"] = (b.tail, b, "tail")
-            else:
-                joints[f"joint_{bone.name}_head"] = (bone.head, bone, "head")
-        if bone.select_tail:
-            joints[f"joint_{bone.name}_tail"] = (bone.tail, bone, "tail")
-    return joints
-
-
 def attach_rig(morpher, rig):
     obj = morpher.core.obj
     utils.copy_transforms(rig, obj)

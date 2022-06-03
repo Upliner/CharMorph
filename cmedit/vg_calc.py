@@ -498,7 +498,8 @@ class VGCalculator:
             return "Invalid calc func"
         calc_func = getattr(self, calc_func)
 
-        for name, (co, bone, attr) in joints.items():
+        for name, (bone, attr) in joints.items():
+            co = getattr(bone, attr)
             self.cur_name = name
             self.cur_bone = bone
             self.cur_attr = attr

@@ -35,23 +35,38 @@ def kdtree_from_bones(bones):
     return kd
 
 
+def selected_joints(context):
+    joints = {}
+    for bone in context.object.data.edit_bones:
+        if bone.select_head:
+            if bone.use_connect:
+                b = bone.parent
+                joints[f"joint_{b.name}_tail"] = (b, "tail")
+            else:
+                joints[f"joint_{bone.name}_head"] = (bone, "head")
+        if bone.select_tail:
+            joints[f"joint_{bone.name}_tail"] = (bone, "tail")
+    return joints
+
+
 def joint_list_extended(context, xmirror):
-    result = rigging.selected_joints(context)
+    result = selected_joints(context)
     bones = context.object.data.edit_bones
     kd = kdtree_from_bones(bones)
-    for name, (co, bone, attr) in list(result.items()):
+    for name, (bone, attr) in list(result.items()):
+        co = getattr(bone, attr)
         checklist = [co]
         if xmirror:
             checklist.append(mathutils.Vector((-co[0], co[1], co[2])))
         for co2 in checklist:
-            for co3, jid, _ in kd.find_range(co2, 0.00001):
+            for _, jid, _ in kd.find_range(co2, 0.00001):
                 bone2 = bones[jid // 2]
                 if bone2.layers != bone.layers:
                     continue
                 attr = "head" if jid & 1 == 0 else "tail"
                 name = f"joint_{bone.name}_{attr}"
                 if name not in result:
-                    result[name] = (co3, bone2, attr)
+                    result[name] = (bone2, attr)
     return result
 
 
@@ -101,7 +116,7 @@ class OpJointsToVG(bpy.types.Operator):
         ui = context.window_manager.cmedit_ui
         r = rigging.Rigger(context)
         r.joints_from_char(ui.char_obj)
-        r.run(joint_list_extended(context, False))
+        r.run(joint_list_extended(context, False).values())
         return {"FINISHED"}
 
 
