@@ -61,10 +61,10 @@ def joint_list_extended(context, xmirror):
         for co2 in checklist:
             for _, jid, _ in kd.find_range(co2, 0.00001):
                 bone2 = bones[jid // 2]
-                if bone2.layers != bone.layers:
+                if list(bone2.layers) != list(bone.layers):
                     continue
                 attr = "head" if jid & 1 == 0 else "tail"
-                name = f"joint_{bone.name}_{attr}"
+                name = f"joint_{bone2.name}_{attr}"
                 if name not in result:
                     result[name] = (bone2, attr)
     return result

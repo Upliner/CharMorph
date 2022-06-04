@@ -487,8 +487,8 @@ class VGCalculator:
 
     def run(self, joints):
         if self.ui.vg_widgets:
-            joints = {name: tup for name, tup in joints.items() if tup[2] == "head"}
-            offsets = {k: v[1].tail - v[1].head for k, v in joints.items()}
+            joints = {name: tup for name, tup in joints.items() if tup[1] == "head"}
+            offsets = {k: v[0].tail - v[0].head for k, v in joints.items()}
 
         char = self.char
         verts = char.data.vertices
