@@ -153,6 +153,20 @@ class VGCalculator:
 
         self.kdj_groups = None
 
+        self.calc_lambdas = {
+            "NP": lambda co: calc_lst(co, self.kd_verts.find_n(co, self.ui.vg_n)),
+            "NR": lambda co: calc_lst(co, self.kd_verts.find_range(co, self.ui.vg_radius)),
+            "NC": lambda co: self._calc_nc_nw(co, False),
+            "NW": lambda co: self._calc_nc_nw(co, True),
+            "RB": lambda co: self._calc_rays(co, self._rays_bone),
+            "RG": lambda co: self._calc_rays(co, self._rays_global),
+        }
+
+    def get_calc_func(self, typ=None):
+        if not typ:
+            typ = self.ui.vg_calc
+        return self.calc_lambdas.get(typ) or getattr(self, "calc_" + typ.lower())
+
     @utils.lazyproperty
     def vg_full(self):
         return utils.get_vg_data(
@@ -300,12 +314,6 @@ class VGCalculator:
         co2, _, idx, _ = self.bvh.find_nearest(co)
         return self.calc_face(co2, idx)
 
-    def calc_np(self, co):
-        return calc_lst(co, self.kd_verts.find_n(co, self.ui.vg_n))
-
-    def calc_nr(self, co):
-        return calc_lst(co, self.kd_verts.find_range(co, self.ui.vg_radius))
-
     def calc_xl(self, co):
         verts = self.kd_verts.find_n(co, self.ui.vg_xl_vn)
         lns = []
@@ -327,7 +335,7 @@ class VGCalculator:
 
         return vg_add({}, (tup for i, j, _, p in lns for tup in ((i, 1 - p), (j, p))))
 
-    def cast_rays(self, co, d):
+    def _cast_rays(self, co, d):
         b = self.bvh
         co1, _, idx1, _ = b.ray_cast(co, d)
         co2, _, idx2, _ = b.ray_cast(co, -d)
@@ -337,24 +345,24 @@ class VGCalculator:
         p = min(max(p, 0), 1)
         return vg_mix2(self.calc_face(co1, idx1), self.calc_face(co2, idx2), p)
 
-    def calc_rays(self, co, callback):
+    def _calc_rays(self, co, callback):
         if not self.ui.vg_x and not self.ui.vg_y and not self.ui.vg_z:
             return "No axes selected"
         result = {}
 
         def cast(d):
-            vg = self.cast_rays(co, d)
+            vg = self._cast_rays(co, d)
             if vg is not None:
                 vg_add(result, vg)
 
-        callback(cast)
+        callback(cast, co)
 
         if not result:
             return "Ray cast failed"
 
         return result
 
-    def rays_bone(self, cast):
+    def _rays_bone(self, cast, _):
         def cast_perp(axis, y):
             for i in range(self.ui.vg_rays):
                 cast(mathutils.Quaternion(y, math.pi * i / self.ui.vg_rays + self.ui.vg_roll) @ axis)
@@ -395,26 +403,28 @@ class VGCalculator:
                     self.cur_bone.z_axis + bone2.z_axis
                 )
 
-    def rays_global(self, cast):
+    def _rays_global(self, cast, co):
         if self.ui.vg_obj:
-            mat = self.ui.vg_obj.matrix_world.to_3x3()
+            mat = self.ui.vg_obj.matrix_world.to_3x3().transposed()
         else:
             mat = mathutils.Matrix.Identity(3)
 
-        if self.ui.vg_x:
-            cast(mathutils.Vector(mat[0]))
-        if self.ui.vg_y:
-            cast(mathutils.Vector(mat[1]))
-        if self.ui.vg_z:
-            cast(mathutils.Vector(mat[2]))
+        xcoeff = 1
+        if self.ui.vg_obj_mirror == "S":
+            xcoeff = math.copysign(1, self.ui.vg_obj.location[0] * co[0])
+        elif self.ui.vg_obj_mirror == "G":
+            xcoeff = co[0] / self.ui.vg_obj.location[0]
 
-    def calc_rb(self, co):
-        return self.calc_rays(co, self.rays_bone)
+        def getvec(item):
+            item = mathutils.Vector(item)
+            item[0] *= xcoeff
+            return item
 
-    def calc_rg(self, co):
-        return self.calc_rays(co, self.rays_global)
+        for i, axis in enumerate("xyz"):
+            if getattr(self.ui,"vg_" + axis):
+                cast(getvec(mat[i]))
 
-    def calc_nc(self, co):
+    def _calc_nc_nw(self, co, is_nw: bool):
         vgroups = self.vg_full
 
         def get_head(bone):
@@ -434,16 +444,13 @@ class VGCalculator:
             groups = [get_head(bone)] + [vgroups.get(f"joint_{child.name}_tail") for child in bone.children]
 
         groups = (g for g in groups if g is not None)
-        if self.ui.vg_calc == "NW":
+        if is_nw:
             groups = calc_group_weights(groups, co)
         else:
             groups = [(vg_full_to_dict(g), 1) for g in groups]
         if len(groups) < 2:
             return "Can't find enough already calculated neighbors"
         return vg_mixmany(groups)
-
-    def calc_nw(self, co):
-        return self.calc_nc(co)
 
     def calc_nj(self, co):
         cur_groups = []
@@ -493,10 +500,7 @@ class VGCalculator:
         char = self.char
         verts = char.data.vertices
 
-        calc_func = "calc_" + self.ui.vg_calc.lower()
-        if not hasattr(self, calc_func):
-            return "Invalid calc func"
-        calc_func = getattr(self, calc_func)
+        calc_func = self.get_calc_func()
 
         for name, (bone, attr) in joints.items():
             co = getattr(bone, attr)
@@ -684,6 +688,16 @@ class UIProps:
         type=bpy.types.Object,
         description="Get raycast axes from an object (usually empty object, optional)",
     )
+    vg_obj_mirror: bpy.props.EnumProperty(
+        name="X mirror",
+        description="Mirror rays direction depending on casting position",
+        default="S",
+        items=[
+            ("N", "No", "Don't use X mirror"),
+            ("S", "By side", "Use one direction on one side and other on another"),
+            ("G", "Gradual", "Gradually change X direction of rays"),
+        ]
+    )
 
     vg_x: bpy.props.BoolProperty(
         name="X",
@@ -734,8 +748,11 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
             l.prop(ui, "vg_bone")
             l.prop(ui, "vg_rays")
             l.prop(ui, "vg_roll")
+
         if ui.vg_calc == "RG":
             l.prop(ui, "vg_obj")
+            if ui.vg_obj:
+                l.prop(ui, "vg_obj_mirror")
 
         if ui.vg_calc in ("NP", "NJ"):
             l.prop(ui, "vg_n")
