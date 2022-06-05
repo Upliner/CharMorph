@@ -404,16 +404,15 @@ class VGCalculator:
                 )
 
     def _rays_global(self, cast, co):
+        xcoeff = 1
         if self.ui.vg_obj:
             mat = self.ui.vg_obj.matrix_world.to_3x3().transposed()
+            if self.ui.vg_obj_mirror == "S":
+                xcoeff = math.copysign(1, self.ui.vg_obj.location[0] * co[0])
+            elif self.ui.vg_obj_mirror == "G":
+                xcoeff = co[0] / self.ui.vg_obj.location[0]
         else:
             mat = mathutils.Matrix.Identity(3)
-
-        xcoeff = 1
-        if self.ui.vg_obj_mirror == "S":
-            xcoeff = math.copysign(1, self.ui.vg_obj.location[0] * co[0])
-        elif self.ui.vg_obj_mirror == "G":
-            xcoeff = co[0] / self.ui.vg_obj.location[0]
 
         def getvec(item):
             item = mathutils.Vector(item)
