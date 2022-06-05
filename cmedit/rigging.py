@@ -18,11 +18,13 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import os
+import os, logging
 import bpy, bpy_extras, mathutils  # pylint: disable=import-error
 
 from ..lib import rigging, utils
 from . import vg_calc
+
+logger = logging.getLogger(__name__)
 
 
 def kdtree_from_bones(bones):
@@ -210,13 +212,18 @@ class OpCleanupJoints(bpy.types.Operator):
     def execute(self, context):
         char = context.window_manager.cmedit_ui.char_obj
         joints = rigging.get_joints(context.object)
-        joints = [j for j in joints if j[1] != "head" or not utils.is_true(j[0].get("charmorph_connected"))]
+        joints = {
+            f"joint_{bone.name}_{attr}"
+            for bone, attr in joints
+            if attr != "head" or not utils.is_true(bone.get("charmorph_connected"))
+        }
         if len(joints) == 0:
             self.report({'ERROR'}, "No joints found")
             return {"CANCELLED"}
 
         for vg in list(char.vertex_groups):
             if vg.name.startswith("joint_") and vg.name not in joints:
+                logger.debug("removing group %s", vg.name)
                 char.vertex_groups.remove(vg)
 
         return {"FINISHED"}

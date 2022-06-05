@@ -356,6 +356,8 @@ class Armature:
     match: list[dict[str, str]] = []
     mixin_bones: dict[str, dict]
     arp_reference_layer = 17
+    no_legacy = False
+    description = ""
 
     asset_joints: list[AssetJoints] = None
 

@@ -115,10 +115,9 @@ def add_mixin(char, conf, rig):
 
 
 class RigifyHandler(rigging.RigHandler):
-    slow = True
-
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, morpher, rig, conf):
+        super().__init__(morpher, rig, conf)
+        self.slow = not conf.no_legacy
         self.backup_metarig_name = f"charmorph_metarig_{self.morpher.core.char.name}_{self.conf.name}"
 
     def is_morphable(self):
@@ -234,7 +233,13 @@ class RigifyHandler(rigging.RigHandler):
         if hasattr(metarig.data, "rigify_target_rig"):
             metarig.data.rigify_target_rig = None
         t = utils.Timer()
-        bpy.ops.pose.rigify_generate()
+        try:
+            bpy.ops.pose.rigify_generate()
+        except Exception:
+            obj = bpy.context.object
+            if obj and obj.type == "ARMATURE":
+                bpy.data.armatures.remove(obj.data)
+            raise
         t.time("rigify part")
         try:
             self.obj = bpy.context.object

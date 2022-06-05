@@ -128,7 +128,7 @@ class OpUnrig(MorpherCheckOperator):
 class UIProps:
     rig: bpy.props.EnumProperty(
         name="Rig",
-        items=lambda _ui, _ctx: [(name, rig.title, "") for name, rig in mm.morpher.core.char.armature.items()],
+        items=lambda _ui, _ctx: [(name, rig.title, rig.description) for name, rig in mm.morpher.core.char.armature.items()],
         description="Rigging options")
     rig_manual_sculpt: bpy.props.BoolProperty(
         name="Manual edit/sculpt",

@@ -179,6 +179,9 @@ class OpVgExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         r = re.compile(self.regex)
         names, idx, weights = utils.vg_weights_to_arrays(context.object, r.search)
         cnt = [len(i) for i in idx]
+        if not cnt:
+            self.report({"ERROR"}, "No vertex groups match provided regex")
+            return {"CANCELLED"}
 
         numpy.savez_compressed(
             self.filepath,
