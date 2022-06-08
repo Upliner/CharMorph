@@ -365,7 +365,7 @@ class Morpher:
         self.rig_handler.tweaks = rigging.unpack_tweaks(conf.parent.dirpath, conf.tweaks)
         rigger.set_opts(conf.bones)
         for afd in self.fitter.get_assets():
-            for a in matching_armatures(conf, afd.conf.armature):
+            for a in matching_armatures(conf, afd.conf.armature or ()):
                 rigger.set_opts(a.bones)
                 rigging.unpack_tweaks(a.parent.dirpath, a.tweaks, self.rig_handler.tweaks)
                 for j in a.asset_joints:
