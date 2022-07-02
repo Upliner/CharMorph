@@ -37,7 +37,7 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
-VERSION_ANNEX = "-beta4"
+VERSION_ANNEX = "-rc1"
 
 owner = object()
 
