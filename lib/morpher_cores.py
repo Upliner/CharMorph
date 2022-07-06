@@ -23,23 +23,12 @@ import numpy
 from . import charlib, morphs, utils
 
 
-class FinalVertsGetter:
-    verts: numpy.ndarray = None
-
-    def __init__(self, obj):
-        self.obj = obj
-
-    def get(self):
-        if self.verts is None:
-            self.verts = utils.get_morphed_numpy(self.obj)
-        return self.verts
-
-
 class MorpherCore(utils.ObjTracker):
     error = None
     clamp = True
     alt_topo = False
     alt_topo_buildable = False
+    _alt_topo_verts: numpy.ndarray = None
     morphs_l2: list[morphs.MinMaxMorph]
 
     def __init__(self, obj):
@@ -66,7 +55,7 @@ class MorpherCore(utils.ObjTracker):
         return False
 
     def update(self):
-        pass
+        self._alt_topo_verts = None
 
     def ensure(self):
         pass
@@ -75,7 +64,9 @@ class MorpherCore(utils.ObjTracker):
         return self.get_final_alt_topo()
 
     def get_final_alt_topo(self):
-        pass
+        if self._alt_topo_verts is None:
+            self._alt_topo_verts = utils.get_morphed_numpy(self.obj)
+        return self._alt_topo_verts
 
     def cleanup_asset_morphs(self):
         pass
@@ -171,15 +162,6 @@ class ShapeKeysComboMorpher:
 
 class ShapeKeysMorpher(MorpherCore):
     morphs_l2_dict: dict[str, morphs.MinMaxMorph] = {}
-    atv = None
-
-    def get_final_alt_topo(self):
-        if self.atv is None:
-            self.atv = utils.get_morphed_numpy(self.obj)
-        return self.atv
-
-    def update(self):
-        self.atv = None
 
     def _update_L1(self):
         for name, sk in self.morphs_l1.items():
@@ -417,6 +399,7 @@ class NumpyMorpher(MorpherCore):
                 morph.get_morph(i).apply(self.morphed, get_combo_item_value(i, values) * coeff)
 
     def update(self):
+        super().update()
         self._do_all_morphs()
 
         if not self.alt_topo:
@@ -445,6 +428,9 @@ class NumpyMorpher(MorpherCore):
     def get_final(self):
         self.ensure()
         return self.morphed
+
+    def get_final_alt_topo(self):
+        return self.get_final()
 
     def cleanup_asset_morphs(self):
         lst = self.obj.data.get("charmorph_asset_morphs")
@@ -493,24 +479,16 @@ class NumpyMorpher(MorpherCore):
             yield morph.name, arr
 
 
-class AltTopoMorpher(NumpyMorpher, FinalVertsGetter):
+class AltTopoMorpher(NumpyMorpher):
+    get_final_alt_topo = MorpherCore.get_final_alt_topo
+
     def __init__(self, obj, storage=None):
         self.alt_topo = True
         self.alt_topo_basis = charlib.get_basis(obj)
-        self.atv = None
         super().__init__(obj, storage)
 
     def get_basis_alt_topo(self):
         return self.alt_topo_basis
-
-    def get_final_alt_topo(self):
-        if self.atv is None:
-            self.atv = utils.get_morphed_numpy(self.obj)
-        return self.atv
-
-    def update(self):
-        self.atv = None
-        super().update()
 
 
 def get(obj, storage=None):
