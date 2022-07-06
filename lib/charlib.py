@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, json, collections, logging, numpy
+import os, json, collections, logging, traceback, numpy
 
 import bpy  # pylint: disable=import-error
 

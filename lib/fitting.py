@@ -22,7 +22,7 @@ import random, logging, numpy
 
 import bpy, bmesh, mathutils  # pylint: disable=import-error
 
-from . import fit_calc, utils
+from . import fit_calc, hair, utils
 
 logger = logging.getLogger(__name__)
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
@@ -174,20 +174,7 @@ class EmptyAsset:
     license = ""
 
 
-class HairData:
-    __slots__ = "cnts", "data", "binding"
-    cnts: numpy.ndarray
-    data: numpy.ndarray
-    binding: fit_calc.FitBinding
-
-    def get_morphed(self, diff: numpy.ndarray):
-        result = numpy.empty((len(self.data) + 1, 3))
-        result[1:] = self.binding.fit(diff)
-        result[1:] += self.data
-        return result
-
-
-class Fitter(fit_calc.MorpherFitCalculator):
+class Fitter(hair.HairFitter):
     children: list[fit_calc.AssetFitData] = None
     transfer_calc: fit_calc.FitCalculator = None
     diff_arr: numpy.ndarray = None
@@ -301,85 +288,10 @@ class Fitter(fit_calc.MorpherFitCalculator):
         self.bind_cache[fit_id] = result
         return result
 
-    def get_diff_arr(self, morph):
+    def get_diff_arr(self, morph=None):
         if self.diff_arr is None:
             self.diff_arr = self.mcore.get_diff()
         return morph.apply(self.diff_arr.copy(), -1) if morph else self.diff_arr
-
-    def get_hair_data(self, psys):
-        if not psys.is_edited:
-            return None
-        fit_id = psys.settings.get("charmorph_fit_id")
-        if fit_id:
-            data = self.bind_cache.get(fit_id)
-            if isinstance(data, HairData):
-                return data
-
-        z = self.mcore.char.get_np(f"hairstyles/{psys.settings.get('charmorph_hairstyle','')}.npz")
-        if z is None:
-            logger.error("Hairstyle npz file is not found")
-            return None
-
-        hd = HairData()
-        hd.cnts = z["cnt"]
-        hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
-
-        if len(hd.cnts) != len(psys.particles):
-            logger.error("Mismatch between current hairsyle and .npz!")
-            return None
-
-        hd.binding = self.calc_binding_hair(hd.data)
-        self.bind_cache[fit_id] = hd
-        return hd
-
-    # use separate get_diff function to support hair fitting for posed characters
-    def get_diff_hair(self):
-        char = self.mcore.obj
-        if not char.find_armature():
-            return self.get_diff_arr(None)
-
-        restore_modifiers = utils.disable_modifiers(char)
-        echar = char.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        try:
-            deformed = echar.to_mesh()
-            basis = self.mcore.get_basis_alt_topo()
-            if len(deformed.vertices) != len(basis):
-                logger.error("Can't fit posed hair: vertex count mismatch")
-                return self.get_diff_arr(None)
-            result = numpy.empty(len(basis) * 3)
-            deformed.vertices.foreach_get("co", result)
-            result = result.reshape(-1, 3)
-            result -= basis
-            return result
-        finally:
-            echar.to_mesh_clear()
-            for m in restore_modifiers:
-                m.show_viewport = True
-
-    def fit_hair(self, obj, idx):
-        t = utils.Timer()
-        psys = obj.particle_systems[idx]
-        hd = self.get_hair_data(psys)
-        if not hd:
-            return False
-
-        obj.particle_systems.active_index = idx
-
-        restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type == "SHRINKWRAP")
-        try:
-            utils.set_hair_points(obj, hd.cnts, hd.get_morphed(self.get_diff_hair()))
-        finally:
-            for m in restore_modifiers:
-                m.show_viewport = True
-
-        t.time("hair_fit")
-        return True
-
-    def fit_obj_hair(self, obj):
-        has_fit = False
-        for i in range(len(obj.particle_systems)):
-            has_fit |= self.fit_hair(obj, i)
-        return has_fit
 
     def _transfer_weights_orig(self, afd: fit_calc.AssetFitData):
         handler = self.morpher.rig_handler

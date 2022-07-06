@@ -21,7 +21,7 @@
 import os, re, json, numpy
 import bpy, bpy_extras, bmesh, idprop  # pylint: disable=import-error
 
-from ..lib import morphs, utils
+from ..lib import morphs, hair, utils
 
 
 def np_particles_data(obj, particles, precision=numpy.float32):
@@ -113,7 +113,7 @@ class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         z = numpy.load(self.filepath)
-        utils.set_hair_points(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
+        hair.update_hair(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
         return {"FINISHED"}
 
 

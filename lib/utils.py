@@ -309,36 +309,6 @@ def np_matrix_transform(arr, mat):
     arr += numpy.array(mat.translation)
 
 
-def set_hair_points(obj, cnts, morphed):
-    t = Timer()
-    np_matrix_transform(morphed[1:], obj.matrix_world)
-    psys = obj.particle_systems.active
-    have_mismatch = False
-    t.time("hcalc")
-
-    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
-    override = {"object": obj}
-    bpy.ops.particle.disconnect_hair(override)
-    t.time("disconnect")
-    try:
-        pos = 0
-        for p, cnt in zip(psys.particles, cnts):
-            if len(p.hair_keys) != cnt + 1:
-                if not have_mismatch:
-                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
-                    have_mismatch = True
-                continue
-            marr = morphed[pos:pos + cnt + 1]
-            marr[0] = p.hair_keys[0].co_local
-            pos += cnt
-            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
-    finally:
-        t.time("hair_set")
-        bpy.ops.particle.connect_hair(override)
-        t.time("connect")
-    return True
-
-
 def get_vg_data(char, new, accumulate, verts=None):
     if verts is None:
         verts = char.data.vertices
