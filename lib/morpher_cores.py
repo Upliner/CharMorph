@@ -71,6 +71,9 @@ class MorpherCore(utils.ObjTracker):
     def cleanup_asset_morphs(self):
         pass
 
+    def enum_expressions(self):
+        return ()
+
     ######
 
     def _get_L2_morph_key(self):

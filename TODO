@@ -22,6 +22,7 @@ Morphing:
   - Shape rig morphing
   - Allow to mix L1 shapes?
   - Replace preset mix with mix factor
+  - Interactive morphing
 
 Finalize:
   - Choice between materials displacement and displacement modifier
