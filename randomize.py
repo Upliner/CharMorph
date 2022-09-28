@@ -134,7 +134,7 @@ class OpRandomize(bpy.types.Operator):
         excl = re.compile(ui.randomize_excl)
         if ui.randomize_func == "GAU":
             def random_func():
-                random.gauss(0.5, ui.randomize_sigma)
+                return random.gauss(0.5, ui.randomize_sigma)
         else:
             random_func = random.random
         m = mm.morpher
