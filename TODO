@@ -25,6 +25,7 @@ Morphing:
   - Interactive morphing
 
 Finalize:
+  - Always place rig to the same collection with the character
   - Choice between materials displacement and displacement modifier
 
 Materials:
