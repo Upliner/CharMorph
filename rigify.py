@@ -121,8 +121,7 @@ class RigifyHandler(rigging.RigHandler):
         self.backup_metarig_name = f"charmorph_metarig_{self.morpher.core.char.name}_{self.conf.name}"
 
     def is_morphable(self):
-        return not self.conf.mixin and hasattr(self.obj.data, "rigify_generate_mode")\
-            and hasattr(self.obj.data, "rigify_target_rig")
+        return not self.conf.mixin and hasattr(self.obj.data, "rigify_target_rig")
 
     def on_update(self, rigger):
         t = utils.Timer()
@@ -153,7 +152,8 @@ class RigifyHandler(rigging.RigHandler):
             if not result:
                 return
             t.time("rigger part")
-            metarig.data.rigify_generate_mode = "overwrite"
+            if hasattr(metarig.data, "rigify_generate_mode"):
+                metarig.data.rigify_generate_mode = "overwrite"
             metarig.data.rigify_target_rig = self.obj
             bpy.ops.pose.rigify_generate()
         finally:

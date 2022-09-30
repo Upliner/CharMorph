@@ -383,10 +383,6 @@ class Fitter(hair.HairFitter):
         t.time("fit " + afd.obj.name)
 
     def _fit_new_item(self, asset):
-        ui = bpy.context.window_manager.charmorph_ui
-        if ui.fitting_transforms:
-            utils.apply_transforms(asset)
-
         afd = self._get_asset_data(asset)
         if self.children is not None:
             self.children.append(afd)
@@ -397,6 +393,8 @@ class Fitter(hair.HairFitter):
             if not name:
                 name = asset.name
             self.mcore.add_asset_morph(name, afd.morph)
+
+        ui = bpy.context.window_manager.charmorph_ui
 
         if ui.fitting_mask == "SEPR" and masking_enabled(asset):
             self.add_mask_from_asset(afd)
@@ -425,6 +423,7 @@ class Fitter(hair.HairFitter):
     def fit_import(self, lst):
         result = True
         objs = []
+        ui = bpy.context.window_manager.charmorph_ui
         for asset in lst:
             obj = utils.import_obj(asset.blend_file, asset.name)
             if obj is None:
@@ -432,9 +431,10 @@ class Fitter(hair.HairFitter):
                 continue
             if self.mcore.char.assets.get(asset.name) is asset:
                 obj.data["charmorph_asset"] = asset.name
+            #if ui.fitting_transforms: # Make apply_transforms after import disablable???
+            utils.apply_transforms(obj)
             objs.append(obj)
         self.fit_new(objs)
-        ui = bpy.context.window_manager.charmorph_ui
         if len(lst) == 1:
             ui.fitting_asset = obj
         return result
