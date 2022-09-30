@@ -110,6 +110,10 @@ def geom_mesh(mesh):
     return Geometry(charlib.get_basis(mesh, None, False), mesh_faces(mesh))
 
 
+def geom_final(obj):
+    return Geometry(utils.get_morphed_numpy(obj), mesh_faces(obj.data))
+
+
 class SubsetGeometry(Geometry):
     def __init__(self, verts, faces, subset):
         super().__init__(verts, faces)
@@ -274,11 +278,13 @@ class AssetFitData(utils.ObjTracker):
     morph: morphs.Morph
     geom: Geometry
     binding: FitBinding
+    no_refit: bool
 
     def __init__(self, obj, geom=None):
         super().__init__(obj)
         self.conf = charlib.Asset
         self.morph = None
+        self.no_refit = utils.is_true(obj.data.get("charmorph_no_refit"))
         if not geom:
             geom = geom_mesh(obj.data)
         self.geom = geom
@@ -408,9 +414,10 @@ class MorpherFitCalculator(FitCalculator):
         afd.morph = afd.conf.morph  # TODO: get morph from mcore
 
     def get_char_geom(self, afd: AssetFitData) -> Geometry:
+        geom = geom_morpher_final(self.mcore) if afd.no_refit else self.geom
         if afd and afd.morph:
-            return geom_morph(self.geom, afd.morph)
-        return self.geom
+            return geom_morph(geom, afd.morph)
+        return geom
 
 
 # calculate binding based on nearest vertices

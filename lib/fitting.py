@@ -293,17 +293,22 @@ class Fitter(hair.HairFitter):
             self.diff_arr = self.mcore.get_diff()
         return morph.apply(self.diff_arr.copy(), -1) if morph else self.diff_arr
 
-    def _transfer_weights_orig(self, afd: fit_calc.AssetFitData):
+
+    def _transfer_weights_orig(self, afd: fit_calc.AssetFitData, vgs):
         handler = self.morpher.rig_handler
         if handler:
             self.transfer_weights(afd, handler.conf.weights_npz)
+        else:
+            self._transfer_weights_obj(afd, vgs)
+
 
     def _transfer_weights_obj(self, afd, vgs):
         if afd.obj.data is self.mcore.obj.data:
             raise Exception("Tried to self-transfer weights")
         if self.mcore.alt_topo:
             if self.transfer_calc is None:
-                self.transfer_calc = fit_calc.FitCalculator(fit_calc.geom_mesh(self.mcore.obj.data), self)
+                geom = fit_calc.geom_final(self.mcore.obj) if afd.no_refit else fit_calc.geom_mesh(self.mcore.obj.data)
+                self.transfer_calc = fit_calc.FitCalculator(geom)
             calc = self.transfer_calc
         else:
             calc = self
@@ -327,13 +332,16 @@ class Fitter(hair.HairFitter):
                     if bone.use_deform:
                         vgs.add(bone.name)
 
+        if len(vgs) <= len(special_groups):
+            return
+
         t = utils.Timer()
         source = bpy.context.window_manager.charmorph_ui.fitting_weights
         if afd.conf.fold and afd.conf.fold.wmorph:
             afd = self._get_asset_data(afd.obj, fit_calc.geom_morph(self._get_fold_geom(afd), afd.conf.fold.wmorph))
 
         if source == "ORIG":
-            self._transfer_weights_orig(afd)
+            self._transfer_weights_orig(afd, vgs)
         elif source == "OBJ":
             self._transfer_weights_obj(afd, vgs)
         else:
@@ -367,6 +375,8 @@ class Fitter(hair.HairFitter):
             return
         if not isinstance(afd, fit_calc.AssetFitData):
             afd = self._get_asset_data(afd)
+        elif afd.no_refit:
+            return
         elif not afd.check_obj():
             logger.warning("Missing fitting object %s, resetting fitter", afd.obj_name)
             self.children = None
@@ -383,6 +393,9 @@ class Fitter(hair.HairFitter):
         t.time("fit " + afd.obj.name)
 
     def _fit_new_item(self, asset):
+        ui = bpy.context.window_manager.charmorph_ui
+        if ui.fitting_use_final:
+            asset.data["charmorph_no_refit"] = True
         afd = self._get_asset_data(asset)
         if self.children is not None:
             self.children.append(afd)
@@ -393,8 +406,6 @@ class Fitter(hair.HairFitter):
             if not name:
                 name = asset.name
             self.mcore.add_asset_morph(name, afd.morph)
-
-        ui = bpy.context.window_manager.charmorph_ui
 
         if ui.fitting_mask == "SEPR" and masking_enabled(asset):
             self.add_mask_from_asset(afd)

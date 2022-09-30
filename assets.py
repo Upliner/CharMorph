@@ -95,6 +95,10 @@ class UIProps:
         name="Apply transforms",
         default=True,
         description="Apply object transforms before fitting")
+    fitting_use_final: bpy.props.BoolProperty(
+        name="Already fitted",
+        default=False,
+        description="Skip fitting stage as asset is already fitted. Only transfer weights and apply masks")
     fitting_weights: bpy.props.EnumProperty(
         name="Weights",
         default="ORIG",
@@ -144,6 +148,7 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
         col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_weights_ovr")
         col.prop(ui, "fitting_transforms")
+        col.prop(ui, "fitting_use_final")
         l.separator()
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
             l.operator("charmorph.unfit")
