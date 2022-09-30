@@ -28,6 +28,7 @@ Finalize:
 
 Materials:
   - Skin coloring for Antonia
+  - Shared textures for assets
   - Lip color control?
   - Ability to disable skin features (blush, freckles)
     and completely remove them from node tree removing unneccessary texture images too
@@ -62,11 +63,12 @@ Assets:
   - Image browser for clothes and hair
 
 Rigging:
+  - Always place rig to the same collection with the character
   - Combining rig from subrigs
   - Fix Reom's eyelashes in ARP
   - Force bone bending angle
   - Generate rig from metarig
-  - Use VertexWeightProximity for folding knees, elbows and belly
+  - Use VertexWeightProximity or geonodes for folding knees, elbows and belly
   - Add chest and abdomen bones for breathing -- done for Antonia
   - Pupil dilation bones -- done for Antonia
   - Size and limb length morphs for Antonia

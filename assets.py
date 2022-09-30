@@ -202,10 +202,13 @@ class OpFitLocal(bpy.types.Operator):
         return True
 
     def execute(self, context):  # pylint: disable=no-self-use
-        obj = get_asset_obj(context)
-        if mm.morpher.core.obj is obj:
-            mm.create_charmorphs(get_char(context))
-        fitter_from_ctx(context).fit_new((obj,))
+        char = get_char(context)
+        asset = get_asset_obj(context)
+        if mm.morpher.core.obj is asset:
+            mm.create_charmorphs(char)
+        if context.window_manager.charmorph_ui.fitting_transforms:
+            utils.apply_transforms(asset, char)
+        get_fitter(char).fit_new((asset,))
         return {"FINISHED"}
 
 
@@ -270,8 +273,12 @@ class OpUnfit(bpy.types.Operator):
         asset = get_asset_obj(context)
 
         if asset.parent:
+            if ui.fitting_transforms:
+                utils.copy_transforms(asset, asset.parent)
             asset.parent = asset.parent.parent
             if asset.parent and asset.parent.type == "ARMATURE":
+                if ui.fitting_transforms:
+                    utils.copy_transforms(asset, asset.parent) #FIXME: Make transforms sum
                 asset.parent = asset.parent.parent
 
         mask = fitting.mask_name(asset)

@@ -279,7 +279,7 @@ class OpFinalize(MorpherCheckOperator):
 class UIProps:
     fin_morph: bpy.props.EnumProperty(
         name="Apply morphs",
-        default="SK",
+        default="NO",
         items=[
             ("NO", "Don't apply", "Keep all morphing shape keys"),
             ("SK", "Keep original basis", "Keep original basis shape key (recommended if you plan to fit more assets)"),

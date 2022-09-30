@@ -136,15 +136,16 @@ def reset_transforms(obj):
 
 
 def copy_transforms(target, source):
-    target.location = source.location
-    target.rotation_mode = source.rotation_mode
-    target.rotation_euler = source.rotation_euler
-    target.rotation_quaternion = source.rotation_quaternion
-    target.scale = source.scale
+    target.rotation_mode=source.rotation_mode
+    target.rotation_axis_angle=source.rotation_axis_angle
+    for prefix in "", "delta_":
+        for param in "location", "rotation_quaternion", "rotation_euler", "scale":
+            setattr(target, prefix+param, getattr(source, prefix+param))
 
 
-def apply_transforms(obj):
-    obj.data.transform(obj.matrix_world)
+def apply_transforms(obj, new_parent=None):
+    parent_matrix = new_parent.matrix_world.inverted_safe() if new_parent else mathutils.Matrix.Identity(4)
+    obj.data.transform(parent_matrix @ obj.matrix_world, shape_keys=True)
     reset_transforms(obj)
 
 
