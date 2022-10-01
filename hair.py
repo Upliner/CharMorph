@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, random
+import logging, random, numpy
 import bpy, bmesh # pylint: disable=import-error
 
 from .lib import utils
@@ -76,15 +76,7 @@ def attach_scalp(char, obj):
     obj.data["charmorph_fit_mask"] = "false"
     obj.show_instancer_for_viewport = False
     obj.show_instancer_for_render = False
-    collections = char.users_collection
-    active_collection = bpy.context.collection
-    for c in collections:
-        if c is active_collection:
-            c.objects.link(obj)
-            break
-    else:
-        for c in collections:
-            c.objects.link(obj)
+    utils.link_to_collections(obj, char)
     assets.get_fitter(char).fit_new((obj,))
 
 
@@ -210,36 +202,17 @@ class OpRefitHair(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OpCreateHair(bpy.types.Operator):
-    bl_idname = "charmorph.hair_create"
-    bl_label = "Create hair"
-    bl_description = "Create hair"
-    bl_options = {"UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT" and context.object and context.object.type == "MESH"
-
-    def execute(self, context):
-        ui = context.window_manager.charmorph_ui
-        style = ui.hair_style
-        char = context.object
-        char_conf = library.obj_char(char)
-        if style == "default":
-            create_default_hair(context, char, char_conf, ui.hair_scalp)
-            return {"FINISHED"}
-        lib = char_conf.hair_library
-        if not lib:
-            self.report({"ERROR"}, "Hair library is not found")
-            return {"CANCELLED"}
-
+def import_particle_hair(style, char, char_conf, ui):
         do_scalp = ui.hair_scalp or char_conf.force_hair_scalp
         do_shrinkwrap = ui.hair_shrinkwrap and char_conf.hair_shrinkwrap
 
+        lib = char_conf.hair_library
+        if not lib:
+            return "Hair library is not found"
+
         obj = utils.import_obj(char_conf.path(lib), char_conf.hair_obj, link=do_scalp)
         if not obj:
-            self.report({"ERROR"}, "Failed to import hair")
-            return {"CANCELLED"}
+            return "Failed to import hair"
         override = {"object": obj}
         idx = -1
         src_psys = None
@@ -247,8 +220,7 @@ class OpCreateHair(bpy.types.Operator):
             if src_psys.name == style:
                 break
         else:
-            self.report({"ERROR"}, "Hairstyle is not found")
-            return {"CANCELLED"}
+            return "Hairstyle is not found"
 
         fitter = assets.get_fitter(char)
         restore_modifiers = []
@@ -308,6 +280,69 @@ class OpCreateHair(bpy.types.Operator):
             mod.offset = char_conf.hair_shrinkwrap_offset
             utils.reposition_modifier(dst_obj, 0)
 
+        return None
+
+
+def create_hair_curves(style, char, char_conf):
+    z = char_conf.get_np(f"hairstyles/{style}.npz")
+    if z is None:
+        return "Hairstyle npz file is not found"
+
+    if not z.get("config"):
+        return "Cannot create curves with old npz format"
+
+    data = z["data"]
+    c = bpy.data.curves.new("charmorph_tmp_curve", "CURVE")
+    c.dimensions="3D"
+    try:
+        for cnt in z["cnt"]:
+            s = c.splines.new("POLY")
+            s.points.add(cnt-1)
+            s.points.foreach_set("co", numpy.insert(data[:cnt], 3, 0, 1).reshape(-1))
+            data = data[cnt:]
+
+        obj = bpy.data.objects.new("charmorph_tmp_curve", c)
+        obj_name = obj.name
+        utils.link_to_collections(obj, char)
+        obj.select_set(True)
+        bpy.ops.object.convert({"active_object": obj, "selected_editable_objects": [obj]}, target="CURVES")
+        obj = bpy.data.objects[obj_name]
+    finally:
+        bpy.data.curves.remove(c)
+
+    bpy.ops.curves.surface_set({"object": obj, "selected_editable_objects": [char]})
+
+    return None
+
+
+class OpCreateHair(bpy.types.Operator):
+    bl_idname = "charmorph.hair_create"
+    bl_label = "Create hair"
+    bl_description = "Create hair"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and context.object and context.object.type == "MESH"
+
+    def execute(self, context):
+        ui = context.window_manager.charmorph_ui
+        style = ui.hair_style
+        char = context.object
+        char_conf = library.obj_char(char)
+        if style == "default":
+            create_default_hair(context, char, char_conf, ui.hair_scalp)
+            return {"FINISHED"}
+
+        if ui.hair_curves:
+            error = create_hair_curves(style, char, char_conf)
+        else :
+            error = import_particle_hair(style, char, char_conf, ui)
+
+        if error:
+            self.report({"ERROR"}, error)
+            return {"CANCELLED"}
+
         return {"FINISHED"}
 
 
@@ -353,9 +388,14 @@ class UIProps:
         name="Use shrinkwrap",
         description="Use shrinkwrap modifier for scalp mesh",
         default=True)
-    hair_deform: bpy.props.BoolProperty(
+    hair_deform: bpy.props.EnumProperty(
         name="Live deform",
-        description="Refit hair in real time (slower than clothing)")
+        description="Refit hair in real time (slow for particle hair)",
+        items = (
+            ("NO", "Never", "Don't use live hair deform"),
+            ("CU", "Curves only", "Use live deform only for Blender 3.3 hair curves"),
+            ("AL", "All", "Use live deform for both curves and particles")),
+        default="CU")
     hair_color: bpy.props.EnumProperty(
         name="Hair color",
         description="Hair color",
@@ -364,6 +404,10 @@ class UIProps:
         name="Hairstyle",
         description="Hairstyle",
         items=get_hairstyles)
+    hair_curves: bpy.props.BoolProperty(
+        name="Use 3.3 hair curves",
+        description="Use Blender 3.3 hair curves that allow faster hair deform",
+        default=False)
 
 
 class CHARMORPH_PT_Hair(bpy.types.Panel):
@@ -380,6 +424,8 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         if not char:
             char = empty_char
         l = self.layout
+        if bpy.app.version >= (3,3,0):
+            l.prop(ui, "hair_curves")
         for prop in UIProps.__annotations__:  # pylint: disable=no-member
             if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (
                     prop == "hair_scalp" and char.force_hair_scalp):

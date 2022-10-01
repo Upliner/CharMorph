@@ -479,7 +479,7 @@ class Fitter(hair.HairFitter):
     def refit_all(self):
         self.diff_arr = None
         self.fit(self.alt_topo_afd)
-        hair_deform = bpy.context.window_manager.charmorph_ui.hair_deform
+        hair_deform = bpy.context.window_manager.charmorph_ui.hair_deform == "AL"
         if hair_deform:
             self.fit_obj_hair(self.mcore.obj)
         for afd in self.get_assets():

@@ -103,6 +103,8 @@ def register():
     charlib.library.load()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
+    if bpy.app.version >= (3,3,0):
+        bpy.context.window_manager.charmorph_ui.hair_curves = True
     subscribe_select_obj()
 
     bpy.app.handlers.load_post.append(load_handler)

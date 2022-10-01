@@ -135,6 +135,18 @@ def reset_transforms(obj):
     obj.delta_scale = (1, 1, 1)
 
 
+def link_to_collections(new_obj, dst_obj):
+    collections = dst_obj.users_collection
+    active_collection = bpy.context.collection
+    for c in collections:
+        if c is active_collection:
+            c.objects.link(new_obj)
+            break
+    else:
+        for c in collections:
+            c.objects.link(new_obj)
+
+
 def copy_transforms(target, source):
     target.rotation_mode=source.rotation_mode
     target.rotation_axis_angle=source.rotation_axis_angle

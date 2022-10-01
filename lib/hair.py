@@ -31,7 +31,7 @@ def np_particles_data(obj, particles, precision=numpy.float32):
     total = 0
     mx = 1
     for i, p in enumerate(particles):
-        c = len(p.hair_keys) - 1
+        c = len(p.hair_keys)
         cnt[i] = c
         total += c
         if c > mx:
@@ -43,12 +43,12 @@ def np_particles_data(obj, particles, precision=numpy.float32):
     for p in particles:
         t2 = tmp[:len(p.hair_keys) * 3]
         p.hair_keys.foreach_get("co_local", t2)
-        t2 = t2[3:].reshape((-1, 3))
+        t2 = t2.reshape((-1, 3))
         data[i:i + len(t2)] = t2
         i += len(t2)
 
-    utils.np_matrix_transform(data, obj.matrix_world.inverted())
-    return {"cnt": cnt, "data": data}
+    utils.np_matrix_transform(data, obj.matrix_world.inverted_safe())
+    return {"cnt": cnt, "data": data, "config": "{\"version\":1}"}
 
 
 def export_hair(obj, psys_idx, filepath, precision):
@@ -119,7 +119,7 @@ class HairFitter(fit_calc.MorpherFitCalculator):
     def get_diff_arr(self):
         return self.mcore.get_diff()
 
-    def get_hair_data(self, psys):
+    def get_hair_data(self, psys, version=0):
         if not psys.is_edited:
             return None
         fit_id = psys.settings.get("charmorph_fit_id")
@@ -136,6 +136,9 @@ class HairFitter(fit_calc.MorpherFitCalculator):
         hd = HairData()
         hd.cnts = z["cnt"]
         hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
+
+        if version==0 and z.get("config"):
+            hd.data = numpy.delete(hd.data, numpy.concatenate(([0], z["cnt"].cumsum()[:-1])))
 
         if len(hd.cnts) != len(psys.particles):
             logger.error("Mismatch between current hairsyle and .npz!")

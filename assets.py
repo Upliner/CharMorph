@@ -266,6 +266,7 @@ class OpFitLibrary(bpy.types.Operator):
 class OpUnfit(bpy.types.Operator):
     bl_idname = "charmorph.unfit"
     bl_label = "Unfit"
+    bl_description = "Unfit asset from character"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -306,6 +307,7 @@ class OpUnfit(bpy.types.Operator):
                     f.morpher.update()
         try:
             del asset.data['charmorph_fit_id']
+            del asset.data['charmorph_no_refit']
         except KeyError:
             pass
 
