@@ -203,84 +203,84 @@ class OpRefitHair(bpy.types.Operator):
 
 
 def import_particle_hair(style, char, char_conf, ui):
-        do_scalp = ui.hair_scalp or char_conf.force_hair_scalp
-        do_shrinkwrap = ui.hair_shrinkwrap and char_conf.hair_shrinkwrap
+    do_scalp = ui.hair_scalp or char_conf.force_hair_scalp
+    do_shrinkwrap = ui.hair_shrinkwrap and char_conf.hair_shrinkwrap
 
-        lib = char_conf.hair_library
-        if not lib:
-            return "Hair library is not found"
+    lib = char_conf.hair_library
+    if not lib:
+        return "Hair library is not found"
 
-        obj = utils.import_obj(char_conf.path(lib), char_conf.hair_obj, link=do_scalp)
-        if not obj:
-            return "Failed to import hair"
-        override = {"object": obj}
-        idx = -1
-        src_psys = None
-        for idx, src_psys in enumerate(obj.particle_systems):
-            if src_psys.name == style:
-                break
-        else:
-            return "Hairstyle is not found"
+    obj = utils.import_obj(char_conf.path(lib), char_conf.hair_obj, link=do_scalp)
+    if not obj:
+        return "Failed to import hair"
+    override = {"object": obj}
+    idx = -1
+    src_psys = None
+    for idx, src_psys in enumerate(obj.particle_systems):
+        if src_psys.name == style:
+            break
+    else:
+        return "Hairstyle is not found"
 
-        fitter = assets.get_fitter(char)
-        restore_modifiers = []
-        if do_scalp:
-            obj.particle_systems.active_index = idx
-            bpy.ops.particle.disconnect_hair(override)
-            make_scalp(obj, style)
-            dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
-            attach_scalp(char, dst_obj)
-        else:
-            restore_modifiers = utils.disable_modifiers(char)
-            dst_obj = char
-            fitter.fit(obj)
-            obj.parent = char
-        restore_modifiers.extend(utils.disable_modifiers(dst_obj, lambda _: True))
-        override["selected_editable_objects"] = [dst_obj]
-        override["particle_system"] = src_psys
-        bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
-        dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems) - 1]
-        for attr in dir(src_psys):
-            if not attr.startswith("vertex_group_"):
-                continue
-            val = getattr(src_psys, attr)
-            if val:
-                if val not in dst_obj.vertex_groups:
-                    val = ""
-                setattr(dst_psys, attr, val)
-        bpy.data.objects.remove(obj)
-        s = dst_psys.settings
-        s["charmorph_hairstyle"] = style
-        s["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
-        s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
+    fitter = assets.get_fitter(char)
+    restore_modifiers = []
+    if do_scalp:
+        obj.particle_systems.active_index = idx
+        bpy.ops.particle.disconnect_hair(override)
+        make_scalp(obj, style)
+        dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
+        attach_scalp(char, dst_obj)
+    else:
+        restore_modifiers = utils.disable_modifiers(char)
+        dst_obj = char
+        fitter.fit(obj)
+        obj.parent = char
+    restore_modifiers.extend(utils.disable_modifiers(dst_obj, lambda _: True))
+    override["selected_editable_objects"] = [dst_obj]
+    override["particle_system"] = src_psys
+    bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
+    dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems) - 1]
+    for attr in dir(src_psys):
+        if not attr.startswith("vertex_group_"):
+            continue
+        val = getattr(src_psys, attr)
+        if val:
+            if val not in dst_obj.vertex_groups:
+                val = ""
+            setattr(dst_psys, attr, val)
+    bpy.data.objects.remove(obj)
+    s = dst_psys.settings
+    s["charmorph_hairstyle"] = style
+    s["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
+    s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
 
-        override["object"] = dst_obj
-        cnt = len(dst_obj.modifiers)
-        for m in list(dst_obj.modifiers):
-            cnt -= 1
-            if m.type in utils.generative_modifiers:
-                for _ in range(cnt):
-                    if bpy.ops.object.modifier_move_down.poll(override):
-                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
-                cnt += 1
+    override["object"] = dst_obj
+    cnt = len(dst_obj.modifiers)
+    for m in list(dst_obj.modifiers):
+        cnt -= 1
+        if m.type in utils.generative_modifiers:
+            for _ in range(cnt):
+                if bpy.ops.object.modifier_move_down.poll(override):
+                    bpy.ops.object.modifier_move_down(override, modifier=m.name)
+            cnt += 1
 
-        if do_scalp:
-            bpy.ops.particle.connect_hair(override)
+    if do_scalp:
+        bpy.ops.particle.connect_hair(override)
 
-        for m in restore_modifiers:
-            m.show_viewport = True
+    for m in restore_modifiers:
+        m.show_viewport = True
 
-        fitter.fit_hair(dst_obj, len(dst_obj.particle_systems) - 1)
+    fitter.fit_hair(dst_obj, len(dst_obj.particle_systems) - 1)
 
-        if do_shrinkwrap and dst_obj is not char:
-            mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
-            mod.wrap_method = "TARGET_PROJECT"
-            mod.target = char
-            mod.wrap_mode = "OUTSIDE_SURFACE"
-            mod.offset = char_conf.hair_shrinkwrap_offset
-            utils.reposition_modifier(dst_obj, 0)
+    if do_shrinkwrap and dst_obj is not char:
+        mod = dst_obj.modifiers.new("charmorph_shrinkwrap", "SHRINKWRAP")
+        mod.wrap_method = "TARGET_PROJECT"
+        mod.target = char
+        mod.wrap_mode = "OUTSIDE_SURFACE"
+        mod.offset = char_conf.hair_shrinkwrap_offset
+        utils.reposition_modifier(dst_obj, 0)
 
-        return None
+    return None
 
 
 def create_hair_curves(style, char, char_conf):
@@ -291,14 +291,15 @@ def create_hair_curves(style, char, char_conf):
     if not z.get("config"):
         return "Cannot create curves with old npz format"
 
-    data = z["data"]
+    data: numpy.ndarray = numpy.insert(z["data"], 3, 0, 1).reshape(-1)
     c = bpy.data.curves.new("charmorph_tmp_curve", "CURVE")
-    c.dimensions="3D"
     try:
+        c.dimensions="3D"
         for cnt in z["cnt"]:
             s = c.splines.new("POLY")
             s.points.add(cnt-1)
-            s.points.foreach_set("co", numpy.insert(data[:cnt], 3, 0, 1).reshape(-1))
+            cnt *= 4
+            s.points.foreach_set("co", data[:cnt])
             data = data[cnt:]
 
         obj = bpy.data.objects.new("charmorph_tmp_curve", c)
