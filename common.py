@@ -159,6 +159,7 @@ class Manager:
 manager = Manager()
 
 
+# Superclass for operators that need morpher
 class MorpherCheckOperator(bpy.types.Operator):
     bl_options = {"UNDO"}
 

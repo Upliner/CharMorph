@@ -26,6 +26,7 @@ from . import fit_calc, utils
 
 logger = logging.getLogger(__name__)
 
+
 def np_particles_data(obj, particles, precision=numpy.float32):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)
     total = 0
@@ -51,7 +52,7 @@ def np_particles_data(obj, particles, precision=numpy.float32):
     return {"cnt": cnt, "data": data, "config": "{\"version\":1}"}
 
 
-def export_hair(obj, psys_idx, filepath, precision):
+def export_particles(obj, psys_idx, filepath, precision):
     pss = obj.particle_systems
     old_psys_idx = pss.active_index
     pss.active_index = psys_idx
@@ -68,7 +69,7 @@ def export_hair(obj, psys_idx, filepath, precision):
     pss.active_index = old_psys_idx
 
 
-def update_hair(obj, cnts, morphed):
+def update_particles(obj, cnts, morphed):
     t = utils.Timer()
     utils.np_matrix_transform(morphed[1:], obj.matrix_world)
     psys = obj.particle_systems.active
@@ -119,16 +120,25 @@ class HairFitter(fit_calc.MorpherFitCalculator):
     def get_diff_arr(self):
         return self.mcore.get_diff()
 
-    def get_hair_data(self, psys, version=0):
-        if not psys.is_edited:
-            return None
-        fit_id = psys.settings.get("charmorph_fit_id")
+    def get_hair_data(self, target):
+        if isinstance(target, bpy.types.ParticleSystem):
+            if not target.is_edited:
+                return None
+            prefix = "p"
+            attributes = target.settings
+            cnt = len(target.particles)
+        else:
+            prefix = "c"
+            attributes = target
+            cnt = len(target.curves)
+
+        fit_id = attributes.get("charmorph_fit_id")
         if fit_id:
-            data = self.hair_cache.get(fit_id)
+            data = self.hair_cache.get(prefix + fit_id)
             if isinstance(data, HairData):
                 return data
 
-        z = self.mcore.char.get_np(f"hairstyles/{psys.settings.get('charmorph_hairstyle','')}.npz")
+        z = self.mcore.char.get_np(f"hairstyles/{attributes.get('charmorph_hairstyle','')}.npz")
         if z is None:
             logger.error("Hairstyle npz file is not found")
             return None
@@ -137,15 +147,20 @@ class HairFitter(fit_calc.MorpherFitCalculator):
         hd.cnts = z["cnt"]
         hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
 
-        if version==0 and z.get("config"):
-            hd.data = numpy.delete(hd.data, numpy.concatenate(([0], z["cnt"].cumsum()[:-1])))
+        if prefix == "p" and "config" in z:
+            hd.data = numpy.delete(
+                hd.data,
+                numpy.concatenate((numpy.array((0,), dtype=hd.cnts.dtype), hd.cnts.cumsum()[:-1])),
+                axis=0
+            )
+            hd.cnts -= 1
 
-        if len(hd.cnts) != len(psys.particles):
+        if len(hd.cnts) != cnt:
             logger.error("Mismatch between current hairsyle and .npz!")
             return None
 
         hd.binding = self.calc_binding_hair(hd.data)
-        self.hair_cache[fit_id] = hd
+        self.hair_cache[prefix + fit_id] = hd
         return hd
 
     # use separate get_diff function to support hair fitting for posed characters
@@ -172,7 +187,7 @@ class HairFitter(fit_calc.MorpherFitCalculator):
             for m in restore_modifiers:
                 m.show_viewport = True
 
-    def fit_hair(self, obj, idx):
+    def fit_particles(self, obj, idx):
         t = utils.Timer()
         psys = obj.particle_systems[idx]
         hd = self.get_hair_data(psys)
@@ -183,16 +198,30 @@ class HairFitter(fit_calc.MorpherFitCalculator):
 
         restore_modifiers = utils.disable_modifiers(obj, lambda m: m.type == "SHRINKWRAP")
         try:
-            update_hair(obj, hd.cnts, hd.get_morphed(self.get_diff_hair()))
+            update_particles(obj, hd.cnts, hd.get_morphed(self.get_diff_hair()))
         finally:
             for m in restore_modifiers:
                 m.show_viewport = True
 
-        t.time("hair_fit")
+        t.time("p_hair_fit")
         return True
 
-    def fit_obj_hair(self, obj):
+    def fit_obj_particles(self, obj):
         has_fit = False
         for i in range(len(obj.particle_systems)):
-            has_fit |= self.fit_hair(obj, i)
+            has_fit |= self.fit_particles(obj, i)
         return has_fit
+
+    def fit_curves(self, obj):
+        t = utils.Timer()
+        hd = self.get_hair_data(obj.data)
+        if not hd:
+            return False
+
+        arr = hd.binding.fit(self.get_diff_hair())
+        arr += hd.data
+        obj.data.position_data.foreach_set("vector", arr.reshape(-1))
+        obj.update_tag()
+
+        t.time("c_hair_fit")
+        return True

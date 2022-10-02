@@ -22,7 +22,7 @@ import os, re, json, numpy
 import bpy, bpy_extras, bmesh, idprop  # pylint: disable=import-error
 
 from ..lib import morphs, utils
-from ..lib.hair import update_hair, export_hair
+from ..lib.hair import update_particles, export_particles
 
 prop_precision = bpy.props.EnumProperty(
     name="Precision",
@@ -53,7 +53,7 @@ class OpHairExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
         return context.object and context.object.particle_systems.active
 
     def execute(self, context):
-        export_hair(context.object, context.object.particle_systems.active_index, self.filepath, float_dtype(self.precision))
+        export_particles(context.object, context.object.particle_systems.active_index, self.filepath, float_dtype(self.precision))
         return {"FINISHED"}
 
 
@@ -71,7 +71,7 @@ class OpHairImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         z = numpy.load(self.filepath)
-        update_hair(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
+        update_particles(context.object, z["cnt"], numpy.concatenate((((0, 0, 0),), z["data"])))
         return {"FINISHED"}
 
 
@@ -98,7 +98,7 @@ class OpAllHairExport(DirExport):
 
     def execute(self, context):
         for i, psys in enumerate(context.object.particle_systems):
-            export_hair(context.object, i, os.path.join(self.directory, psys.name + ".npz"), float_dtype(self.precision))
+            export_particles(context.object, i, os.path.join(self.directory, psys.name + ".npz"), float_dtype(self.precision))
         return {"FINISHED"}
 
 

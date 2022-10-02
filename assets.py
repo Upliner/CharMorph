@@ -213,7 +213,7 @@ class OpFitLocal(bpy.types.Operator):
             mm.create_charmorphs(char)
         if context.window_manager.charmorph_ui.fitting_transforms:
             utils.apply_transforms(asset, char)
-        get_fitter(char).fit_new((asset,))
+        get_fitter(char).fit_new_meshes((asset,))
         return {"FINISHED"}
 
 

@@ -56,6 +56,8 @@ def load_yaml(data):
 def dump_yaml(data, f):
     return ydump(data, f, Dumper=MyDumper)
 
+
+#########
 class ObjTracker:
     def __init__(self, obj):
         self.obj = obj
@@ -73,7 +75,6 @@ class ObjTracker:
         return True
 
 
-#########
 class Timer:
     def __init__(self):
         self.t = time.perf_counter()

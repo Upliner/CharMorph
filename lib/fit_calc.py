@@ -414,9 +414,12 @@ class MorpherFitCalculator(FitCalculator):
         afd.morph = afd.conf.morph  # TODO: get morph from mcore
 
     def get_char_geom(self, afd: AssetFitData) -> Geometry:
-        geom = geom_morpher_final(self.mcore) if afd.no_refit else self.geom
-        if afd and afd.morph:
-            return geom_morph(geom, afd.morph)
+        geom = self.geom
+        if afd:
+            if afd.no_refit:
+                geom = geom_morpher_final(self.mcore)
+            if afd.morph:
+                return geom_morph(geom, afd.morph)
         return geom
 
 

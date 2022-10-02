@@ -5,6 +5,7 @@ Character management:
   - Unzipper for character/asset packages
   - Dependency analyser so you can delete characters without affecting other ones
     (may be tricky for textures, use special texture_deps config?)
+  - Online asset library
 
 Performance:
   - Fast YAML library
@@ -45,7 +46,6 @@ Hair:
   - Import scalp vertex groups only when necessary so VG cleanup on finalize won't be necessary anymore
   - Rework hair shaders engine
   - Lichtso hair engine
-  - Move hair.blend to char.blend?
   - Hair refitting after edit
 
 Fitting:
@@ -55,7 +55,7 @@ Fitting:
   - MakeHuman asset support ?
   - Bounding box transform?
   - More fitting settings? (Thresholds and so on)
-  - Asset baking?
+  - Asset baking? -- partially replaced with "fold" system
   - Ability to select MB-Lab fitting algorithm
   - Use avg instead of max for thresh? I think no, we need to use no less than first n
 
