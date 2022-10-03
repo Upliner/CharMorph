@@ -233,7 +233,7 @@ def get_morphed_shape_key(obj):
         if result:
             return result, False
 
-    # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
+    # TODO: replace with evaluated obj get
     return obj.shape_key_add(from_mix=True), True
 
 

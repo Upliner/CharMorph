@@ -439,6 +439,7 @@ class Fitter(hair.HairFitter):
         self._fit_new_item(obj)
         self.fit_curves(obj)
 
+        obj.parent = self.mcore.obj
         bpy.ops.curves.surface_set({"active_object": self.mcore.obj, "selected_editable_objects": [obj]})
 
     def fit_new(self, obj):

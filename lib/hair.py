@@ -71,31 +71,28 @@ def export_particles(obj, psys_idx, filepath, precision):
 
 def update_particles(obj, cnts, morphed):
     t = utils.Timer()
-    utils.np_matrix_transform(morphed[1:], obj.matrix_world)
     psys = obj.particle_systems.active
-    have_mismatch = False
-    t.time("hcalc")
+    psys.use_hair_dynamics = False
+    eobj = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    epsys = eobj.particle_systems.active
+    for mod in eobj.modifiers:
+        if mod.type == "PARTICLE_SYSTEM" and mod.particle_system == epsys:
+            break
+    else:
+        logger.error("Particle system modifier is not found for %s %s", obj.name, psys.name)
+        return False
 
-    # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
-    override = {"object": obj}
-    bpy.ops.particle.disconnect_hair(override)
-    t.time("disconnect")
-    try:
-        pos = 0
-        for p, cnt in zip(psys.particles, cnts):
-            if len(p.hair_keys) != cnt + 1:
-                if not have_mismatch:
-                    logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
-                    have_mismatch = True
-                continue
-            marr = morphed[pos:pos + cnt + 1]
-            marr[0] = p.hair_keys[0].co_local
-            pos += cnt
-            p.hair_keys.foreach_set("co_local", marr.reshape(-1))
-    finally:
-        t.time("hair_set")
-        bpy.ops.particle.connect_hair(override)
-        t.time("connect")
+    t.time("eval")
+
+    pos = 0
+    for p, cnt in zip(psys.particles, cnts):
+        if len(p.hair_keys) != cnt + 1:
+            logger.error("Particle mismatch %d %d", len(p.hair_keys), cnt)
+            return False
+        for k in p.hair_keys[1:]:
+            k.co_object_set(eobj, mod, p, morphed[pos])
+            pos += 1
+    t.time("hair_set")
     return True
 
 
@@ -106,9 +103,8 @@ class HairData:
     binding: fit_calc.FitBinding
 
     def get_morphed(self, diff: numpy.ndarray):
-        result = numpy.empty((len(self.data) + 1, 3))
-        result[1:] = self.binding.fit(diff)
-        result[1:] += self.data
+        result = self.binding.fit(diff)
+        result += self.data
         return result
 
 
@@ -234,9 +230,7 @@ class HairFitter(fit_calc.MorpherFitCalculator):
         if not hd:
             return False
 
-        arr = hd.binding.fit(self.get_diff_hair())
-        arr += hd.data
-        obj.data.position_data.foreach_set("vector", arr.reshape(-1))
+        obj.data.position_data.foreach_set("vector", hd.get_morphed(self.get_diff_arr()).reshape(-1))
         obj.update_tag()
 
         t.time("c_hair_fit")
