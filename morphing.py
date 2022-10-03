@@ -18,9 +18,8 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging, numpy
-import bpy, mathutils, gpu, gpu_extras # pylint: disable=import-error
-from bpy_extras import view3d_utils    # pylint: disable=import-error, no-name-in-module
+import logging
+import bpy       # pylint: disable=import-error
 
 from .lib import morpher, fit_calc, utils
 from .common import manager
@@ -91,16 +90,19 @@ class OpBuildAltTopo(bpy.types.Operator):
             obj.data["cm_alt_topo"] = "sk"
             manager.update_morpher(morpher.get(obj))
             return {"FINISHED"}
-        result = fit_calc.FitCalculator(fit_calc.geom_morpher_final(mcore))\
-            .get_binding(obj).fit(mcore.full_basis - mcore.get_final())
-        result += utils.get_morphed_numpy(obj)
-        result = result.reshape(-1)
+        result = fit_calc.reverse_fit(obj, mcore).reshape(-1)
         if btype == "K":
             basis = obj.shape_key_add(name="Basis", from_mix=False)
             final = obj.shape_key_add(name="charmorph_final", from_mix=False)
             basis.data.foreach_set("co", result)
             obj.data["cm_alt_topo"] = "sk"
             final.value = 1
+        elif btype == "A":
+            attr = obj.data.attributes.get("charmorph_basis")
+            if not attr:
+                attr = obj.data.attributes.new("charmorph_basis", "FLOAT_VECTOR", "POINT")
+            utils.get_basis_attribute(obj.data).foreach_set("vector", result)
+            obj.data["cm_alt_topo"] = "attr"
         else:
             mesh = obj.data.copy()
             obj.data["cm_alt_topo"] = mesh
@@ -166,10 +168,11 @@ class UIProps:
     alt_topo_build_type: bpy.props.EnumProperty(
         name="Alt topo type",
         description="Type of alt topo to build",
-        default="P",
-        items=[
+        default="A",
+        items=(
+            ("A", "Attribute", "Store alt topo basis in attribute"),
             ("K", "Shapekey", "Store alt topo basis in shapekey"),
-            ("P", "Separate mesh", "Store alt topo basis in separate mesh")])
+            ("P", "Separate mesh", "Store alt topo basis in separate mesh")))
 
 
 class CHARMORPH_PT_Morphing(bpy.types.Panel):

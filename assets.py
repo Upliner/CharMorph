@@ -21,17 +21,21 @@
 import os, logging
 import bpy, bpy_extras  # pylint: disable=import-error
 
-from .lib import fitting, morpher, utils
+from .lib import fitting, fit_calc, morpher, utils
 from .lib.charlib import library, Asset
 from .common import manager as mm
 
 logger = logging.getLogger(__name__)
 
 
-def get_fitter(obj):
+def get_morpher(obj):
     if obj is mm.morpher.core.obj:
-        return mm.morpher.fitter
-    return morpher.get(obj).fitter
+        return mm.morpher
+    return morpher.get(obj)
+
+
+def get_fitter(obj):
+    return get_morpher(obj).fitter
 
 
 def get_asset_conf(context):
@@ -59,6 +63,12 @@ def get_assets(ui, _):
         + [("add_" + k, k, '') for k in sorted(library.additional_assets.keys())]
 
 
+binders = (
+    ("SOFT", "Soft", "This algorithm tries to make softer look for clothing but can cause more intersections with character"),
+    ("HARD", "Hard", "This algorighm is better for tight clothing but can cause more artifacts"),
+)
+
+
 class UIProps:
     fitting_char: bpy.props.PointerProperty(
         name="Char",
@@ -72,47 +82,49 @@ class UIProps:
         name="Local asset",
         description="Asset for fitting",
         type=bpy.types.Object,
-        poll=lambda ui, obj: utils.visible_mesh_poll(ui, obj) and ("charmorph_template" not in obj.data))
-    fitting_binder: bpy.props.EnumProperty(
-        name="Algorighm",
-        default="SOFT",
-        items=[
-            ("SOFT", "Soft", "This algorithm tries to make softer look for clothing but can cause more intersections with character"),
-            ("HARD", "Hard", "This algorighm is better for tight clothing but can cause more artifacts"),
-        ],
-        update=do_refit,
-        description="Fitting algorighm")
+        poll=lambda ui, obj:
+            obj.type in ("MESH", "CURVES") and "charmorph_template" not in obj.data and obj.visible_get()
+    )
+    fitting_direction: bpy.props.EnumProperty(
+        name="Direction", default="F",
+        items=(
+            ("F", "Forward", "The asset is currently fitted to base character"),
+            ("RA", "Reverse (attribute storage)",
+                "The asset is currently fitted to morphed character. "
+                "Store calculated basis in vertex attribute. (recommended)"),
+            ("RS", "Reverse (shapekey storage)",
+                "The asset is currently fitted to morphed character. Store calculated basis in shape key."),
+        ),
+        description="Select forward, reverse or no fitting")
     fitting_mask: bpy.props.EnumProperty(
         name="Mask",
         default="COMB",
-        items=[
+        items=(
             ("NONE", "No mask", "Don't mask character at all"),
             ("SEPR", "Separate", "Use separate mask vertex groups and modifiers for each asset"),
             ("COMB", "Combined", "Use combined vertex group and modifier for all character assets"),
-        ],
+        ),
         description="Mask parts of character that are invisible under clothing")
-    fitting_transforms: bpy.props.BoolProperty(
-        name="Apply transforms",
-        default=True,
-        description="Apply object transforms before fitting")
-    fitting_use_final: bpy.props.BoolProperty(
-        name="Already fitted",
-        default=False,
-        description="Skip fitting stage as asset is already fitted. Only transfer weights and apply masks")
+    fitting_binder: bpy.props.EnumProperty(
+        name="Fit algorighm", default="SOFT", items=binders, description="Fitting algorithm")
+    fitting_binder_weights: bpy.props.EnumProperty(
+        name="Weights algorighm", default="HARD", items=binders, description="Calculation algorithm for rig weights")
     fitting_weights: bpy.props.EnumProperty(
-        name="Weights",
-        default="ORIG",
-        items=[
+        name="Weights", default="ORIG",
+        items=(
             ("NONE", "None", "Don't transfer weights and armature modifiers to the asset"),
             ("ORIG", "Original", "Use original weights from character library"),
-            ("OBJ", "Object", "Use weights directly from object"
+            ("OBJ", "Object", "Use weights directly from object "
                 "(use it if you manually weight-painted the character before fitting the asset)"),
-        ],
+        ),
         description="Select source for armature deform weights")
     fitting_weights_ovr: bpy.props.BoolProperty(
         name="Weights overwrite",
         default=False,
         description="Overwrite existing asset weights")
+    fitting_transforms: bpy.props.BoolProperty(
+        name="Keep transforms", default=True,
+        description="Keep object transforms during parenting/fitting")
     fitting_library_asset: bpy.props.EnumProperty(
         name="Library asset",
         description="Select asset from library",
@@ -142,13 +154,14 @@ class CHARMORPH_PT_Assets(bpy.types.Panel):
         col = l.column(align=True)
         col.prop(ui, "fitting_char")
         col.prop(ui, "fitting_asset")
-        l.prop(ui, "fitting_binder")
+        col.prop(ui, "fitting_direction")
         l.prop(ui, "fitting_mask")
+        l.prop(ui, "fitting_binder")
+        l.prop(ui, "fitting_binder_weights")
         col = l.column(align=True)
         col.prop(ui, "fitting_weights")
         col.prop(ui, "fitting_weights_ovr")
         col.prop(ui, "fitting_transforms")
-        col.prop(ui, "fitting_use_final")
         l.separator()
         if ui.fitting_asset and 'charmorph_fit_id' in ui.fitting_asset.data:
             l.operator("charmorph.unfit")
@@ -185,7 +198,31 @@ def fitter_from_ctx(context):
 
 
 def get_asset_obj(context):
-    return mesh_obj(context.window_manager.charmorph_ui.fitting_asset)
+    obj = context.window_manager.charmorph_ui.fitting_asset
+    return obj if obj.type in ("MESH", "CURVES") else None
+
+
+# def has_fitting(obj):
+#    if "charmorph_basis" in obj.data.attributes:
+#        return True
+#    if obj.type == "MESH":
+#        return (obj.data.shape_keys and obj.data.shape_keys.key_blocks and
+#                "charmorph_fitting" in obj.data.shape_keys.key_blocks)
+#    return False
+
+
+def write_basis(obj, data, write_to_sk):
+    if obj.type == "MESH" and write_to_sk:
+        if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
+            sk = obj.shape_key_add(name="Basis", from_mix=False)
+        else:
+            sk = obj.data.shape_keys.reference_key
+        sk.data.foreach_set("co", data)
+        basis_attr = obj.data.attributes.get("charmorph_basis")
+        if basis_attr:
+            obj.data.attributes.remove(basis_attr)
+    else:
+        utils.get_basis_attribute(obj.data).data.foreach_set("vector", data)
 
 
 class OpFitLocal(bpy.types.Operator):
@@ -211,9 +248,14 @@ class OpFitLocal(bpy.types.Operator):
         asset = get_asset_obj(context)
         if mm.morpher.core.obj is asset:
             mm.create_charmorphs(char)
-        if context.window_manager.charmorph_ui.fitting_transforms:
+        ui = context.window_manager.charmorph_ui
+        if ui.fitting_transforms:
             utils.apply_transforms(asset, char)
-        get_fitter(char).fit_new_meshes((asset,))
+        cur_morpher = get_morpher(char)
+        if ui.fitting_direction[:1] == "R":
+            write_basis(asset, fit_calc.reverse_fit(asset, cur_morpher.core).reshape(-1), ui.fitting_direction == "RS")
+
+        cur_morpher.fitter.fit_new(asset)
         return {"FINISHED"}
 
 
@@ -284,7 +326,7 @@ class OpUnfit(bpy.types.Operator):
             asset.parent = asset.parent.parent
             if asset.parent and asset.parent.type == "ARMATURE":
                 if ui.fitting_transforms:
-                    utils.copy_transforms(asset, asset.parent) #FIXME: Make transforms sum
+                    utils.copy_transforms(asset, asset.parent)  # FIXME: Make transforms sum
                 asset.parent = asset.parent.parent
 
         mask = fitting.mask_name(asset)
@@ -305,14 +347,22 @@ class OpUnfit(bpy.types.Operator):
                 if name:
                     f.mcore.remove_asset_morph(name)
                     f.morpher.update()
-        try:
-            del asset.data['charmorph_fit_id']
-            del asset.data['charmorph_no_refit']
-        except KeyError:
-            pass
+        for prop in ("fit_id", "binder_fit", "binder_weights"):
+            try:
+                del asset.data["charmorph_" + prop]
+            except KeyError:
+                pass
 
-        if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
-            asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
+        basis_attr = asset.data.attributes.get("charmorph_basis")
+
+        if ui.fitting_direction[:1] != "R":
+            if asset.type == "MESH" and asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
+                asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
+            if basis_attr and asset.type == "CURVES":
+                asset.data.position_data.foreach_set("vector", utils.get_basis_numpy(asset).reshape(-1))
+
+        if basis_attr:  # TODO: add option to keep it? Then how to deal with object modifications after unfitting?
+            asset.data.attributes.remove(basis_attr)
 
         mm.last_object = asset  # Prevent swithing morpher to asset object
         return {"FINISHED"}

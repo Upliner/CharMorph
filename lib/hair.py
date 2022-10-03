@@ -120,34 +120,25 @@ class HairFitter(fit_calc.MorpherFitCalculator):
     def get_diff_arr(self):
         return self.mcore.get_diff()
 
-    def get_hair_data(self, target):
-        if isinstance(target, bpy.types.ParticleSystem):
-            if not target.is_edited:
-                return None
-            prefix = "p"
-            attributes = target.settings
-            cnt = len(target.particles)
-        else:
-            prefix = "c"
-            attributes = target
-            cnt = len(target.curves)
+    def _get_hair_data(self, target, props, hair_type):
+        hd = HairData()
+        if hair_type == "c":
+            attr = target.attributes.get("charmorph_basis")
+            if attr:
+                hd.data = numpy.empty(len(attr.data) * 3, numpy.float64)
+                attr.data.foreach_get("vector", hd.data)
+                hd.data = hd.data.reshape(-1, 3)
+                return hd
 
-        fit_id = attributes.get("charmorph_fit_id")
-        if fit_id:
-            data = self.hair_cache.get(prefix + fit_id)
-            if isinstance(data, HairData):
-                return data
-
-        z = self.mcore.char.get_np(f"hairstyles/{attributes.get('charmorph_hairstyle','')}.npz")
+        z = self.mcore.char.get_np(f"hairstyles/{props.get('charmorph_hairstyle','')}.npz")
         if z is None:
             logger.error("Hairstyle npz file is not found")
             return None
 
-        hd = HairData()
         hd.cnts = z["cnt"]
         hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
 
-        if prefix == "p" and "config" in z:
+        if hair_type == "p" and "config" in z:
             hd.data = numpy.delete(
                 hd.data,
                 numpy.concatenate((numpy.array((0,), dtype=hd.cnts.dtype), hd.cnts.cumsum()[:-1])),
@@ -155,12 +146,37 @@ class HairFitter(fit_calc.MorpherFitCalculator):
             )
             hd.cnts -= 1
 
-        if len(hd.cnts) != cnt:
+        if len(hd.cnts) != (len(target.particles) if hair_type == "p" else len(target.curves)):
             logger.error("Mismatch between current hairsyle and .npz!")
             return None
 
-        hd.binding = self.calc_binding_hair(hd.data)
-        self.hair_cache[prefix + fit_id] = hd
+        return hd
+
+    def get_hair_data(self, target):
+        if isinstance(target, bpy.types.ParticleSystem):
+            if not target.is_edited:
+                return None
+            hair_type = "p"
+            props = target.settings
+        else:
+            hair_type = "c"
+            props = target
+
+        fit_id = props.get("charmorph_fit_id")
+        if fit_id:
+            data = self.hair_cache.get(hair_type + fit_id)
+            if isinstance(data, HairData):
+                return data
+
+        hd = self._get_hair_data(target, props, hair_type)
+        if not hd:
+            return None
+
+        binder = str(props.get("charmorph_binder_fit", "")).upper() or\
+            bpy.context.window_manager.charmorph_ui.fitting_binder_weights
+
+        hd.binding = self.calc_binding_hair(hd.data, binder)
+        self.hair_cache[hair_type + fit_id] = hd
         return hd
 
     # use separate get_diff function to support hair fitting for posed characters

@@ -410,17 +410,12 @@ bbone_attributes = [
     'bbone_easein', 'bbone_easeout', 'bbone_rollin', 'bbone_rollout',
     'bbone_curveinx', 'bbone_curveiny', 'bbone_curveoutx', 'bbone_curveouty',
 ]
-
-
 # bbone attributes like bbone_curveiny were changed to bbone_curveinz in Blender 3.0
-def __blender3_bbone_attributes():
-    props = bpy.types.Bone.bl_rna.properties
-    for i, attr in enumerate(bbone_attributes):
-        if attr not in props and attr.endswith("y"):
-            bbone_attributes[i] = attr[:-1] + "z"
-
-
-__blender3_bbone_attributes()
+props = bpy.types.Bone.bl_rna.properties
+for i, attr in enumerate(bbone_attributes):
+    if attr not in props and attr.endswith("y"):
+        bbone_attributes[i] = attr[:-1] + "z"
+del props
 
 
 def rigify_finalize(rig, char):

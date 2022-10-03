@@ -149,16 +149,24 @@ def link_to_collections(new_obj, dst_obj):
 
 
 def copy_transforms(target, source):
-    target.rotation_mode=source.rotation_mode
-    target.rotation_axis_angle=source.rotation_axis_angle
+    target.rotation_mode = source.rotation_mode
+    target.rotation_axis_angle = source.rotation_axis_angle
     for prefix in "", "delta_":
         for param in "location", "rotation_quaternion", "rotation_euler", "scale":
-            setattr(target, prefix+param, getattr(source, prefix+param))
+            setattr(target, prefix + param, getattr(source, prefix + param))
 
 
 def apply_transforms(obj, new_parent=None):
-    parent_matrix = new_parent.matrix_world.inverted_safe() if new_parent else mathutils.Matrix.Identity(4)
-    obj.data.transform(parent_matrix @ obj.matrix_world, shape_keys=True)
+    if "charmorph_basis" not in obj.data.attributes:
+        matrix = obj.matrix_world
+        if new_parent:
+            matrix = new_parent.matrix_world.inverted_safe() @ matrix
+        if obj.type == "MESH":
+            obj.data.transform(matrix, shape_keys=True)
+        elif obj.type == "CURVES":
+            obj.data.position_data.foreach_set("vector", np_matrix_transform(get_morphed_numpy(obj), matrix).reshape(-1))
+        else:
+            raise Exception(f"Invalid object type for apply_transforms: {obj.type}")
     reset_transforms(obj)
 
 
@@ -189,20 +197,30 @@ def kdtree_from_np(verts):
 def get_basis_verts(data):
     if isinstance(data, bpy.types.Object):
         data = data.data
-    k = data.shape_keys
-    if k:
-        return k.reference_key.data
-    return data.vertices
+    attr = data.attributes.get("charmorph_basis")
+    if attr:
+        return attr.data, "vector"
+    if isinstance(data, bpy.types.Mesh):
+        k = data.shape_keys
+        if k:
+            return k.reference_key.data, "co"
+        return data.vertices, "co"
+    return data.position_data, "vector"
 
 
-def verts_to_numpy(data):
+def verts_to_numpy(data, attr="co"):
     arr = numpy.empty(len(data) * 3)
-    data.foreach_get("co", arr)
+    data.foreach_get(attr, arr)
     return arr.reshape(-1, 3)
 
 
 def get_basis_numpy(data):
-    return verts_to_numpy(get_basis_verts(data))
+    return verts_to_numpy(*get_basis_verts(data))
+
+
+def get_basis_attribute(data):
+    return data.attributes.get("charmorph_basis") or\
+        data.attributes.new("charmorph_basis", "FLOAT_VECTOR", "POINT")
 
 
 def get_morphed_shape_key(obj):
@@ -211,12 +229,17 @@ def get_morphed_shape_key(obj):
         result = k.key_blocks.get("charmorph_final")
         if result:
             return result, False
+        result = k.key_blocks.get("charmorph_fitting")
+        if result:
+            return result, False
 
     # Creating mixed shape key every time causes some minor UI glitches. Any better idea?
     return obj.shape_key_add(from_mix=True), True
 
 
 def get_morphed_numpy(obj):
+    if obj.type == "CURVES":
+        return verts_to_numpy(obj.data.position_data, "vector")
     if not obj.data.shape_keys or not obj.data.shape_keys.key_blocks:
         return get_basis_numpy(obj)
     morphed_shapekey, temporary = get_morphed_shape_key(obj)
@@ -321,6 +344,7 @@ def import_obj(file, obj, typ="MESH", link=True):
 def np_matrix_transform(arr, mat):
     arr.dot(numpy.array(mat.to_3x3().transposed(), dtype=arr.dtype), arr)
     arr += numpy.array(mat.translation)
+    return arr
 
 
 def get_vg_data(char, new, accumulate, verts=None):

@@ -176,7 +176,8 @@ def make_scalp(obj, name):
 class OpRefitHair(bpy.types.Operator):
     bl_idname = "charmorph.hair_refit"
     bl_label = "Refit hair"
-    bl_description = "Refit hair to match changed character geometry (discards manual combing, won't work if you added/removed particles)"
+    bl_description = "Refit hair to match changed character geometry "\
+        "(discards manual combing, won't work if you added/removed particles)"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -255,6 +256,8 @@ def import_particle_hair(style, char, char_conf, ui):
     s = dst_psys.settings
     s["charmorph_hairstyle"] = style
     s["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
+    s["charmorph_binder_fit"] = ui.fitting_binder.lower()
+
     s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
 
     override["object"] = dst_obj

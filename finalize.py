@@ -23,7 +23,7 @@ import logging, numpy
 import bpy  # pylint: disable=import-error
 
 from . import rig
-from .lib import rigging, utils
+from .lib import morpher_cores, rigging, utils
 from .common import manager as mm, MorpherCheckOperator
 
 logger = logging.getLogger(__name__)
@@ -164,10 +164,10 @@ def _do_vg_cleanup():
             obj.vertex_groups.remove(vg)
 
 
-def _bbox_correction_coeffs(mcore, bbox):
+def _bbox_correction_coeffs(mcore: morpher_cores.MorpherCore, bbox: numpy.ndarray):
     def calc_boxes(data: numpy.ndarray):
-        boxes = data[bbox.reshape(-1)].reshape(bbox.shape+(3,))
-        axis = len(bbox.shape)-1
+        boxes = data[bbox.reshape(-1)].reshape(bbox.shape + (3,))
+        axis = len(bbox.shape) - 1
         result = boxes.max(axis)
         result -= boxes.min(axis)
         return result

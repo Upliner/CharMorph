@@ -175,7 +175,7 @@ class EmptyAsset:
 
 
 class Fitter(hair.HairFitter):
-    children: list[utils.ObjTracker] = None
+    children: list[fit_calc.ObjFitData] = None
     transfer_calc: fit_calc.FitCalculator = None
     diff_arr: numpy.ndarray = None
 
@@ -184,12 +184,12 @@ class Fitter(hair.HairFitter):
         self.morpher = morpher
         self.bind_cache = {}
 
-    def add_mask_from_asset(self, afd: fit_calc.AssetFitData):
+    def add_mask_from_asset(self, afd: fit_calc.MeshFitData):
         vg_name = mask_name(afd.obj)
         if vg_name not in self.mcore.obj.vertex_groups:
             self._add_single_mask(vg_name, afd)
 
-    def _add_single_mask(self, vg_name, afd: fit_calc.AssetFitData):
+    def _add_single_mask(self, vg_name, afd: fit_calc.MeshFitData):
         if afd.conf.mask is not None:
             add_mask(self.mcore.obj, vg_name, afd.conf.mask.tolist())
             return
@@ -274,8 +274,8 @@ class Fitter(hair.HairFitter):
         return result
 
     def get_binding(self, target):
-        if not isinstance(target, fit_calc.AssetFitData):
-            target = fit_calc.AssetFitData(target)
+        if not isinstance(target, fit_calc.MeshFitData):
+            target = fit_calc.MeshFitData(target)
         fit_id = self._get_fit_id(target)
 
         result = self.bind_cache.get(fit_id)
@@ -293,7 +293,7 @@ class Fitter(hair.HairFitter):
             self.diff_arr = self.mcore.get_diff()
         return morph.apply(self.diff_arr.copy(), -1) if morph else self.diff_arr
 
-    def _transfer_weights_orig(self, afd: fit_calc.AssetFitData, vgs):
+    def _transfer_weights_orig(self, afd: fit_calc.MeshFitData, vgs):
         handler = self.morpher.rig_handler
         if handler:
             self.transfer_weights(afd, handler.conf.weights_npz)
@@ -305,14 +305,13 @@ class Fitter(hair.HairFitter):
             raise Exception("Tried to self-transfer weights")
         if self.mcore.alt_topo:
             if self.transfer_calc is None:
-                geom = fit_calc.geom_final(self.mcore.obj) if afd.no_refit else fit_calc.geom_mesh(self.mcore.obj.data)
-                self.transfer_calc = fit_calc.FitCalculator(geom)
+                self.transfer_calc = fit_calc.FitCalculator(fit_calc.geom_mesh(self.mcore.obj.data))
             calc = self.transfer_calc
         else:
             calc = self
         calc.transfer_weights(afd, zip(*utils.vg_weights_to_arrays(self.mcore.obj, lambda name: name in vgs)))
 
-    def _transfer_armature(self, afd: fit_calc.AssetFitData):
+    def _transfer_armature(self, afd: fit_calc.MeshFitData):
         if afd.obj.type != "MESH":
             return
         existing = set()
@@ -373,10 +372,8 @@ class Fitter(hair.HairFitter):
     def fit_mesh(self, afd):
         if not afd:
             return
-        if not isinstance(afd, fit_calc.AssetFitData):
+        if not isinstance(afd, fit_calc.MeshFitData):
             afd = self._get_asset_data(afd)
-        elif afd.no_refit:
-            return
 
         t = utils.Timer()
 
@@ -391,11 +388,16 @@ class Fitter(hair.HairFitter):
 
     def _fit_new_item(self, asset):
         ui = bpy.context.window_manager.charmorph_ui
-        if ui.fitting_use_final:
-            asset.data["charmorph_no_refit"] = True
+        asset.data["charmorph_binder_fit"] = ui.fitting_binder.lower()
+
         afd = self._get_asset_data(asset)
         if self.children is not None:
             self.children.append(afd)
+
+        if asset.type != "MESH":
+            return afd
+
+        asset.data["charmorph_binder_weights"] = ui.fitting_binder_weights.lower()
         asset.parent = self.mcore.obj
 
         if afd.morph:
@@ -430,10 +432,22 @@ class Fitter(hair.HairFitter):
 
     def fit_new_curves(self, obj):
         obj.data["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
+        if "charmorph_hairstyle" not in obj.data and "charmorph_basis" not in obj.data.attributes:
+            data = utils.get_basis_numpy(obj).reshape(-1)
+            attr = obj.data.attributes.new("charmorph_basis", "FLOAT_VECTOR", "POINT")
+            attr.data.foreach_set("vector", data)
+        self._fit_new_item(obj)
         self.fit_curves(obj)
-        bpy.ops.curves.surface_set({"object": obj, "selected_editable_objects": [self.mcore.obj]})
-        if self.children is not None:
-            self.children.append(utils.ObjTracker(obj))
+
+        bpy.ops.curves.surface_set({"active_object": self.mcore.obj, "selected_editable_objects": [obj]})
+
+    def fit_new(self, obj):
+        if obj.type == "MESH":
+            self.fit_new_meshes((obj,))
+        elif obj.type == "CURVES":
+            self.fit_new_curves(obj)
+        else:
+            raise Exception(f"Invalid object type for fit: {obj.type}")
 
     def fit_import(self, lst):
         result = True
@@ -456,17 +470,10 @@ class Fitter(hair.HairFitter):
 
     def _get_children(self):
         if self.children is None:
-            result = []
-            for obj in self.mcore.obj.children_recursive:
-                if 'charmorph_fit_id' not in obj.data:
-                    continue
-                if obj.type == "MESH":
-                    result.append(self._get_asset_data(obj))
-                elif obj.type == "CURVES":
-                    result.append(utils.ObjTracker(obj))
-                else:
-                    logger.warning("Unknown object type for fitting %s %s", obj, obj.type)
-            self.children = result
+            self.children = [
+                self._get_asset_data(obj) for obj in self.mcore.obj.children
+                if obj.type in ("MESH", "CURVES") and 'charmorph_fit_id' in obj.data
+            ]
         return self.children
 
     def get_assets(self):
@@ -487,7 +494,7 @@ class Fitter(hair.HairFitter):
             return self._get_asset_data(self.mcore.obj)
         return None
 
-    def _fit_check(self, target: utils.ObjTracker):
+    def _fit_check(self, target: fit_calc.ObjFitData):
         if not target.check_obj():
             logger.warning("Missing fitting object %s, resetting fitter", target.obj_name)
             self.children = None
@@ -503,7 +510,7 @@ class Fitter(hair.HairFitter):
         for target in self.get_assets():
             if not self._fit_check(target):
                 continue
-            if isinstance(target, fit_calc.AssetFitData):
+            if isinstance(target, fit_calc.MeshFitData):
                 self.fit_mesh(target)
                 if hair_deform == "AL":
                     self.fit_obj_particles(target.obj)

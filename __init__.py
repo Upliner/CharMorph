@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 3, 1),
+    "version": (0, 3, 2),
     "blender": (2, 93, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing, cloth fitting and rigging tools",
@@ -37,7 +37,7 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
-VERSION_ANNEX = "-rc1"
+VERSION_ANNEX = "-alpha"
 
 owner = object()
 
@@ -103,7 +103,7 @@ def register():
     charlib.library.load()
     class_register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
-    if bpy.app.version >= (3,3,0):
+    if bpy.app.version >= (3, 3, 0):
         bpy.context.window_manager.charmorph_ui.hair_curves = True
     subscribe_select_obj()
 

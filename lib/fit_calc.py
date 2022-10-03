@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 dist_thresh = 0.125
 epsilon = 1e-30
 epsilon2 = 1e-15
-bigval = 1/epsilon
+bigval = 1 / epsilon
 
 
 class FitBinding(tuple):
@@ -203,7 +203,7 @@ class SoftBinder:
                 self.dists_asset[i] = min(self.dists_asset[i], fdist)
                 fdist = (1 - fdist / bdist) / max(fdist, epsilon)
                 for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc)):
-                    binding[vi] = max(binding.get(vi, 0), bw*fdist)
+                    binding[vi] = max(binding.get(vi, 0), bw * fdist)
 
     def calc_binding_reverse(self, asset_geom):
         dthresh = min(max(self.dists_asset), dist_thresh)
@@ -246,8 +246,10 @@ class HardBinder(SoftBinder):
             self.revset.update(face)
             self.dists_asset.append(fdist)
             fdist = 1 / max(fdist, epsilon)
-            self.bindings.append({vi: bw*fdist
-                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc))})
+            self.bindings.append({
+                vi: bw * fdist
+                for vi, bw in zip(face, mathutils.interpolate.poly_3d_calc(verts[face].tolist(), loc))
+            })
 
     def calc_binding_kd(self):
         kd = self.char_geom.kd
@@ -258,7 +260,7 @@ class HardBinder(SoftBinder):
             kdata = kd.find_range(v, fdist)
             if len(kdata) < 2:
                 continue
-            if len(kdata)>24:
+            if len(kdata) > 24:
                 kdata = kdata[:24]
             coeff = 2 / (fdist - min([item[2] for item in kdata]))
             for _, idx, dist in kdata:
@@ -272,26 +274,38 @@ class HardBinder(SoftBinder):
         t.time("kdtree")
 
 
-class AssetFitData(utils.ObjTracker):
+class ObjFitData(utils.ObjTracker):
+    binding: FitBinding
+
+    def __init__(self, obj):
+        super().__init__(obj)
+        self._binder_fit = str(obj.data.get("charmorph_binder_fit", "")).upper()
+        self._binder_weights = str(obj.data.get("charmorph_binder_weights", "")).upper()
+
+    def binder_fit(self):
+        return self._binder_fit or bpy.context.window_manager.charmorph_ui.fitting_binder
+
+    def binder_weights(self):
+        return self._binder_weights or bpy.context.window_manager.charmorph_ui.fitting_binder_weights
+
+
+class MeshFitData(ObjFitData):
     obj: bpy.types.Object
     conf: charlib.Asset
     morph: morphs.Morph
     geom: Geometry
-    binding: FitBinding
-    no_refit: bool
 
     def __init__(self, obj, geom=None):
         super().__init__(obj)
         self.conf = charlib.Asset
         self.morph = None
-        self.no_refit = utils.is_true(obj.data.get("charmorph_no_refit"))
         if not geom:
             geom = geom_mesh(obj.data)
         self.geom = geom
 
 
 def get_mesh(data):
-    if isinstance(data, AssetFitData):
+    if isinstance(data, MeshFitData):
         data = data.obj
     if isinstance(data, bpy.types.Object):
         return data.data
@@ -320,7 +334,7 @@ class FitCalculator:
         data = get_mesh(data)
         return self._cache_get("obj_" + data.get("charmorph_fit_id", data.name), lambda: geom_mesh(data))
 
-    def _get_fold_geom(self, afd: AssetFitData) -> Geometry:
+    def _get_fold_geom(self, afd: MeshFitData) -> Geometry:
         def get_func():
             fold = afd.conf.fold
             return Geometry(fold.verts, fold.faces)
@@ -329,22 +343,24 @@ class FitCalculator:
     def _add_asset_data(self, _asset):
         pass
 
-    def _get_asset_data(self, obj, geom=None):
+    def _get_asset_data(self, obj, geom=None) -> ObjFitData:
+        if obj.type != "MESH":
+            return ObjFitData(obj)
         geom2 = geom
         if not geom:
             geom2 = self._get_asset_geom(obj)
-        afd = AssetFitData(obj, geom2)
+        afd = MeshFitData(obj, geom2)
         self._add_asset_data(afd)
         if geom:
             # skip caching if custom geom is present
-            afd.binding = self._get_binding(afd, True)
+            afd.binding = self._get_binding(afd, custom_geom=True)
         else:
             afd.binding = self.get_binding(afd)
         return afd
 
-    def _calc_binding_internal(self, asset_verts, afd=None, asset_geom=None):
+    def _calc_binding_internal(self, asset_verts, binder, afd=None, asset_geom=None):
         t = utils.Timer()
-        if bpy.context.window_manager.charmorph_ui.fitting_binder == "HARD":
+        if binder == "HARD":
             Binder = HardBinder
         else:
             Binder = SoftBinder
@@ -358,20 +374,24 @@ class FitCalculator:
         t.time("finalize")
         return positions, idx, wresult.reshape(-1, 1)
 
-    def _get_binding(self, target, custom_geom=False) -> FitBinding:
-        if not isinstance(target, AssetFitData):
-            target = AssetFitData(target)
+    def _get_binding(self, target, /, custom_geom=False, binder=None) -> FitBinding:
+        if not isinstance(target, ObjFitData):
+            target = MeshFitData(target) if target.type == "MESH" else ObjFitData(target)
+        if not binder:
+            binder = target.binder_fit()
+        if not isinstance(target, MeshFitData):
+            return self.calc_binding_hair(utils.get_basis_numpy(target.obj), binder)
         fold = target.conf.fold
         geom = target.geom if custom_geom or fold is None else self._get_fold_geom(target)
-        binding = self._calc_binding_internal(geom.verts, target, geom)
+        binding = self._calc_binding_internal(geom.verts, binder, target, geom)
         return FitBinding(binding) if fold is None else FitBinding(
             binding, (fold.pos, fold.idx, fold.weights))
 
     def get_binding(self, target) -> FitBinding:
         return self._get_binding(target)
 
-    def calc_binding_hair(self, arr):
-        return FitBinding(self._calc_binding_internal(arr))
+    def calc_binding_hair(self, arr, binder):
+        return FitBinding(self._calc_binding_internal(arr, binder))
 
     def _transfer_weights_iter_arrays(self, binding: FitBinding, vg_data):
         if self.tmp_buf is None:
@@ -388,11 +408,22 @@ class FitCalculator:
                 yield name, idx, weights[idx]
 
     def transfer_weights(self, target, vg_data):
-        if not isinstance(target, AssetFitData):
+        if not isinstance(target, ObjFitData):
             target = self._get_asset_data(target)
+        if not isinstance(target, MeshFitData):
+            return
+        binding = target.binding
+        if target.binder_fit() != target.binder_weights():
+            binding = self._get_binding(target, binder=target.binder_weights())
         utils.import_vg(
-            target.obj, self._transfer_weights_get(target.binding, vg_data),
+            target.obj, self._transfer_weights_get(binding, vg_data),
             bpy.context.window_manager.charmorph_ui.fitting_weights_ovr)
+
+
+def reverse_fit(obj, mcore):
+    result = FitCalculator(geom_morpher_final(mcore)).get_binding(obj).fit(mcore.full_basis - mcore.get_final())
+    result += utils.get_morphed_numpy(obj)
+    return result
 
 
 class MorpherFitCalculator(FitCalculator):
@@ -413,14 +444,10 @@ class MorpherFitCalculator(FitCalculator):
         afd.conf = self._get_asset_conf(afd.obj)
         afd.morph = afd.conf.morph  # TODO: get morph from mcore
 
-    def get_char_geom(self, afd: AssetFitData) -> Geometry:
-        geom = self.geom
-        if afd:
-            if afd.no_refit:
-                geom = geom_morpher_final(self.mcore)
-            if afd.morph:
-                return geom_morph(geom, afd.morph)
-        return geom
+    def get_char_geom(self, afd: MeshFitData) -> Geometry:
+        if afd and afd.morph:
+            return geom_morph(self.geom, afd.morph)
+        return self.geom
 
 
 # calculate binding based on nearest vertices
@@ -462,7 +489,7 @@ class RiggerFitCalculator(FitCalculator):
                 d = weights[vi]
                 d[i] = d.get(i, 0) + 1 / max(dist**2, 1e-5)
 
-    def get_binding(self, target: AssetFitData):
+    def get_binding(self, target: MeshFitData):
         t = utils.Timer()
         cg = self.get_char_geom(target)
         verts = target.geom.verts

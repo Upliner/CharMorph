@@ -135,7 +135,7 @@ class Manager:
         if obj is self.last_object:
             return
 
-        if obj.type == "MESH":
+        if obj.type in ("MESH", "CURVES"):
             asset = None
             if (obj.parent and obj.parent.type == "MESH"
                     and "charmorph_fit_id" in obj.data
@@ -145,7 +145,7 @@ class Manager:
             if asset:
                 ui.fitting_char = obj
                 ui.fitting_asset = asset
-            elif charlib.library.obj_char(obj):
+            elif obj.type == "MESH" and charlib.library.obj_char(obj):
                 ui.fitting_char = obj
             else:
                 ui.fitting_asset = obj

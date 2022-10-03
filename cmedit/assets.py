@@ -25,6 +25,7 @@ import bpy, bpy_extras, bmesh  # pylint: disable=import-error
 from . import file_io
 from ..lib import morpher_cores, fit_calc, utils
 
+
 class CMEDIT_PT_Assets(bpy.types.Panel):
     bl_label = "Assets"
     bl_parent_id = "VIEW3D_PT_CMEdit"

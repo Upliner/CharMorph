@@ -46,11 +46,11 @@ Hair:
   - Import scalp vertex groups only when necessary so VG cleanup on finalize won't be necessary anymore
   - Rework hair shaders engine
   - Lichtso hair engine
-  - Hair refitting after edit
+  - Hair refitting after edit - WIP for Blender 3.3 curves
 
 Fitting:
-  - Hybrid mode: store asset morphs in shapekeys even in numpy mode (probably not activating them),
-      get asset morph data from morpher-code, not charlib!
+  - Hybrid mode: store asset morphs in shapekeys (probably not activating them) or attributes,
+      get asset morph data from morpher-core, not charlib!
   - BMesh instead of creating from_mix shapekey?
   - MakeHuman asset support ?
   - Bounding box transform?
