@@ -30,9 +30,10 @@ class WhatToProps:
     randomize_morphs: bpy.props.BoolProperty(
         name="Morphs", default=True,
         description="Randomize morphs")
-    randomize_mats: bpy.props.BoolProperty(
-        name="Materials", default=False,
-        description="Randomize materials")
+    # TODO: material randomization
+    # randomize_mats: bpy.props.BoolProperty(
+    #    name="Materials", default=False,
+    #    description="Randomize materials")
     randomize_incl: bpy.props.StringProperty(
         name="Incl. regex")
     randomize_excl: bpy.props.StringProperty(

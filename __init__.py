@@ -70,6 +70,8 @@ def subscribe_select_obj():
 
 @bpy.app.handlers.persistent
 def load_handler(_):
+    if bpy.app.version >= (3, 3, 0):
+        bpy.context.window_manager.charmorph_ui.hair_curves = True
     subscribe_select_obj()
     common.manager.del_charmorphs()
     on_select()

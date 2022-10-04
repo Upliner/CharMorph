@@ -437,10 +437,14 @@ class Fitter(hair.HairFitter):
             attr = obj.data.attributes.new("charmorph_basis", "FLOAT_VECTOR", "POINT")
             attr.data.foreach_set("vector", data)
         self._fit_new_item(obj)
+        surface_deform = bpy.context.window_manager.charmorph_ui.hair_curves_deform == "S"
+        if surface_deform:
+            obj.data.surface = self.mcore.obj
         self.fit_curves(obj)
 
         obj.parent = self.mcore.obj
-        bpy.ops.curves.surface_set({"active_object": self.mcore.obj, "selected_editable_objects": [obj]})
+        if surface_deform:
+            bpy.ops.curves.surface_set({"active_object": self.mcore.obj, "selected_editable_objects": [obj]})
 
     def fit_new(self, obj):
         if obj.type == "MESH":

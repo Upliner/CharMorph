@@ -393,6 +393,15 @@ class UIProps:
         name="Use 3.3 hair curves",
         description="Use Blender 3.3 hair curves that allow faster hair deform",
         default=False)
+    hair_curves_deform: bpy.props.EnumProperty(
+        name="Curves deform",
+        description="Deform method for Blender 3.3 hair curves",
+        default="S",
+        items=(
+            ("M", "Manual", "Deform hair only manually using \"Refit hair\" button"),
+            ("S", "Surface deform", "Use surface deform node"),
+            # ("P", "Proxy mesh", "Use proxy mesh to which armature deform can be applied"), # TODO
+        ))
     hair_scalp: bpy.props.BoolProperty(
         name="Use scalp mesh",
         description="Use scalp mesh as emitter instead of whole body")
@@ -433,7 +442,10 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         l = self.layout
         if bpy.app.version >= (3, 3, 0):
             l.prop(ui, "hair_curves")
-        for prop in list(UIProps.__annotations__)[1:]:  # pylint: disable=no-member
+            if ui.hair_curves:
+                l.prop(ui, "hair_curves_deform")
+
+        for prop in list(UIProps.__annotations__)[2:]:  # pylint: disable=no-member
             if (prop == "hair_shrinkwrap" and not char.hair_shrinkwrap) or (
                     prop == "hair_scalp" and char.force_hair_scalp):
                 continue

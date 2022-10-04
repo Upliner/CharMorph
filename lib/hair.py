@@ -230,7 +230,12 @@ class HairFitter(fit_calc.MorpherFitCalculator):
         if not hd:
             return False
 
-        obj.data.position_data.foreach_set("vector", hd.get_morphed(self.get_diff_arr()).reshape(-1))
+        if obj.data.surface is None:
+            diff = self.get_diff_hair()
+        else:
+            diff = self.get_diff_arr()
+
+        obj.data.position_data.foreach_set("vector", hd.get_morphed(diff).reshape(-1))
         obj.update_tag()
 
         t.time("c_hair_fit")
