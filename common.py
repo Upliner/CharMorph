@@ -21,10 +21,15 @@
 import logging
 import bpy  # pylint: disable=import-error
 
+from . import prefs
 from .lib import charlib, morpher
 
 logger = logging.getLogger(__name__)
-undo_push = None
+
+if "undo_push" in dir(bpy.ops.ed):
+    undo_push = bpy.ops.ed.undo_push
+else:
+    undo_push = None
 
 
 class UndoHandler:
@@ -177,6 +182,13 @@ class MorpherCheckOperator(bpy.types.Operator):
         return self.exec(context, context.window_manager.charmorph_ui)
 
 
+def _get_undo_mode():
+    lprefs = prefs.get_prefs()
+    if not lprefs:
+        return "S"
+    return lprefs.preferences.undo_mode
+
+
 class OpMorphCharacter(bpy.types.Operator):
     bl_idname = "charmorph.on_prop_change"
     bl_label = "Morph CharMorph character"
@@ -187,7 +199,7 @@ class OpMorphCharacter(bpy.types.Operator):
             return {'FINISHED'}
         if event.value == 'RELEASE':
             msg = undo_handler.finish()
-            if undo_push:
+            if undo_push and _get_undo_mode() == "A":
                 undo_push(message=msg)
 
         return {'PASS_THROUGH'}
@@ -197,9 +209,23 @@ class OpMorphCharacter(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-if "undo_push" in dir(bpy.ops.ed):
-    undo_push = bpy.ops.ed.undo_push
-else:
-    OpMorphCharacter.bl_options = {"UNDO"}
+def register():
+    if undo_push and _get_undo_mode() == "A":
+        logger.debug("Advanced undo mode")
+        OpMorphCharacter.bl_options = set()
+    else:
+        logger.debug("Simple undo mode")
+        OpMorphCharacter.bl_options = {"UNDO"}
+    bpy.utils.register_class(OpMorphCharacter)
 
-classes = [OpMorphCharacter]
+
+def unregister():
+    bpy.utils.unregister_class(OpMorphCharacter)
+
+
+def update_undo_mode():
+    unregister()
+    register()
+
+
+prefs.undo_update_hook = update_undo_mode

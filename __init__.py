@@ -84,7 +84,7 @@ classes: list[type] = [None, prefs.CharMorphPrefs, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
-for module in common, library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose:
+for module in library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose:
     classes.extend(module.classes)
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)
@@ -99,6 +99,7 @@ def register():
     logger.debug("Charmorph register")
     charlib.library.load()
     class_register()
+    common.register()
     bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
     subscribe_select_obj()
 
@@ -126,6 +127,7 @@ def unregister():
     del bpy.types.WindowManager.charmorph_ui
     common.manager.del_charmorphs()
 
+    common.unregister()
     class_unregister()
 
 
