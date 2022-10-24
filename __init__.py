@@ -58,6 +58,7 @@ def on_select():
     common.manager.on_select()
 
 
+@bpy.app.handlers.persistent
 def undoredo_post(_context, _scene):
     common.manager.on_select(undoredo=True)
 
