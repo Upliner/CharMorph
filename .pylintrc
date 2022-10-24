@@ -16,4 +16,4 @@ ignore=lib/yaml
 [DESIGN]
 max-attributes=10   # I'll try to use less attributes in future, but let's raise a little for now
 max-locals=20       # Such complex project with some performance-critical parts really needs max-locals to be raised a little bit
-max-line-length=128 # Let's raise line length limitations a little in our era of wide screens
+max-line-length=120 # Let's raise line length limitations a little in our era of wide screens
