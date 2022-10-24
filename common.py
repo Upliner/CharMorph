@@ -130,6 +130,7 @@ class Manager:
         if self.morpher is not morpher.null_morpher:
             force_recreate = False
             if undoredo and isinstance(self.morpher.core, morpher_cores.ShapeKeysMorpher):
+                logger.debug("Resetting morpher because of undo/redo")
                 force_recreate = True
             elif not self.morpher.check_obj():
                 logger.warning("Current morphing object is bad, resetting...")

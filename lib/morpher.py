@@ -235,8 +235,6 @@ class Morpher:
 
         def setter(_, value):
             nonlocal saved_value
-            if self.core.clamp:
-                value = max(min(value, morph.max), morph.min)
             saved_value = value
             self.prop_set(morph.name, value)
 

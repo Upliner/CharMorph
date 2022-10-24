@@ -272,6 +272,8 @@ class ShapeKeysMorpher(MorpherCore):
 
     def prop_set(self, name, value):
         morph = self.morphs_l2_dict[name]
+        if self.clamp:
+            value = max(min(value, morph.max), morph.min)
         if self.is_combo_morph(morph):
             self._prop_set_combo(morph, value)
         else:
