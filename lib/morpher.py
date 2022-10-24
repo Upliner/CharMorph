@@ -262,10 +262,10 @@ class Morpher:
 
     def update_morph_categories(self):
         if not self.core.char.no_morph_categories:
-            self.categories = [
-                (name, name, "") for name in sorted(set(
-                    morph_category_name(morph.name)
-                    for morph in self.core.morphs_l2 if morph.name))]
+            self.categories = sorted(set(
+                morph_category_name(morph.name)
+                for morph in self.core.morphs_l2 if morph.name
+            ))
 
     # Create a property group with all L2 morphs
     def create_charmorphs_L2(self):

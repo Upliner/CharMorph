@@ -58,6 +58,10 @@ def on_select():
     common.manager.on_select()
 
 
+def undoredo_post(_context, _scene):
+    common.manager.on_select(undoredo=True)
+
+
 def subscribe_select_obj():
     bpy.msgbus.clear_by_owner(owner)
     bpy.msgbus.subscribe_rna(
@@ -104,8 +108,8 @@ def register():
     subscribe_select_obj()
 
     bpy.app.handlers.load_post.append(load_handler)
-    bpy.app.handlers.undo_post.append(select_handler)
-    bpy.app.handlers.redo_post.append(select_handler)
+    bpy.app.handlers.undo_post.append(undoredo_post)
+    bpy.app.handlers.redo_post.append(undoredo_post)
     bpy.app.handlers.depsgraph_update_post.append(select_handler)
 
     cmedit.register()

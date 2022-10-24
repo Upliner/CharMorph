@@ -22,7 +22,7 @@ import logging
 import bpy  # pylint: disable=import-error
 
 from . import prefs
-from .lib import charlib, morpher
+from .lib import charlib, morpher, morpher_cores
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +90,10 @@ class Manager:
         if c.randomize_excl_regex is not None:
             ui.randomize_excl = c.randomize_excl_regex
 
-        ui.morph_category = "<None>"
-
         m.create_charmorphs_L2()
+
+        if not ui.morph_category.startswith("<") and ui.morph_category not in m.categories:
+            ui.morph_category = "<None>"
 
     def _get_old_storage(self, obj):
         for m in (self.morpher, self.old_morpher):
@@ -124,12 +125,18 @@ class Manager:
         self.morpher = morpher.null_morpher
         morpher.del_charmorphs_L2()
 
-    def on_select(self):
+    def on_select(self, undoredo=False):
         self.old_morpher = None
-        if self.morpher is not morpher.null_morpher and not self.morpher.check_obj():
-            logger.warning("Current morphing object is bad, resetting...")
-            self.old_morpher = self.morpher
-            self.del_charmorphs()
+        if self.morpher is not morpher.null_morpher:
+            force_recreate = False
+            if undoredo and isinstance(self.morpher.core, morpher_cores.ShapeKeysMorpher):
+                force_recreate = True
+            elif not self.morpher.check_obj():
+                logger.warning("Current morphing object is bad, resetting...")
+                force_recreate = True
+            if force_recreate:
+                self.old_morpher = self.morpher
+                self.del_charmorphs()
         if bpy.context.mode != "OBJECT":
             return
         obj = bpy.context.object

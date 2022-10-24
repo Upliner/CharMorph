@@ -57,6 +57,8 @@ def _import_moprhs(wm, obj, char):
         progress.enter_substeps(steps, "Importing shape keys...")
         if ui.import_morphs:
             importer.import_morphs(progress)
+            # ??? without extra empty step, progress resets to 0% after loadging morphs. TODO: investigate
+            progress.step()
             progress.step("Morphs imported")
         if ui.import_expressions:
             importer.import_expressions(progress)

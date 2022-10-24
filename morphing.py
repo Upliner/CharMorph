@@ -150,7 +150,7 @@ class UIProps:
         name="Category",
         items=lambda _ui, _:
             [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")]
-            + manager.morpher.categories,
+            + [(name, name, "") for name in manager.morpher.categories],
         description="Select morphing categories to show")
     morph_preset: bpy.props.EnumProperty(
         name="Presets",
