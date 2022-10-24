@@ -381,10 +381,17 @@ class MorphImporter:
         for morph in L1:
             data = self._import_to_sk(morph, 1)
             self._L1_data[morph.name] = data
-            progress.step(data[0].name)
+            try:
+                progress.step(data[0].name)
+            except OSError:
+                pass
 
         for morph, L1_name in L2:
-            progress.step(self._import_to_sk(morph, 2, L1_name)[0].name)
+            data = self._import_to_sk(morph, 2, L1_name)
+            try:
+                progress.step(data[0].name)
+            except OSError:
+                pass
 
         progress.leave_substeps("Morphs done")
 
@@ -400,7 +407,11 @@ class MorphImporter:
         self._counter_cnt = 1
         progress.enter_substeps(len(lst), "Importing expressions")
         for morph, L1_name in lst:
-            progress.step(self._import_to_sk(morph, 3, L1_name)[0].name)
+            data = self._import_to_sk(morph, 3, L1_name)
+            try:
+                progress.step(data[0].name)
+            except OSError:
+                pass
         progress.leave_substeps("Expressions done")
 
 
