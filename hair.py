@@ -85,7 +85,6 @@ def attach_scalp(char, obj):
     else:
         for c in collections:
             c.objects.link(obj)
-    assets.get_fitter(char).fit_new((obj,))
 
 
 def create_scalp(name, char, vgi):
@@ -112,6 +111,7 @@ def create_scalp(name, char, vgi):
     m.from_pydata(verts, edges, faces)
     obj = bpy.data.objects.new(name, m)
     attach_scalp(char, obj)
+    assets.get_fitter(char).fit_new((obj,))
     return obj
 
 
@@ -267,6 +267,10 @@ class OpCreateHair(bpy.types.Operator):
         override["selected_editable_objects"] = [dst_obj]
         override["particle_system"] = src_psys
         bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
+        override["object"] = dst_obj
+        if do_scalp:
+            bpy.ops.particle.connect_hair(override)
+            assets.get_fitter(char).fit_new((dst_obj,))
         dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems) - 1]
         for attr in dir(src_psys):
             if not attr.startswith("vertex_group_"):
@@ -282,7 +286,6 @@ class OpCreateHair(bpy.types.Operator):
         s["charmorph_fit_id"] = f"{random.getrandbits(64):016x}"
         s.material = get_material_slot(dst_obj, "hair_" + style, ui.hair_color)
 
-        override["object"] = dst_obj
         cnt = len(dst_obj.modifiers)
         for m in list(dst_obj.modifiers):
             cnt -= 1
@@ -291,9 +294,6 @@ class OpCreateHair(bpy.types.Operator):
                     if bpy.ops.object.modifier_move_down.poll(override):
                         bpy.ops.object.modifier_move_down(override, modifier=m.name)
                 cnt += 1
-
-        if do_scalp:
-            bpy.ops.particle.connect_hair(override)
 
         for m in restore_modifiers:
             m.show_viewport = True
