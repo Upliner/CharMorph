@@ -582,9 +582,16 @@ def apply_editmode_tweak(context, tweak):
         sliding_joints.create(context, tweak["upper_bone"], tweak["lower_bone"], "." + tweak["side"])
     elif t == "assign_parents":
         for k, v in tweak["bones"].items():
-            if v:
-                v = edit_bones[v]
-            edit_bones[k].parent = v
+            bone = edit_bones.get(k)
+            if not bone:
+                logger.error(f'Bone "{k}" is not found')
+                continue
+            if v is not None:
+                v = edit_bones.get(v)
+                if not v:
+                    logger.error(f'Bone "{v}" is not found')
+                    continue
+            bone.parent = v
     elif t == "align":
         align_tweak(edit_bones, tweak)
     elif tweak.get("select") == "edit_bone":
@@ -619,6 +626,9 @@ def apply_tweak(rig, tweak):
         if add is None:
             pass
         elif add == "constraint":
+            if not obj:
+                logger.error(f'Bone "{tweak["bone"]}" is not found')
+                return
             obj = obj.constraints.new(tweak.get("type"))
             if hasattr(obj, "target"):
                 obj.target = rig
@@ -626,6 +636,9 @@ def apply_tweak(rig, tweak):
             logger.error("Invalid add operator: %s", repr(tweak))
     elif select == "constraint":
         bone = obj
+        if not bone:
+            logger.error(f'Bone "{tweak["bone"]}" is not found')
+            return
         obj = bone.constraints.get(tweak.get("name", ""))
         if not obj:
             obj = find_constraint(bone, rig, tweak.get("type"), tweak.get("target_bone"))
