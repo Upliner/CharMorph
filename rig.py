@@ -34,19 +34,23 @@ def add_rig(ui):
     if not conf:
         raise rigging.RigException("Rig is not found")
 
+    if (not ui.rig_manual_joints or not ui.rig_manual_weights) and not m.core.check_vertex_count():
+        raise rigging.RigException(
+            f"Vertex count mismatch: {len(m.core.obj.data.vertices)} != {len(m.core.char.np_basis)}")
+
     old_handler = m.rig_handler
     rig = m.add_rig(conf)
     try:
         bpy.context.view_layer.objects.active = rig
-        rigger = m.run_rigger(ui.rig_manual_sculpt)
+        rigger = m.run_rigger(ui.rig_manual_sculpt, None, ui.rig_manual_joints)
 
-        if old_handler:
-            old_handler.clear_weights()
-
-        if m.core.alt_topo:
-            m.fitter.transfer_weights(m.core.obj, conf.weights_npz)
-        else:
-            utils.import_vg(m.core.obj, conf.weights_npz, False)
+        if not ui.rig_manual_weights:
+            if old_handler:
+                old_handler.clear_weights()
+            if m.core.alt_topo:
+                m.fitter.transfer_weights(m.core.obj, conf.weights_npz)
+            else:
+                utils.import_vg(m.core.obj, conf.weights_npz, False)
 
         m.rig_handler.finalize(rigger)
 
@@ -135,6 +139,14 @@ class UIProps:
         default=False,
         description="Enable it if you want changes outside CharMorph's morphing panel "
                     "(i.e. Blender's edit or sculpt mode) to affect character rig")
+    rig_manual_joints: bpy.props.BoolProperty(
+        name="Manual joints",
+        default=False,
+        description="Use joint_* vertex groups for joint positions")
+    rig_manual_weights: bpy.props.BoolProperty(
+        name="Manual weights",
+        default=False,
+        description="Use this if you already have manual weight painting for your character")
 
 
 class CHARMORPH_PT_Rig(bpy.types.Panel):
@@ -155,6 +167,8 @@ class CHARMORPH_PT_Rig(bpy.types.Panel):
         ui = context.window_manager.charmorph_ui
         l.prop(ui, "rig")
         l.prop(ui, "rig_manual_sculpt")
+        l.prop(ui, "rig_manual_joints")
+        l.prop(ui, "rig_manual_weights")
         l.operator("charmorph.rig")
         l.operator("charmorph.unrig")
 

@@ -63,6 +63,11 @@ class MorpherCore(utils.ObjTracker):
     def get_final(self):
         return self.get_final_alt_topo()
 
+    def check_vertex_count(self):
+        if not self.char or self.char.np_basis is None:
+            return True
+        return len(self.obj.data.vertices) == len(self.char.np_basis)
+
     def get_final_alt_topo(self):
         if self._alt_topo_verts is None:
             self._alt_topo_verts = utils.get_morphed_numpy(self.obj)
@@ -341,6 +346,9 @@ class NumpyMorpher(MorpherCore):
     def _init_storage(self):
         if self.storage is None:
             self.storage = morphs.MorphStorage(self.char)
+
+    def check_vertex_count(self):
+        return True
 
     def has_morphs(self):
         # HACK: used just to prevent morphing when morphing data was removed

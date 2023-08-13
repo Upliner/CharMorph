@@ -43,7 +43,7 @@ class OpResetChar(bpy.types.Operator):
         mcore.obj.data["cm_morpher"] = "ext"
 
         new_morpher = morpher.get(mcore.obj)
-        if new_morpher.error or not new_morpher.core.has_morphs():
+        if (new_morpher.error and not new_morpher.alt_topo_buildable) or not new_morpher.core.has_morphs():
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
             else:

@@ -89,7 +89,7 @@ class Morpher:
     def __init__(self, core: morpher_cores.MorpherCore, undo_handler=_null_handler):
         self.core = core
         self.push_undo = undo_handler
-        self._obj_name = self.core.obj
+        self._obj_name = core.obj
 
         self.L1_list = [
             (name, core.char.types.get(name, {}).get("title", name), "")
@@ -97,16 +97,16 @@ class Morpher:
         ]
         self.update_L1_idx()
 
-        self.rig = self.core.obj.find_armature() if self.core.obj else None
+        self.rig = core.obj.find_armature() if core.obj else None
         self.rig_handler = self._get_rig_handler()
         self.is_slow = bool(self.rig_handler) and self.rig_handler.slow
         if self.rig and (not self.rig_handler or not self.rig_handler.is_morphable()):
-            self.core.error = "Character is rigged.\nMorphing is not supported\n for this rig type"
+            core.error = "Character is rigged.\nMorphing is not supported\n for this rig type"
 
         self.materials = materials.Materials(core.obj)
-        if self.core.obj:
+        if core.obj:
             self.fitter = fitting.Fitter(self)
-        self.sj_calc = sliding_joints.SJCalc(self.core.char, self.rig, self.get_co)
+        self.sj_calc = sliding_joints.SJCalc(core.char, self.rig, self.get_co if core.check_vertex_count() else None)
 
     def __bool__(self):
         return self.core.obj is not None
@@ -331,7 +331,7 @@ class Morpher:
         finally:
             bpy.ops.object.mode_set(mode="OBJECT")
 
-    def run_rigger(self, manual_sculpt=False, run_func=None):
+    def run_rigger(self, manual_sculpt=False, run_func=None, manual_joints=False):
         if self.rig_handler is None:
             self.rig_handler = self._get_rig_handler()
         if self.rig_handler is None:
@@ -351,14 +351,16 @@ class Morpher:
                 if self.rfc is None:
                     self.rfc = fit_calc.RiggerFitCalculator(self)
                 joints = self.rfc.transfer_weights_get(self.core.obj, joints)
-                rigger.joints_from_file(joints, verts_alt)
+                v = verts_alt
             else:
-                rigger.joints_from_file(joints, verts)
+                v = verts
+            rigger.joints_from_file(joints,
+                utils.get_morphed_numpy(self.core.obj) if manual_sculpt else v)
 
-        if conf.joints:
-            add_char_joints(conf.joints)
-        else:
+        if manual_joints or not conf.joints:
             rigger.joints_from_char(self.core.obj, verts_alt)
+        else:
+            add_char_joints(conf.joints)
 
         self.rig_handler.tweaks = rigging.unpack_tweaks(conf.parent.dirpath, conf.tweaks)
         rigger.set_opts(conf.bones)

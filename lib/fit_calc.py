@@ -445,8 +445,7 @@ class RiggerFitCalculator(FitCalculator):
 
     # when transferring joints to another geometry, we need to make sure
     # that every original vertex will be mapped to new topology
-    def _calc_binding_kd_reverse(self, weights, asset_verts):
-        kd = utils.kdtree_from_verts(asset_verts)
+    def _calc_binding_kd_reverse(self, weights, kd):
         for i, vert in self.geom.verts_enum():
             for _, vi, dist in kd.find_n(vert, 4):
                 d = weights[vi]
@@ -455,14 +454,13 @@ class RiggerFitCalculator(FitCalculator):
     def get_binding(self, target: AssetFitData):
         t = utils.Timer()
         cg = self.get_char_geom(target)
-        verts = target.geom.verts
         # calculate weights based on nearest vertices
-        bind_dict = _calc_binding_kd(cg.kd, verts, 1e-5, 16)
-        self._calc_binding_kd_reverse(bind_dict, verts)
-        _calc_binding_reverse(bind_dict, cg.verts, target.geom)
+        bind_dict = _calc_binding_kd(cg.kd, target.geom.verts, 1e-5, 16)
+        self._calc_binding_kd_reverse(bind_dict, target.geom.kd)
+        _calc_binding_reverse(bind_dict, cg, target.geom)
         result = _binding_convert(bind_dict, False)
         t.time("rigger calc time")
-        return result
+        return FitBinding(result)
 
     def transfer_weights_get(self, obj, vg_data, cutoff=1e-4):
-        return self._transfer_weights_get(self._get_asset_data(obj), vg_data, cutoff)
+        return self._transfer_weights_get(self._get_asset_data(obj).binding, vg_data, cutoff)

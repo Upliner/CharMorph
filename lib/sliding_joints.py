@@ -46,6 +46,7 @@ def _parse_joint(item: dict):
 class SJCalc:
     rig_name = ""
     influence: dict[str, dict[str, float]] = {}
+    calc_error = False
 
     def __init__(self, char: charlib.Character, rig, get_co):
         self.rig = rig
@@ -80,8 +81,8 @@ class SJCalc:
         if result is not None:
             return result
         calc = data["calc"]
-        if not calc:
-            return 0
+        if not calc or not self.get_co:
+            return data.get("default_influence", 0)
 
         if isinstance(calc, str):
             # Check for eval safety. Attacks like 9**9**9 are still possible, but it's quite useless
