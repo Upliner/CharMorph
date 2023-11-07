@@ -357,6 +357,7 @@ class Armature:
     mixin_bones: dict[str, dict]
     arp_reference_layer = 17
     no_legacy = False
+    drivers = None
     description = ""
 
     asset_joints: list[AssetJoints] = None

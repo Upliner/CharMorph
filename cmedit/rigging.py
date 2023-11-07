@@ -291,7 +291,9 @@ class OpDrImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     def execute(self, context):
         ui = context.window_manager.cmedit_ui
-        drivers.dimport(utils.parse_file(self.filepath, json.load, {}), char=ui.char_obj, rig=context.object)
+        drivers.dimport(
+            utils.parse_file(self.filepath, json.load, {}),
+            char=ui.char_obj, rig=context.object)
         return {"FINISHED"}
 
 
