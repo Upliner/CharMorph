@@ -22,7 +22,7 @@ import logging
 
 import bpy  # pylint: disable=import-error
 
-from .lib import rigging, utils
+from .lib import rigging, utils, drivers
 from .common import manager as mm, MorpherCheckOperator
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,11 @@ def add_rig(ui):
                 utils.import_vg(m.core.obj, conf.weights_npz, False)
 
         m.rig_handler.finalize(rigger)
+
+        if conf.drivers:
+            drivers.dimport(
+                utils.parse_file(m.core.char.path(conf.drivers), json.load, {}),
+                char=m.core.obj, rig=m.rig_handler.obj)
 
         m.rig_handler.obj.data["charmorph_template"] =\
             m.core.char.name or m.core.obj.data.get("charmorph_template", "")

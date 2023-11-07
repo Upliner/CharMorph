@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import os, logging
+import os, logging, json
 import bpy, bpy_extras, mathutils  # pylint: disable=import-error
 
-from ..lib import rigging, utils
+from ..lib import rigging, drivers, utils
 from . import vg_calc
 
 logger = logging.getLogger(__name__)
@@ -256,6 +256,60 @@ class OpBBoneHandles(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class OpDrExport(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "cmedit.dr_export"
+    bl_label = "Export drivers"
+    bl_description = 'Export rig drivers. Have rig selected And character mesh chosen above'
+    filename_ext = ".json"
+
+    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        ui = context.window_manager.cmedit_ui
+        return context.object and context.object.type == "ARMATURE" and ui.char_obj
+
+    def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        with open(self.filepath, "w", encoding="utf-8") as f:
+            json.dump(drivers.export(char=ui.char_obj, rig=context.object), f, indent=4)
+        return {"FINISHED"}
+
+
+class OpDrImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    bl_idname = "cmedit.dr_import"
+    bl_label = "Import drivers"
+    bl_description = "Import rig drivers. Have rig selected And character mesh chosen above."
+    bl_options = {"UNDO"}
+
+    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        ui = context.window_manager.cmedit_ui
+        return context.object and context.object.type == "ARMATURE" and ui.char_obj
+
+    def execute(self, context):
+        ui = context.window_manager.cmedit_ui
+        drivers.dimport(utils.parse_file(self.filepath, json.load, {}), char=ui.char_obj, rig=context.object)
+        return {"FINISHED"}
+
+
+class OpDrClean(bpy.types.Operator):
+    bl_idname = "cmedit.dr_clean"
+    bl_label = "Clean drivers"
+    bl_description = "Delete all drivers from selected object"
+    bl_options = {"UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object
+
+    def execute(self, context):
+        drivers.clear_obj(context.object)
+        return {"FINISHED"}
+
+
 class CMEDIT_PT_Rigging(bpy.types.Panel):
     bl_label = "Rigging"
     bl_parent_id = "VIEW3D_PT_CMEdit"
@@ -276,8 +330,12 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l.operator("cmedit.rigify_finalize")
         l.operator("cmedit.rigify_tweaks")
         l.separator()
+        l.operator("cmedit.dr_export")
+        l.operator("cmedit.dr_import")
+        l.operator("cmedit.dr_clean")
+        l.separator()
         l.operator("cmedit.joints_to_vg")
 
 
 classes = (OpJointsToVG, OpCalcVg, OpRigifyFinalize, OpCleanupJoints, OpBBoneHandles, OpRigifyTweaks,
-           OpStoreRollX, OpStoreRollZ, CMEDIT_PT_Rigging)
+           OpDrExport, OpDrImport, OpDrClean, OpStoreRollX, OpStoreRollZ, CMEDIT_PT_Rigging)
