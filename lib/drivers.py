@@ -142,6 +142,8 @@ def dimport(d, **args):
             cm_map[k] = v
         for k, v in d.items():
             t = name_to_obj(k)
+            if not t:
+                raise DriverException("Invalid object " + k)
             for drv in v:
                 try:
                     fc = t.driver_add(drv["data_path"], drv["array_index"])

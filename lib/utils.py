@@ -367,6 +367,8 @@ def vg_weights_to_arrays(obj, name_filter):
 
 
 def np_names(file):
+    if not file:
+        return ()
     if isinstance(file, str):
         file = numpy.load(file)
     return [n.decode("utf-8") for n in bytes(file["names"]).split(b'\0')]

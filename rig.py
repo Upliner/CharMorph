@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging
+import logging, json
 
 import bpy  # pylint: disable=import-error
 
