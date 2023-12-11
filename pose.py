@@ -137,14 +137,15 @@ def apply_pose(ui, context):
             bone["IK_FK"] = 1.0
 
     # TODO: different mix modes
-    override = context.copy()
     old_mode = context.mode
-    bpy.ops.object.mode_set(override, mode="POSE")
-    bpy.ops.pose.select_all(override, action="SELECT")
-    bpy.ops.pose.loc_clear(override)
-    bpy.ops.pose.rot_clear(override)
-    bpy.ops.pose.scale_clear(override)
-    bpy.ops.object.mode_set(override, mode=old_mode)
+    try:
+        bpy.ops.object.mode_set(mode="POSE")
+        bpy.ops.pose.select_all(action="SELECT")
+        bpy.ops.pose.loc_clear()
+        bpy.ops.pose.rot_clear()
+        bpy.ops.pose.scale_clear()
+    finally:
+        bpy.ops.object.mode_set(mode=old_mode)
 
     for k, v in pose.items():
         name, matrix = bone_map.get(k, ("", None))

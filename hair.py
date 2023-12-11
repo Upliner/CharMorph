@@ -240,7 +240,6 @@ class OpCreateHair(bpy.types.Operator):
         if not obj:
             self.report({"ERROR"}, "Failed to import hair")
             return {"CANCELLED"}
-        override = {"object": obj}
         idx = -1
         src_psys = None
         for idx, src_psys in enumerate(obj.particle_systems):
@@ -254,7 +253,8 @@ class OpCreateHair(bpy.types.Operator):
         restore_modifiers = []
         if do_scalp:
             obj.particle_systems.active_index = idx
-            bpy.ops.particle.disconnect_hair(override)
+            with context.temp_override(object=obj):
+                bpy.ops.particle.disconnect_hair()
             make_scalp(obj, style)
             dst_obj = bpy.data.objects.new(f"{char.name}_hair_{style}", obj.data)
             attach_scalp(char, dst_obj)
@@ -264,12 +264,16 @@ class OpCreateHair(bpy.types.Operator):
             fitter.fit(obj)
             obj.parent = char
         restore_modifiers.extend(utils.disable_modifiers(dst_obj, lambda _: True))
-        override["selected_editable_objects"] = [dst_obj]
-        override["particle_system"] = src_psys
-        bpy.ops.particle.copy_particle_systems(override, remove_target_particles=False, use_active=True)
+        override = {
+            "object": obj,
+            "selected_editable_objects": [dst_obj],
+            "particle_system": src_psys}
+        with context.temp_override(**override):
+            bpy.ops.particle.copy_particle_systems(remove_target_particles=False, use_active=True)
         override["object"] = dst_obj
         if do_scalp:
-            bpy.ops.particle.connect_hair(override)
+            with context.temp_override(**override):
+                bpy.ops.particle.connect_hair()
             assets.get_fitter(char).fit_new((dst_obj,))
         dst_psys = dst_obj.particle_systems[len(dst_obj.particle_systems) - 1]
         for attr in dir(src_psys):
@@ -290,9 +294,10 @@ class OpCreateHair(bpy.types.Operator):
         for m in list(dst_obj.modifiers):
             cnt -= 1
             if m.type in utils.generative_modifiers:
-                for _ in range(cnt):
-                    if bpy.ops.object.modifier_move_down.poll(override):
-                        bpy.ops.object.modifier_move_down(override, modifier=m.name)
+                with context.temp_override(object=dst_obj):
+                    for _ in range(cnt):
+                        if bpy.ops.object.modifier_move_down.poll():
+                            bpy.ops.object.modifier_move_down(modifier=m.name)
                 cnt += 1
 
         for m in restore_modifiers:

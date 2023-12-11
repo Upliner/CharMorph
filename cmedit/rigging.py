@@ -180,22 +180,21 @@ class OpRigifyTweaks(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         old_mode = context.mode
         if old_mode.startswith("EDIT_"):
             old_mode = "EDIT"
-        override = context.copy()
         if len(pre_tweaks) > 0:
-            bpy.ops.object.mode_set(override, mode="OBJECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
             for tweak in pre_tweaks:
                 rigging.apply_tweak(context.object, tweak)
 
         if len(editmode_tweaks) > 0:
-            bpy.ops.object.mode_set(override, mode="EDIT")
+            bpy.ops.object.mode_set(mode="EDIT")
             for tweak in editmode_tweaks:
                 rigging.apply_editmode_tweak(context, tweak)
 
         if len(post_tweaks) > 0:
-            bpy.ops.object.mode_set(override, mode="OBJECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
             for tweak in post_tweaks:
                 rigging.apply_tweak(context.object, tweak)
-        bpy.ops.object.mode_set(override, mode=old_mode)
+        bpy.ops.object.mode_set(mode=old_mode)
         return {"FINISHED"}
 
 

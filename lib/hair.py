@@ -58,12 +58,12 @@ def export_hair(obj, psys_idx, filepath, precision):
 
     psys = pss[psys_idx]
     is_global = psys.is_global_hair
-    override = {"object": obj}
-    if not is_global:
-        bpy.ops.particle.disconnect_hair(override)
-    numpy.savez_compressed(filepath, **np_particles_data(obj, psys.particles, precision))
-    if not is_global:
-        bpy.ops.particle.connect_hair(override)
+    with bpy.context.temp_override(object=obj):
+        if not is_global:
+            bpy.ops.particle.disconnect_hair()
+        numpy.savez_compressed(filepath, **np_particles_data(obj, psys.particles, precision))
+        if not is_global:
+            bpy.ops.particle.connect_hair()
 
     pss.active_index = old_psys_idx
 
@@ -76,8 +76,8 @@ def update_hair(obj, cnts, morphed):
     t.time("hcalc")
 
     # I wish I could just get a transformation matrix for every particle and avoid these disconnects/connects!
-    override = {"object": obj}
-    bpy.ops.particle.disconnect_hair(override)
+    with bpy.context.temp_override(object=obj):
+        bpy.ops.particle.disconnect_hair()
     t.time("disconnect")
     try:
         pos = 0
@@ -93,7 +93,8 @@ def update_hair(obj, cnts, morphed):
             p.hair_keys.foreach_set("co_local", marr.reshape(-1))
     finally:
         t.time("hair_set")
-        bpy.ops.particle.connect_hair(override)
+        with bpy.context.temp_override(object=obj):
+            bpy.ops.particle.connect_hair()
         t.time("connect")
     return True
 

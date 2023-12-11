@@ -250,13 +250,13 @@ def visible_mesh_poll(_, obj):
 
 
 def reposition_modifier(obj, i):
-    override = {"object": obj}
     pos = len(obj.modifiers) - 1
     name = obj.modifiers[pos].name
 
-    for _ in range(pos - i):
-        if bpy.ops.object.modifier_move_up.poll(override):
-            bpy.ops.object.modifier_move_up(override, modifier=name)
+    with bpy.context.temp_override(object=obj):
+        for _ in range(pos - i):
+            if bpy.ops.object.modifier_move_up.poll():
+                bpy.ops.object.modifier_move_up(modifier=name)
 
 
 def reposition_armature_modifier(char):
