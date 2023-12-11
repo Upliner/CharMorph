@@ -88,15 +88,8 @@ def apply_rig_parameters(rig, conf):
             set_ik_limits(bone, lim_default_min, lim_default_max)
         if ui.rigify_disable_ik_stretch and "IK_Stretch" in bone:
             bone["IK_Stretch"] = 0
-            if hasattr(rna_prop_ui, "rna_idprop_ui_prop_get"):
-                # Blender < 3.0
-                idprop = rna_prop_ui.rna_idprop_ui_prop_get(bone, "IK_Stretch")
-                for attr in ("min", "max", "soft_min", "soft_max", "default"):
-                    idprop[attr] = 0
-            elif hasattr(bone, "id_properties_ui"):
-                # Blender >= 3.0
-                idprop = bone.id_properties_ui("IK_Stretch")
-                idprop.update(min=0, max=0, soft_min=0, soft_max=0, default=0)
+            idprop = bone.id_properties_ui("IK_Stretch")
+            idprop.update(min=0, max=0, soft_min=0, soft_max=0, default=0)
 
 
 def add_mixin(char, conf, rig):
@@ -108,8 +101,7 @@ def add_mixin(char, conf, rig):
     joints = rigging.get_joints(mixin)
     bpy.ops.object.join({
         "object": rig,
-        "selected_editable_objects": [rig, mixin],
-    })
+        "selected_editable_objects": [rig, mixin]})
 
     return (bones, joints)
 
@@ -288,7 +280,7 @@ class UIProps:
     rigify_disable_ik_stretch: bpy.props.BoolProperty(
         name="Disable IK stretch",
         description="Totally disable IK stretch. "
-                    "If IK stretch is enabled it can squeeze bones even if you don't try to stretch them.",
+            "If IK stretch is enabled it can squeeze bones even if you don't try to stretch them.",
         default=True,
     )
     rigify_limit_ik: bpy.props.BoolProperty(

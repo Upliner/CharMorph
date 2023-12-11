@@ -72,7 +72,7 @@ def attach_rig(morpher, rig):
             mod2.invert_vertex_group = True
         utils.reposition_armature_modifier(obj)
         ver = bpy.app.version
-        if ver[0] >= 3 and ver[1] >= 5:
+        if ver[0] > 3 or (ver[0] == 3 and ver[1] >= 5):
             # Multi-modifier behavior changed in Blender 3.5
             mod2.invert_vertex_group = not mod2.invert_vertex_group
 
