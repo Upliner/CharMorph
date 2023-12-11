@@ -494,15 +494,17 @@ def find_constraint(bone, rig, typ, target):
     return None
 
 
-def parse_layers(val):
-    if isinstance(val, list) and len(val) == 32 and isinstance(val[0], bool):
-        return val
-    if not isinstance(val, list):
-        val = [val]
-    result = [False] * 32
-    for item in val:
-        result[item] = True
-    return result
+def set_bone_layers(rig, bone, val: str):
+    is_collections = hasattr(bone, "collections")
+    legacy_layers = [False] * 32
+    for item in val.split(","):
+        parts = item.split(":", 2)
+        if is_collections:
+            rig.collections[parts[1]].assign(bone)
+        else:
+            legacy_layers[int(parts[0])] = True
+    if not is_collections:
+        bone.layers = legacy_layers
 
 
 def calc_vector(vec, bone):
@@ -607,7 +609,7 @@ def apply_editmode_tweak(context, tweak):
         bone = process_bone_actions(edit_bones, bone, tweak)
         for attr, val in tweak.get("set", {}).items():
             if attr == "layers":
-                setattr(bone, attr, parse_layers(val))
+                set_bone_layers(context.object.data, bone, val)
             else:
                 setattr(bone, attr, val)
 
