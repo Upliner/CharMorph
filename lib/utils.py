@@ -408,6 +408,22 @@ def import_vg(obj, file, overwrite):
             vg.add([int(i)], weight, 'REPLACE')
 
 
+def bone_get_collections(bone):
+    if hasattr(bone, "collections"):
+        return list(bone.collections)
+    return bone.layers
+
+
+def bone_set_collections(bone, val):
+    if hasattr(bone, "collections"):
+        for c in list(bone.collections):
+            c.unassign(bone)
+        for c in val:
+            c.assign(bone)
+    else:
+        bone.layers = val
+
+
 # Different Blender versions have different parameter count for bmesh.from_object()
 def bmesh_cage_object(bm, context):
     try:

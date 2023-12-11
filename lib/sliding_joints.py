@@ -167,12 +167,12 @@ def create(context, upper_bone, lower_bone, side):
     bone.name = f"MCH-{upper_bone}_tweak{side}.002"
 
     mch_size = bone.bbone_x
-    mch_layer = bone.layers
+    mch_collections = utils.bone_get_collections(bone)
 
     bone = bones[tweak_name]
     bone.name = f"{upper_bone}_tweak{side}.002"
     tweak_tail = bone.tail
-    tweak_layer = bone.layers
+    tweak_collections = utils.bone_get_collections(bone)
     tweak_size = bone.bbone_x
 
     bone = bones.new(mch_name)
@@ -182,7 +182,7 @@ def create(context, upper_bone, lower_bone, side):
     bone.tail = bone.parent.head
     org_roll = bone.parent.z_axis
     bone.align_roll(-org_roll)
-    bone.layers = mch_layer
+    utils.bone_set_collections(bone, mch_collections)
     bone.bbone_x = bone.parent.bbone_x
     bone.bbone_z = bone.parent.bbone_z
     mch_bone = bone
@@ -191,7 +191,7 @@ def create(context, upper_bone, lower_bone, side):
     bone.parent = mch_bone
     bone.use_connect = True
     bone.tail = tweak_tail
-    bone.layers = mch_layer
+    utils.bone_set_collections(bone, mch_collections)
     bone.bbone_x = mch_size
     bone.bbone_z = mch_size
     mch_bone = bone
@@ -202,7 +202,7 @@ def create(context, upper_bone, lower_bone, side):
     bone.use_deform = False
     bone.tail = tweak_tail
     bone.align_roll(org_roll)
-    bone.layers = tweak_layer
+    utils.bone_set_collections(bone, tweak_collections)
     bone.bbone_x = tweak_size
     bone.bbone_z = tweak_size
 
@@ -224,7 +224,8 @@ def finalize(rig, upper_bone, lower_bone, side, influence):
     obone = bones[old_tweak]
     bone = bones[tweak_name]
     bone.custom_shape = obone.custom_shape
-    bone.bone_group = obone.bone_group
+    if hasattr(bone, "bone_group"):
+        bone.bone_group = obone.bone_group
     bone.lock_rotation = (True, False, True)
     bone.lock_scale = (False, True, False)
 

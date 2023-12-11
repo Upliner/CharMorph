@@ -234,6 +234,8 @@ class RigifyHandler(rigging.RigHandler):
             metarig.data.rigify_target_rig = None
         t = utils.Timer()
         try:
+            if hasattr(bpy.ops.armature, "rigify_upgrade_layers") and metarig.data.get("rigify_layers"):
+                bpy.ops.armature.rigify_upgrade_layers()
             bpy.ops.pose.rigify_generate()
         except Exception:
             obj = bpy.context.object
