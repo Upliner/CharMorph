@@ -349,7 +349,7 @@ def parse_joints(joints, d: DataDir):
 @_lazy_yaml_props("bones", "mixin_bones")
 class Armature:
     type = "regular"
-    tweaks = ()
+    tweaks = None
     ik_limits: dict[str, dict] = {}
     sliding_joints: dict[str, dict] = {}
     mixin = ""

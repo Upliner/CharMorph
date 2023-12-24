@@ -63,7 +63,7 @@ def joint_list_extended(context, xmirror):
         for co2 in checklist:
             for _, jid, _ in kd.find_range(co2, 0.00001):
                 bone2 = bones[jid // 2]
-                if list(bone2.layers) != list(bone.layers):
+                if list(utils.bone_get_collections(bone2)) != list(utils.bone_get_collections(bone)):
                     continue
                 attr = "head" if jid & 1 == 0 else "tail"
                 name = f"joint_{bone2.name}_{attr}"
@@ -140,7 +140,7 @@ class OpCalcVg(bpy.types.Operator):
         if isinstance(err, str):
             self.report({"ERROR"}, err)
         elif ui.vg_auto_snap:
-            bpy.ops.cmedit.joints_to_vg(context.copy())
+            bpy.ops.cmedit.joints_to_vg()
 
         return {"FINISHED"}
 

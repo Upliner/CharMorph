@@ -28,14 +28,8 @@ logger = logging.getLogger(__name__)
 
 sep_re = re.compile(r"[ _-]")
 
-if isinstance(bpy.props.StringProperty(), tuple):
-    # Before Blender 2.93 properties were tuples
-    def prefixed_prop(prefix, prop):
-        return (prefix + prop[1]["name"], prop)
-else:
-    # Blender version >= 2.93
-    def prefixed_prop(prefix, prop):
-        return (prefix + prop.keywords["name"], prop)
+def prefixed_prop(prefix, prop):
+    return (prefix + prop.keywords["name"], prop)
 
 
 def morph_category_name(name):
