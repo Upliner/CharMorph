@@ -266,11 +266,12 @@ class OpFinalize(MorpherCheckOperator):
 
         apply_morphs(ui)
         self.vg_cleanup = ui.fin_vg_cleanup
-        if not self._do_rig(ui):
-            return {"CANCELLED"}
 
         if ui.fin_expressions != "NO":
             _import_expresions(ui.fin_expressions == "CA")
+
+        if not self._do_rig(ui):
+            return {"CANCELLED"}
 
         # Show warning if fin_morph == "AL" and some shapekeys are present?
 
