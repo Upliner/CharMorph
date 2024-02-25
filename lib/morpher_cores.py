@@ -60,6 +60,9 @@ class MorpherCore(utils.ObjTracker):
     def ensure(self):
         pass
 
+    def get_basis_l1(self) -> numpy.ndarray:
+        return self.full_basis
+
     def get_final(self):
         return self.get_final_alt_topo()
 
@@ -95,7 +98,7 @@ class MorpherCore(utils.ObjTracker):
             self.morphs_l2.sort(key=lambda morph: morph.name)
 
     @utils.lazyproperty
-    def full_basis(self):
+    def full_basis(self) -> numpy.ndarray:
         return self.char.np_basis if self.char.np_basis is not None else utils.get_basis_numpy(self.obj)
 
     def get_basis_alt_topo(self):
@@ -201,6 +204,11 @@ class ShapeKeysMorpher(MorpherCore):
 
         return maxkey, morphs_l1
 
+    def get_basis_l1(self) -> numpy.ndarray:
+        l1, d = self.get_L1()
+        sk = d.get(l1)
+        return self.full_basis if sk is None else utils.verts_to_numpy(sk.data)
+
     def has_morphs(self):
         if self.morphs_l1:
             return True
@@ -211,22 +219,23 @@ class ShapeKeysMorpher(MorpherCore):
                 return True
         return False
 
+    def _get_L2_morph_keys(self):
+        yield ""
+        k = self._get_L2_morph_key()
+        if k:
+            yield k
+
     def get_morphs_L2(self):
         if not self.obj.data.shape_keys:
             return []
 
         combiner = morphs.MorphCombiner()
 
-        def load_shape_keys_by_prefix(prefix):
+        for key in self._get_L2_morph_keys():
+            prefix = f"L2_{key}_"
             for sk in self.obj.data.shape_keys.key_blocks:
                 if sk.name.startswith(prefix):
                     combiner.add_morph(morphs.MinMaxMorphData(sk.name[len(prefix):], sk, sk.slider_min, sk.slider_max))
-
-        load_shape_keys_by_prefix("L2__")
-
-        key = self._get_L2_morph_key()
-        if key:
-            load_shape_keys_by_prefix(f"L2_{key}_")
 
         for k, v in combiner.morphs_combo.items():
             names = list(enum_combo_names(k))
@@ -313,19 +322,37 @@ class ShapeKeysMorpher(MorpherCore):
         super().remove_asset_morph(name)
 
     def enum_expressions(self):
-        if not self.obj.data.shape_keys:
+        k = self.obj.data.shape_keys
+        if not k:
             return
 
-        L2_key = self._get_L2_morph_key() or ""
-        full_basis = self.full_basis.reshape(-1)
-        arr = numpy.empty(len(self.full_basis) * 3)
+        basis_cache = {}
+        def get_basis(sk):
+            result = basis_cache.get(sk)
+            if result is not None:
+                return result
+            if sk is k.reference_key:
+                result = self.full_basis
+            else:
+                result = utils.verts_to_numpy(sk.data)
+            result = result.reshape(-1)
+            basis_cache[sk] = result
+            return result
 
-        prefix = f"L3_{L2_key}_"
-        for sk in self.obj.data.shape_keys.key_blocks:
-            if sk.name.startswith(prefix):
-                sk.data.foreach_get("co", arr)
-                arr -= full_basis
-                yield (sk.name[len(prefix):], arr.reshape(-1, 3))
+        arr = numpy.empty(len(self.obj.data.vertices) * 3)
+        morph = morphs.MinMaxMorphData("", arr.reshape(-1, 3))
+        for L2_key in self._get_L2_morph_keys():
+            prefix = f"L3_{L2_key}_"
+            for sk in k.key_blocks:
+                if sk.name.startswith(prefix):
+                    sk.data.foreach_get("co", arr)
+                    arr -= get_basis(sk.relative_key)
+
+                    morph.name = sk.name[len(prefix):]
+                    morph.min = sk.slider_min
+                    morph.max = sk.slider_max
+
+                    yield morph
 
 
 class NumpyMorpher(MorpherCore):
@@ -378,25 +405,29 @@ class NumpyMorpher(MorpherCore):
             L1 = ""
         return L1, morphs_l1
 
-    def get_morphs_L2(self):
-        combiner = morphs.MorphCombiner()
-        for morph in self.storage.enum(2):
-            combiner.add_morph(morph)
-
+    def enum_morphs(self, level):
+        yield from self.storage.enum(level)
         key = self._get_L2_morph_key()
         if key:
-            for morph in self.storage.enum(2, key):
-                combiner.add_morph(morph)
+            yield from self.storage.enum(level, key)
+
+    def get_morphs_L2(self):
+        combiner = morphs.MorphCombiner()
+        for morph in self.enum_morphs(2):
+            combiner.add_morph(morph)
         self.morphs_combo = combiner.morphs_combo
         return combiner.morphs_list
 
-    def _do_all_morphs(self):
+    def get_basis_l1(self) -> numpy.ndarray:
         if self.basis is None:
             self._update_L1()
+        return self.basis
+
+    def _do_all_morphs(self):
         if self.morphed is None:
-            self.morphed = self.basis.copy()
+            self.morphed = self.get_basis_l1().copy()
         else:
-            self.morphed[:] = self.basis
+            self.morphed[:] = self.get_basis_l1()
 
         for morph in self.morphs_l2:
             morph.apply(self.morphed, self.prop_get_clamped(morph.name))
@@ -482,11 +513,14 @@ class NumpyMorpher(MorpherCore):
         self.basis = None
 
     def enum_expressions(self):
-        arr = numpy.empty(self.full_basis.shape)
-        for morph in self.storage.enum(3, self._get_L2_morph_key()):
-            arr[:] = 0
-            morph.data.resolve().apply(arr)
-            yield morph.name, arr
+        morph2 = morphs.MinMaxMorphData("", numpy.empty(self.full_basis.shape))
+        for morph in self.enum_morphs(3):
+            for k in morph2.__slots__:
+                if k != "data":
+                    setattr(morph2, k, getattr(morph, k))
+            morph2.data[:] = 0
+            morph.data.resolve().apply(morph2.data)
+            yield morph2
 
 
 class AltTopoMorpher(NumpyMorpher):

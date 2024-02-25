@@ -173,7 +173,7 @@ def _bbox_correction_coeffs(mcore, bbox):
         return result
 
     coeffs = calc_boxes(mcore.get_final())
-    coeffs /= calc_boxes(mcore.full_basis)
+    coeffs /= calc_boxes(mcore.get_basis_l1())
     return coeffs
 
 
@@ -207,21 +207,28 @@ def _import_expresions(add_assets):
     if mc.alt_topo:
         binding = fitter.get_binding(fitter.alt_topo_afd)
 
-    basis = utils.get_basis_numpy(mc.obj)
+    sk = mc.obj.data.shape_keys
+    ref_key = sk.key_blocks.get("charmorph_final")
+    if ref_key is None:
+        ref_key = sk.reference_key
+    basis = utils.verts_to_numpy(ref_key.data)
 
-    for name, data in mc.enum_expressions():
+    for morph in mc.enum_expressions():
         if bbox is not None:
-            data[bb_idx] *= bb_coeffs
+            morph.data[bb_idx] *= bb_coeffs
 
         if mc.alt_topo:
-            fitted_data = binding.fit(data)
+            fitted_data = binding.fit(morph.data)
         elif add_assets:
-            fitted_data = data.copy()
+            fitted_data = morph.data.copy()
         else:
-            fitted_data = data
+            fitted_data = morph.data
 
         fitted_data += basis
-        sk = get_exp_sk(mc.obj, name)
+        sk = get_exp_sk(mc.obj, morph.name)
+        sk.relative_key = ref_key
+        sk.slider_min = morph.min
+        sk.slider_max = morph.max
         sk.data.foreach_set("co", fitted_data.reshape(-1))
 
         if add_assets:

@@ -501,7 +501,7 @@ def mblab_to_charmorph(data):
     }
 
 
-def charmorph_to_mblab(data):
+def charmorph_to_mblab(data: dict):
     return {
         "structural": {k: (v + 1) / 2 for k, v in data.get("morphs", {}).items()},
         "metaproperties": {
@@ -516,7 +516,7 @@ def charmorph_to_mblab(data):
     }
 
 
-def load_morph_data(fn):
+def load_morph_data(fn: str):
     with open(fn, "r", encoding="utf-8") as f:
         if fn[-5:] == ".yaml":
             return utils.load_yaml(f)
