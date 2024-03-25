@@ -136,7 +136,7 @@ def name_to_obj(name: str):
     return result
 
 
-def dimport(d, **args):
+def dimport(d: dict, overwrite: bool, **args):
     try:
         for k, v in args.items():
             cm_map[k] = v
@@ -146,8 +146,12 @@ def dimport(d, **args):
                 raise DriverException("Invalid object " + k)
             for drv in v:
                 try:
+                    if overwrite:
+                        fc = t.driver_remove(drv["data_path"], drv["array_index"])
                     fc = t.driver_add(drv["data_path"], drv["array_index"])
                 except TypeError:
+                    if overwrite:
+                        fc = t.driver_remove(drv["data_path"])
                     fc = t.driver_add(drv["data_path"])
                 fill_driver(fc.driver, drv["driver"])
     finally:

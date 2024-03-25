@@ -56,7 +56,7 @@ def add_rig(ui):
 
         if conf.drivers:
             drivers.dimport(
-                utils.parse_file(m.core.char.path(conf.drivers), json.load, {}),
+                utils.parse_file(m.core.char.path(conf.drivers), json.load, {}), False,
                 char=m.core.obj, rig=m.rig_handler.obj)
 
         m.rig_handler.obj.data["charmorph_template"] =\

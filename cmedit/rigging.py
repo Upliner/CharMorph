@@ -282,6 +282,11 @@ class OpDrImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     bl_options = {"UNDO"}
 
     filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+    overwrite: bpy.props.BoolProperty(
+        name="Overwrite existing drivers",
+        description="Overwrite any existing drivers with imported ones",
+        default=True,
+    )
 
     @classmethod
     def poll(cls, context):
@@ -291,7 +296,7 @@ class OpDrImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     def execute(self, context):
         ui = context.window_manager.cmedit_ui
         drivers.dimport(
-            utils.parse_file(self.filepath, json.load, {}),
+            utils.parse_file(self.filepath, json.load, {}), self.overwrite,
             char=ui.char_obj, rig=context.object)
         return {"FINISHED"}
 
