@@ -18,7 +18,7 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, logging
+import os, re, logging
 
 import bpy  # pylint: disable=import-error
 
@@ -97,6 +97,14 @@ def load_materials(obj, char: Character):
                 obj.data.materials.pop(index=i)
 
 
+def is_udim(s: str):
+    return "<UDIM>" in s or "<UVTILE>" in s
+
+
+def ud_to_regex(s: str):
+    return re.compile(re.escape(s).replace("<UDIM>", r"\d+").replace("<UVTILE>", r"u\d+_v\d+"))
+
+
 # Returns a dictionary { texture_short_name: (filename, texture_settings)
 def load_texdir(path, settings: dict) -> tuple[dict[str, tuple[str, str]], dict]:
     if not os.path.exists(path):
@@ -104,15 +112,24 @@ def load_texdir(path, settings: dict) -> tuple[dict[str, tuple[str, str]], dict]
     settings = settings.copy()
     settings.update(utils.parse_file(os.path.join(path, "settings.yaml"), utils.load_yaml, {}))
     default_setting = settings.get("*")
+    ud_map = [(ud_to_regex(s), s) for s in settings.keys() if is_udim(s)]
 
     result = {}
     for item in os.listdir(path):
-        name = os.path.splitext(item)[0]
+        name, ext = os.path.splitext(item)
         full_path = os.path.join(path, item)
-        if name[1] == ".yaml" or not os.path.isfile(full_path):
+        if ext == ".yaml" or not os.path.isfile(full_path):
             continue
-        if name in result:
-            logger.error("different extensions for texture %s at %s", name, path)
+        for regex, val in ud_map:
+            if regex.fullmatch(name):
+                name = val
+                full_path = os.path.join(path, val + ext)
+                break
+        old = result.get(name)
+        if old is not None:
+            if os.path.splitext(old[0])[1] != ext:
+                logger.error("different extensions for texture %s at %s", name, path)
+            continue
         result[name] = (full_path, settings.get(name, default_setting))
 
     return result, settings
@@ -209,6 +226,8 @@ def load_textures(obj, char):
                         break
                 if img_tuple is not None:
                     img = bpy.data.images.load(img_tuple[0], check_existing=True)
+                    if is_udim(img_tuple[0]):
+                        img.source = 'TILED'
                     img.name = img_tuple[1]
                     apply_tex_settings(img, img_tuple[2])
                     if not img.has_data:
