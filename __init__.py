@@ -21,6 +21,7 @@
 import logging
 import bpy  # pylint: disable=import-error
 
+from . import addon_updater_ops
 from . import common, library, assets, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
 from .lib import charlib
 
@@ -101,6 +102,10 @@ class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
 
 def register():
+    # addon updater code and configurations
+    # in case of broken version, try to register the updater first
+    # so that users can revert back to a working version
+    addon_updater_ops.register(bl_info)
     logger.debug("Charmorph register")
     charlib.library.load()
     class_register()
@@ -117,6 +122,8 @@ def register():
 
 
 def unregister():
+    # addon updater unregister
+    addon_updater_ops.unregister()
     logger.debug("Charmorph unregister")
     cmedit.unregister()
 

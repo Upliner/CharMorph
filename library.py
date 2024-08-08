@@ -279,7 +279,7 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if prefs.is_adult_mode():
             labels = ["Adult mode is on", "The character will be naked"]
         else:
-            labels = ["Adult mode is off", "Default underwear will be added"]
+            labels = ["Adult mode is off", "Default underwear or censors will be added"]
         for text in labels:
             r = c.row()
             r.alignment = "CENTER"

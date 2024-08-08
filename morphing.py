@@ -47,7 +47,7 @@ class OpResetChar(bpy.types.Operator):
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
             else:
-                self.report({'ERROR'}, "Still no morphs found")
+                self.report({'ERROR'}, "Error - no morphs found")
             del mcore.obj.data["cm_morpher"]
             return {"CANCELLED"}
         manager.update_morpher(new_morpher)
@@ -57,7 +57,7 @@ class OpResetChar(bpy.types.Operator):
 class OpProceedSlowMorphing(bpy.types.Operator):
     bl_idname = "charmorph.proceed_slow"
     bl_label = "Proceed"
-    bl_description = "Proceed to morphing desite it will be very slow"
+    bl_description = "Proceed to slow morphing"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -130,7 +130,7 @@ class UIProps:
             ("R", "Relative", "Change materials according to relative value of meta property")])
     morph_filter: bpy.props.StringProperty(
         name="Filter",
-        description="Show only morphs mathing this name",
+        description="Show only morphs matching this name",
         options={"TEXTEDIT_UPDATE"},
     )
     morph_clamp: bpy.props.BoolProperty(
@@ -203,13 +203,13 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             return
 
         if mm.error:
-            self.layout.label(text="Morphing is impossible:")
+            self.layout.label(text="Morphing error:")
             col = self.layout.column()
             for line in mm.error.split("\n"):
                 col.label(text=line)
             if m.alt_topo_buildable:
                 col = self.layout.column()
-                col.label(text="It seems you've changed object's topology")
+                col.label(text="It seems there have been changes to object's topology")
                 col.label(text="You can try to build alt topo")
                 col.label(text="to continue morphing")
                 self.layout.operator("charmorph.build_alt_topo")
@@ -261,7 +261,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         self.layout.separator()
 
         if mm.categories:
-            self.layout.label(text="MORE MORPHS HERE:")
+            self.layout.label(text="Sub Morphs:")
             self.layout.prop(ui, "morph_category")
             if ui.morph_category == "<None>":
                 return

@@ -133,7 +133,7 @@ class Manager:
                 logger.debug("Resetting morpher because of undo/redo")
                 force_recreate = True
             elif not self.morpher.check_obj():
-                logger.warning("Current morphing object is bad, resetting...")
+                logger.warning("Current morphing object is invalid, resetting...")
                 force_recreate = True
             if force_recreate:
                 self.old_morpher = self.morpher
