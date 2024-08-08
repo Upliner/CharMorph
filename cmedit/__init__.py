@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class VIEW3D_PT_CMEdit(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CMEdit"
-    bl_label = "Character editing"
+    bl_label = "CharMorph Editor"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "CharMorph"

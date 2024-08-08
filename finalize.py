@@ -301,9 +301,9 @@ class UIProps:
         items=[
             ("NO", "No", "No subdivision surface"),
             ("RO", "Render only", "Use subdivision only for rendering"),
-            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
+            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow)"),
         ],
-        description="Use subdivision surface for smoother look")
+        description="Use subdivision surface for smoother appearance")
     fin_expressions: bpy.props.EnumProperty(
         name="Expressions",
         description="Import or correct facial and other expression shape keys",

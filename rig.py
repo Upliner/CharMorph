@@ -32,7 +32,7 @@ def add_rig(ui):
     m = mm.morpher
     conf = m.core.char.armature.get(ui.rig)
     if not conf:
-        raise rigging.RigException("Rig is not found")
+        raise rigging.RigException("Rig not found")
 
     if (not ui.rig_manual_joints or not ui.rig_manual_weights) and not m.core.check_vertex_count():
         raise rigging.RigException(
@@ -75,7 +75,7 @@ def add_rig(ui):
 
 class OpRig(MorpherCheckOperator):
     bl_idname = "charmorph.rig"
-    bl_label = "Add rig"
+    bl_label = "Add Rig"
     bl_description = "Add or update character rig"
     bl_options = {"UNDO"}
 
@@ -100,8 +100,8 @@ class OpRig(MorpherCheckOperator):
 
 class OpUnrig(MorpherCheckOperator):
     bl_idname = "charmorph.unrig"
-    bl_label = "Unrig"
-    bl_description = "Remove all riging data from the character and all its assets so you can continue morphing it"
+    bl_label = "Remove Rig"
+    bl_description = "Remove all rigging data from the character and all its assets so you can continue morphing it"
     bl_options = {"UNDO"}
 
     @classmethod
