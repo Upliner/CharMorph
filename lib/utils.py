@@ -379,7 +379,7 @@ def vg_read_npz(z):
     weights = z["weights"]
     i = 0
     for name, cnt in zip(np_names(z), z["cnt"]):
-        i2 = i + cnt
+        i2 = i + int(cnt)
         yield name, idx[i:i2], weights[i:i2]
         i = i2
 

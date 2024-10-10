@@ -170,6 +170,10 @@ def apply_tex_settings(img, settings):
     if settings in colorspaces:
         img.colorspace_settings.name = settings
         return
+    if settings == "Linear":
+        if "Non-Color" in colorspaces:
+            img.colorspace_settings.name = "Non-Color"
+        return
     if settings == "Non-Color":
         if "Linear" in colorspaces:
             img.colorspace_settings.name = "Linear"

@@ -159,7 +159,7 @@ class MorphPack:
         part_pos = 0
         for name, i in zip(names, z["cnt"]):
             if i >= 0:
-                pos2 = part_pos + i
+                pos2 = part_pos + int(i)
                 item = (idx[part_pos:pos2], delta[part_pos:pos2])
                 part_pos = pos2
             else:
