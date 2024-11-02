@@ -29,7 +29,7 @@ def load_directory_path():
             config = json.load(config_file)
             return config.get("data_dir")
     else:
-        default_path = os.path.realpath(os.path.expanduser(os.path.join("~", "charmorph_data")))
+        default_path = os.path.realpath(os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)), "data"))
         os.makedirs(default_path, exist_ok=True)
         with open(CONFIG_FILE, "w") as config_file:
             json.dump({"data_dir": default_path}, config_file)
