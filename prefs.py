@@ -21,7 +21,7 @@ def load_character_list():
     script_dir = os.path.dirname(os.path.realpath(__file__))
     
     # The data directory is at the same level as the script
-    data_dir = os.path.join(script_dir, "data")
+    data_dir = DataDir.dirpath
     json_file = os.path.join(data_dir, "lists.json")
     
     print(f"Attempting to load JSON from: {json_file}")  # Debug print
