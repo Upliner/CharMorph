@@ -143,8 +143,8 @@ class CHARMORPH_OT_select_directory(Operator, ImportHelper):
             return {'CANCELLED'}
         
         try:
-            # Copy data from source to destination
-            shutil.copytree(source_dir, self.directory, dirs_exist_ok=True)
+            # Use the migrate_data function from DataDir
+            charlib.global_data_dir.migrate_data(self.directory)
             prefs.data_path = self.directory
             self.report({'INFO'}, f"Data migrated successfully to: {self.directory}")
         except Exception as e:

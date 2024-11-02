@@ -526,3 +526,5 @@ def get_basis(data, mcore=None, use_char=True):
 def invoke(self, context, event):
     context.window_manager.fileselect_add(self)
     return {'RUNNING_MODAL'}
+
+print(load_directory_path())
