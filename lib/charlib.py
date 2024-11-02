@@ -18,15 +18,22 @@ CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 
 def save_directory_path(path):
     config = {"data_dir": path}
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, "w") as config_file:
         json.dump(config, config_file)
 
 def load_directory_path():
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as config_file:
             config = json.load(config_file)
             return config.get("data_dir")
-    return None  # If no config file exists, return None
+    else:
+        default_path = os.path.realpath(os.path.expanduser(os.path.join("~", "charmorph_data")))
+        os.makedirs(default_path, exist_ok=True)
+        with open(CONFIG_FILE, "w") as config_file:
+            json.dump({"data_dir": default_path}, config_file)
+            return default_path
 
 def load_data_dir(path, target_ext):
     result = {}
