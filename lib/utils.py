@@ -18,10 +18,10 @@
 #
 # Copyright (C) 2021-2022 Michael Vigovsky
 
-import os, time, logging, numpy
+import os, time,  numpy
 import bpy, mathutils  # pylint: disable=import-error
 
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 generative_modifiers = frozenset((
     "ARRAY", "BEVEL", "BOOLEAN", "BUILD", "DECIMATE", "EDGE_SPLIT", "MASK", "MIRROR", "MULTIRES",

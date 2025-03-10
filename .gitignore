@@ -10,3 +10,6 @@ rig
 tmp
 ___test.py
 charmorph_updater/CharMorph_updater_status.json
+
+# For those developing using visual studio
+/.vs

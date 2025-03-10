@@ -1,0 +1,22 @@
+{
+    "assets": [
+        {
+            "name": "Vitruvian",
+            "license": "CC0",
+            "downloaded": false,
+            "repo": "https://api.github.com/repos/seenbuklee/CharMorph-Vitruvian/releases/latest"
+        },
+        {
+            "name": "Antonia",
+            "license": "CC-BY",
+            "downloaded": false,
+            "repo": "https://api.github.com/repos/seenbuklee/CharMorph-Antonia/releases/latest"
+        },
+        {
+            "name": "Reom",
+            "license": "CC-BY",
+            "downloaded": false,
+            "repo": "https://api.github.com/repos/seenbuklee/CharMorph-Reom/releases/latest"
+        }
+    ]
+}

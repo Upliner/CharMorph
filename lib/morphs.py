@@ -18,11 +18,10 @@
 #
 # Copyright (C) 2022 Michael Vigovsky
 
-import os, abc, json, logging, numpy
+import os, abc, json, numpy
 
 from . import utils
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 
 class Morph:

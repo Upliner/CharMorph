@@ -18,13 +18,13 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import random, logging, numpy
+import random, numpy
 
 import bpy, bmesh, mathutils  # pylint: disable=import-error
 
 from . import fit_calc, hair, utils
+from ..global_logger import logger
 
-logger = logging.getLogger(__name__)
 special_groups = {"corrective_smooth", "corrective_smooth_inv", "preserve_volume", "preserve_volume_inv"}
 
 

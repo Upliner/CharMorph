@@ -18,13 +18,13 @@
 #
 # Copyright (C) 2021 Michael Vigovsky
 
-import os, logging, json
+import os, json
 import bpy, bpy_extras, mathutils  # pylint: disable=import-error
 
 from ..lib import rigging, drivers, utils
 from . import vg_calc
 
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 
 def kdtree_from_bones(bones):
@@ -342,6 +342,24 @@ class CMEDIT_PT_Rigging(bpy.types.Panel):
         l.separator()
         l.operator("cmedit.joints_to_vg")
 
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
 
-classes = (OpJointsToVG, OpCalcVg, OpRigifyFinalize, OpCleanupJoints, OpBBoneHandles, OpRigifyTweaks,
-           OpDrExport, OpDrImport, OpDrClean, OpStoreRollX, OpStoreRollZ, CMEDIT_PT_Rigging)
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpJointsToVG, 
+    OpCalcVg, OpRigifyFinalize,
+    OpCleanupJoints, 
+    OpBBoneHandles, 
+    OpRigifyTweaks,
+    OpDrExport, 
+    OpDrImport,
+    OpDrClean, 
+    OpStoreRollX, 
+    OpStoreRollZ, 
+    CMEDIT_PT_Rigging
+])
+
+if __name__ == "__main__":
+    register()

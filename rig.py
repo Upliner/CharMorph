@@ -18,14 +18,13 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging, json
+import json
 
 import bpy  # pylint: disable=import-error
 
 from .lib import rigging, utils, drivers
 from .common import manager as mm, MorpherCheckOperator
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 
 def add_rig(ui):
@@ -135,19 +134,28 @@ class OpUnrig(MorpherCheckOperator):
 
 
 class UIProps:
+    # Load the items outside of the propery otherwise it might not be instantiated by the type it gets 
+    # defined (and you will get an empty list)
+    def get_enum_items(self, context):
+        items = [(name, rig.title, rig.description) for name, rig in mm.morpher.core.char.armature.items()]
+        return items or [("none", "None", "No rigs available")]  # Fallback option
+
     rig: bpy.props.EnumProperty(
         name="Rig",
-        items=lambda _ui, _ctx: [(name, rig.title, rig.description) for name, rig in mm.morpher.core.char.armature.items()],
+        items=get_enum_items, 
         description="Rigging options")
+
     rig_manual_sculpt: bpy.props.BoolProperty(
         name="Manual edit/sculpt",
         default=False,
         description="Enable it if you want changes outside CharMorph's morphing panel "
                     "(i.e. Blender's edit or sculpt mode) to affect character rig")
+
     rig_manual_joints: bpy.props.BoolProperty(
         name="Manual joints",
         default=False,
         description="Use joint_* vertex groups for joint positions")
+
     rig_manual_weights: bpy.props.BoolProperty(
         name="Manual weights",
         default=False,
@@ -178,4 +186,17 @@ class CHARMORPH_PT_Rig(bpy.types.Panel):
         l.operator("charmorph.unrig")
 
 
-classes = [OpRig, OpUnrig, CHARMORPH_PT_Rig]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpRig, 
+    OpUnrig, 
+    CHARMORPH_PT_Rig
+])
+
+
+if __name__ == "__main__":
+    register()

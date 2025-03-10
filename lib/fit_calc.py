@@ -18,13 +18,12 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging, numpy
+import numpy
 
 import bpy, mathutils  # pylint: disable=import-error
 
 from . import charlib, morphs, utils
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 dist_thresh = 0.125
 epsilon = 1e-30

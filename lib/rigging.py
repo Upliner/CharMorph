@@ -18,14 +18,13 @@
 #
 # Copyright (C) 2020-2021 Michael Vigovsky
 
-import typing, logging, math, os
+import typing, math, os
 
 import bpy                                   # pylint: disable=import-error
 from mathutils import Vector, Quaternion     # pylint: disable=import-error, no-name-in-module
 
 from . import sliding_joints, utils
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 
 class RigException(Exception):

@@ -18,15 +18,14 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import os, re, logging
+import os, re
 
 import bpy  # pylint: disable=import-error
 
 from .charlib import Character
 from . import utils
 from .. import prefs
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 colorspaces = {
     item.name for item in

@@ -18,13 +18,12 @@
 # ##### END GPL LICENSE BLOCK #####
 #
 # Copyright (C) 2021-2022 Michael Vigovsky
-import logging, numpy
+import numpy
 
 import bpy  # pylint: disable=import-error
 
 from . import fit_calc, utils
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 def np_particles_data(obj, particles, precision=numpy.float32):
     cnt = numpy.empty(len(particles), dtype=numpy.uint8)

@@ -150,4 +150,18 @@ class OpImport(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         return {"FINISHED"}
 
 
-classes = [OpImport, OpExportJson, OpExportYaml, CHARMORPH_PT_ImportExport]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpImport, 
+    OpExportJson, 
+    OpExportYaml, 
+    CHARMORPH_PT_ImportExport
+])
+
+
+if __name__ == "__main__":
+    register()

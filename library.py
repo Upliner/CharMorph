@@ -18,15 +18,14 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, logging
+import os
 import bpy  # pylint: disable=import-error
 from bpy_extras.wm_utils.progress_report import ProgressReport  # pylint: disable=import-error, no-name-in-module
 
 from . import common, prefs
 from .lib import morpher, materials, morphs, utils
 from .lib.charlib import library, empty_char
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 
 class OpReloadLib(bpy.types.Operator):
@@ -279,11 +278,24 @@ class CHARMORPH_PT_Library(bpy.types.Panel):
         if prefs.is_adult_mode():
             labels = ["Adult mode is on", "The character will be naked"]
         else:
-            labels = ["Adult mode is off", "Default underwear or censors will be added"]
+            labels = ["Adult mode is off", "Default underwear will be added"]
         for text in labels:
             r = c.row()
             r.alignment = "CENTER"
             r.label(text=text)
 
 
-classes = [OpReloadLib, OpImport, CHARMORPH_PT_Library]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpReloadLib, 
+    OpImport, 
+    CHARMORPH_PT_Library
+])
+
+
+if __name__ == "__main__":
+    register()

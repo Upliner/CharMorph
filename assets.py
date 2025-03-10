@@ -18,14 +18,13 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import os, logging
+import os
 import bpy, bpy_extras  # pylint: disable=import-error
 
 from .lib import fitting, morpher, utils
 from .lib.charlib import library, Asset
 from .common import manager as mm
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 
 def get_fitter(obj):
@@ -311,4 +310,19 @@ class OpUnfit(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = [OpFitLocal, OpUnfit, OpFitExternal, OpFitLibrary, CHARMORPH_PT_Assets]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpFitLocal, 
+    OpUnfit, 
+    OpFitExternal, 
+    OpFitLibrary, 
+    CHARMORPH_PT_Assets
+])
+
+
+if __name__ == "__main__":
+    register()

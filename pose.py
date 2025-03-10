@@ -18,14 +18,13 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, re
+import re
 import bpy  # pylint: disable=import-error
 
 from mathutils import Matrix, Vector  # pylint: disable=import-error
 
 from .lib.charlib import library
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 m1 = Matrix.Identity(4)
 m2 = m1.copy()
@@ -269,4 +268,16 @@ class CHARMORPH_PT_Pose(bpy.types.Panel):
         l.operator("charmorph.apply_pose")
 
 
-classes = [CHARMORPH_PT_Pose, OpApplyPose]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    CHARMORPH_PT_Pose, 
+    OpApplyPose
+])
+
+
+if __name__ == "__main__":
+    register()

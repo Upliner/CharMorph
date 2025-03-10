@@ -167,4 +167,17 @@ class OpRandomize(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = [OpRandomize, CHARMORPH_PT_Randomize]
+
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpRandomize, 
+    CHARMORPH_PT_Randomize
+])
+
+
+if __name__ == "__main__":
+    register()

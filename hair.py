@@ -18,15 +18,13 @@
 #
 # Copyright (C) 2020 Michael Vigovsky
 
-import logging, random
+import random
 import bpy, bmesh # pylint: disable=import-error
 
 from .lib import utils
 from .lib.charlib import library, empty_char
 from . import common, assets
-
-logger = logging.getLogger(__name__)
-
+from .global_logger import logger
 
 def create_hair_material(name, hair_color):
     mat = bpy.data.materials.new(name)
@@ -395,4 +393,18 @@ class CHARMORPH_PT_Hair(bpy.types.Panel):
         l.operator("charmorph.hair_recolor")
 
 
-classes = [OpCreateHair, OpRefitHair, OpRecolorHair, CHARMORPH_PT_Hair]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpCreateHair, 
+    OpRefitHair, 
+    OpRecolorHair, 
+    CHARMORPH_PT_Hair
+])
+
+
+if __name__ == "__main__":
+    register()

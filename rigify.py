@@ -340,4 +340,18 @@ class CHARMORPH_PT_RigifySettings(RigSubpanel):
 
 
 rigging.handlers["rigify"] = RigifyHandler
-classes = [CHARMORPH_PT_SlidingJoints, CHARMORPH_PT_RigifySettings]
+
+
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    CHARMORPH_PT_SlidingJoints, 
+    CHARMORPH_PT_RigifySettings
+])
+
+
+if __name__ == "__main__":
+    register()

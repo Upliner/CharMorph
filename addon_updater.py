@@ -42,6 +42,9 @@ from datetime import datetime, timedelta
 import bpy
 import addon_utils
 
+from .global_logger import logger
+
+
 # -----------------------------------------------------------------------------
 # The main class
 # -----------------------------------------------------------------------------
@@ -138,7 +141,7 @@ class SingletonUpdater:
         """Print out a verbose logging message if verbose is true."""
         if not self._verbose:
             return
-        print("{} addon: ".format(self.addon) + msg)
+        logger.debug("{} addon: ".format(self.addon) + msg)
 
     # -------------------------------------------------------------------------
     # Getters and setters
@@ -696,11 +699,11 @@ class SingletonUpdater:
             if str(e.code) == "403":
                 self._error = "HTTP error (access denied)"
                 self._error_msg = str(e.code) + " - server error response"
-                print(self._error, self._error_msg)
+                logger.error(f"{self._error}: {self._error_msg}")
             else:
                 self._error = "HTTP error"
                 self._error_msg = str(e.code)
-                print(self._error, self._error_msg)
+                logger.error(f"{self._error}: {self._error_msg}")
             self.print_trace()
             self._update_ready = None
         except urllib.error.URLError as e:
@@ -708,11 +711,11 @@ class SingletonUpdater:
             if "TLSV1_ALERT" in reason or "SSL" in reason.upper():
                 self._error = "Connection rejected, download manually"
                 self._error_msg = reason
-                print(self._error, self._error_msg)
+                logger.error(f"{self._error}: {self._error_msg}")
             else:
                 self._error = "URL error, check internet connection"
                 self._error_msg = reason
-                print(self._error, self._error_msg)
+                logger.error(f"{self._error}: {self._error_msg}")
             self.print_trace()
             self._update_ready = None
             return None
@@ -732,7 +735,7 @@ class SingletonUpdater:
                 self._error = "API response has invalid JSON format"
                 self._error_msg = str(e.reason)
                 self._update_ready = None
-                print(self._error, self._error_msg)
+                logger.error(f"{self._error}: {self._error_msg}")
                 self.print_trace()
                 return None
         else:
@@ -1417,7 +1420,7 @@ class SingletonUpdater:
 
             res = self.stage_repository(self._update_link)
             if not res:
-                print("Error in staging repository: " + str(res))
+                logger.error("Error in staging repository: " + str(res))
                 if callback is not None:
                     callback(self._addon_package, self._error_msg)
                 return self._error_msg
@@ -1435,7 +1438,7 @@ class SingletonUpdater:
 
             res = self.stage_repository(self._update_link)
             if not res:
-                print("Error in staging repository: " + str(res))
+                logger.error("Error in staging repository: " + str(res))
                 if callback:
                     callback(self._addon_package, self._error_msg)
                 return self._error_msg

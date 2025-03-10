@@ -23,14 +23,14 @@
 # https://www.youtube.com/watch?v=c7csuy-09k8
 #
 
-import re, math, logging
+import re, math
 
 import bpy  # pylint: disable=import-error
 from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module
 
 from . import charlib, utils
+from ..global_logger import logger
 
-logger = logging.getLogger(__name__)
 eval_unsafe = re.compile(r"__|\(\s*\)|[:;,{'\"\[]")
 
 

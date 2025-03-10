@@ -558,10 +558,28 @@ class CHARMORPH_PT_FileIO(bpy.types.Panel):
         l.operator("cmedit.morphs_import")
 
 
-classes = (
-    OpFaceExport, OpSubsetExport, OpBoneExport,
-    OpHairExport, OpAllHairExport, OpHairImport,
-    OpVgExport, OpVgImport,
-    OpExportL1, OpMorphExport, OpMorphsExport, OpMorphListExport, OpMorphsImport,
+
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpFaceExport, 
+    OpSubsetExport, 
+    OpBoneExport,
+    OpHairExport, 
+    OpAllHairExport,
+    OpHairImport,
+    OpVgExport, 
+    OpVgImport,
+    OpExportL1, 
+    OpMorphExport, 
+    OpMorphsExport, 
+    OpMorphListExport, 
+    OpMorphsImport,
     CHARMORPH_PT_FileIO
-)
+])
+
+if __name__ == "__main__":
+    register()

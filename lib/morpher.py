@@ -18,13 +18,12 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import re, typing, logging
+import re, typing
 
 import bpy, mathutils  # pylint: disable=import-error
 
 from . import charlib, morpher_cores, materials, fitting, fit_calc, sliding_joints, rigging, utils
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 sep_re = re.compile(r"[ _-]")
 

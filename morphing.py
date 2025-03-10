@@ -18,13 +18,11 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging
 import bpy  # pylint: disable=import-error
 
 from .lib import morpher, fit_calc, utils
 from .common import manager
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 
 class OpResetChar(bpy.types.Operator):
@@ -294,4 +292,19 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
             self.layout.prop(prop, "default_value", text=prop.node.label)
 
 
-classes = [OpResetChar, OpBuildAltTopo, OpProceedSlowMorphing, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpResetChar, 
+    OpBuildAltTopo, 
+    OpProceedSlowMorphing, 
+    CHARMORPH_PT_Morphing, 
+    CHARMORPH_PT_Materials
+])
+
+
+if __name__ == "__main__":
+    register()

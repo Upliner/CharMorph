@@ -764,4 +764,14 @@ class CMEDIT_PT_VGCalc(bpy.types.Panel):
         l.prop(ui, "vg_shift", slider=True)
 
 
-classes = (CMEDIT_PT_VGCalc,)
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    CMEDIT_PT_VGCalc
+])
+
+if __name__ == "__main__":
+    register()

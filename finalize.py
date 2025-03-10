@@ -18,15 +18,14 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging, numpy
+import numpy
 
 import bpy  # pylint: disable=import-error
 
 from . import rig
 from .lib import rigging, utils
 from .common import manager as mm, MorpherCheckOperator
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 
 def sk_to_verts(obj, sk):
@@ -388,4 +387,16 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
         l.operator("charmorph.finalize")
 
 
-classes = [OpFinalize, CHARMORPH_PT_Finalize]
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpFinalize, 
+    CHARMORPH_PT_Finalize
+])
+
+
+if __name__ == "__main__":
+    register()

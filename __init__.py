@@ -20,13 +20,14 @@
 
 import logging
 import bpy  # pylint: disable=import-error
+from bpy.types import Operator, PropertyGroup
+from bpy.utils import register_class, unregister_class
+from . import common, library, assets, hair, morphing, randomize, file_io, finalize, rig, rigify, pose, prefs, cmedit, toonify, addon_updater_ops
+from .lib import charlib, file_preperation, materials
+from .global_logger import setup_logger
+from .about import bl_info as bl_info_about
 
-from . import addon_updater_ops
-from . import common, library, assets, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
-from .lib import charlib
-
-logger = logging.getLogger(__name__)
-
+# This is a special Bender value. I must be a literal and it must be in the module.
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
@@ -38,10 +39,16 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
+# Since we also have it defined in about.py, we need to make sure they match. Just in case you forget to update both.
+if bl_info != bl_info_about:
+    raise ValueError("The bl_info literal value defined in __init__.py does not match the one in 'about.py'.")
+
+
+logger = setup_logger(log_level=logging.DEBUG)
+
 VERSION_ANNEX = ""
 
 owner = object()
-
 
 class VIEW3D_PT_CharMorph(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_CharMorph"
@@ -86,62 +93,108 @@ def select_handler(_):
     on_select()
 
 
-classes: list[type] = [None, prefs.CharMorphPrefs, VIEW3D_PT_CharMorph]
+# Define registration order
+_MODULES = [
+    library, 
+    morphing, 
+    randomize, 
+    file_io, 
+    assets, 
+    hair, 
+    rig, 
+    rigify, 
+    finalize, 
+    pose,
+    cmedit,
+    lib,
+    prefs,
+    common
+    #toonify
+]
 
+
+# Create a new dynamic 'CharMorphUIProps' type that contains all UIProps from all modules
 uiprops = [bpy.types.PropertyGroup]
-
-for module in library, morphing, randomize, file_io, assets, hair, rig, rigify, finalize, pose:
-    classes.extend(module.classes)
+for module in _MODULES:
     if hasattr(module, "UIProps"):
         uiprops.append(module.UIProps)
-
 CharMorphUIProps = type("CharMorphUIProps", tuple(uiprops), {})
-classes[0] = CharMorphUIProps
 
-class_register, class_unregister = bpy.utils.register_classes_factory(classes)
+
+# The classes from this module. Ideally these should be in a separate module and registered the same was as all others
+register_classes, unregister_classes = bpy.utils.register_classes_factory([
+    CharMorphUIProps,
+    VIEW3D_PT_CharMorph
+])
 
 
 def register():
-    # addon updater code and configurations
-    # in case of broken version, try to register the updater first
-    # so that users can revert back to a working version
-    addon_updater_ops.register(bl_info)
-    logger.debug("Charmorph register")
-    charlib.library.load()
-    class_register()
-    common.register()
-    bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
-    subscribe_select_obj()
+    logger.info("Registering CharMorph add-on...")
 
-    bpy.app.handlers.load_post.append(load_handler)
-    bpy.app.handlers.undo_post.append(undoredo_post)
-    bpy.app.handlers.redo_post.append(undoredo_post)
-    bpy.app.handlers.depsgraph_update_post.append(select_handler)
+    try:
+        register_classes()
 
-    cmedit.register()
+        for module in _MODULES:
+            module.register()
+
+        #addon_updater_ops.register(bl_info)  # Special case, because of the extra param
+
+        charlib.library.load()
+
+        bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(
+            type=CharMorphUIProps, options={"SKIP_SAVE"}
+        )
+        subscribe_select_obj()
+
+        bpy.app.handlers.load_post.append(load_handler)
+        bpy.app.handlers.undo_post.append(undoredo_post)
+        bpy.app.handlers.redo_post.append(undoredo_post)
+        bpy.app.handlers.depsgraph_update_post.append(select_handler)
+
+        logger.info("...successfully registered the CharMorph add-on.")
+    except Exception as e:
+        logger.error(f"Failed to register the CharMorph add-on.: {e}")
+        unregister() 
+        raise # Propagate the exception
+
 
 
 def unregister():
-    # addon updater unregister
-    addon_updater_ops.unregister()
-    logger.debug("Charmorph unregister")
-    cmedit.unregister()
+    logger.info("Un-registering CharMorph add-on...")
+    
+    try:
+        # Remove handlers
+        for hlist in bpy.app.handlers:
+            if not isinstance(hlist, list):
+                continue
+            for handler in [load_handler, select_handler, undoredo_post]:
+                while handler in hlist:
+                    hlist.remove(handler)
 
-    for hlist in bpy.app.handlers:
-        if not isinstance(hlist, list):
-            continue
-        for handler in hlist:
-            if handler in (load_handler, select_handler):
-                hlist.remove(handler)
-                break
+        # Clear the message bus
+        bpy.msgbus.clear_by_owner(owner)
 
-    bpy.msgbus.clear_by_owner(owner)
-    del bpy.types.WindowManager.charmorph_ui
-    common.manager.del_charmorphs()
+        # Delete custom properties
+        if hasattr(bpy.types.WindowManager, "charmorph_ui"):
+            del bpy.types.WindowManager.charmorph_ui
 
-    common.unregister()
-    class_unregister()
+        # Unregister modules
+        for module in reversed(_MODULES):
+            module.unregister()
 
+
+       # addon_updater_ops.unregister();
+
+        # Unregister classes
+        unregister_classes()
+
+        # Clean up additional resources
+        common.manager.del_charmorphs()
+
+        logger.info("...successfully un-registered the CharMorph add-on.")
+    except Exception as e:
+        logger.error(f"Failed to un-register the CharMorph add-on.: {e}")
+        raise # Propagate the exception
 
 if __name__ == "__main__":
     register()

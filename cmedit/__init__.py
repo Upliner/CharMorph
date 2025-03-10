@@ -18,14 +18,11 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging
-
 import bpy  # pylint: disable=import-error
 
 from ..lib import utils
 from . import assets, file_io, rigging, vg_calc, symmetry
-
-logger = logging.getLogger(__name__)
+from ..global_logger import logger
 
 
 class VIEW3D_PT_CMEdit(bpy.types.Panel):
@@ -49,24 +46,40 @@ class CMEditUIProps(bpy.types.PropertyGroup, vg_calc.UIProps, assets.UIProps):
         poll=utils.visible_mesh_poll,
     )
 
+# The classes from this module. Ideally these should be in a separate module and registered the same was as all others
+register_classes, unregister_classes = bpy.utils.register_classes_factory([
+    CMEditUIProps, 
+    VIEW3D_PT_CMEdit
+])
 
-classes = [CMEditUIProps, VIEW3D_PT_CMEdit]
 
-for module in assets, rigging, vg_calc, symmetry, file_io:
-    classes.extend(module.classes)
-
-register_classes, unregister_classes = bpy.utils.register_classes_factory(classes)
-
+# Define registration order
+_MODULES = [
+    assets, 
+    rigging, 
+    vg_calc, 
+    symmetry, 
+    file_io        
+]
 
 def register():
     register_classes()
+
+    for module in _MODULES:
+        module.register()
+
     bpy.types.WindowManager.cmedit_ui = bpy.props.PointerProperty(type=CMEditUIProps, options={"SKIP_SAVE"})
 
 
 def unregister():
     del bpy.types.WindowManager.cmedit_ui
+
+    for module in reversed(_MODULES):
+        module.unregister()
+
     unregister_classes()
 
 
 if __name__ == "__main__":
     register()
+

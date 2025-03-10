@@ -46,6 +46,13 @@ git submodule init
 git submodule update
 ``` 
 
+### Class Registration
+The order of class registration in Bender is very important.
+Some modules have special registration requirement so we can't just use `bpy.utils.register_class(cls)`.
+So is we have some in class collections and others that require module.register() then we cannot easily maintain the order. Therefor, to we keep a consistent pattern whereby each module has a `register()` and `unregister()` function that is then called from the `__init__.py` file.
+
+
+
 ## Installation manual
 
 * Download the latest `charmorph.zip` package from the [releases page](https://github.com/Upliner/CharMorph/releases/latest) (not the source code file but the release package).   
@@ -57,3 +64,4 @@ git submodule update
 
 * Features showcase on this [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
 * Discord server: https://discord.gg/bMsvxN3jPY
+

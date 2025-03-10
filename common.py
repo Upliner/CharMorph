@@ -18,13 +18,12 @@
 #
 # Copyright (C) 2020-2022 Michael Vigovsky
 
-import logging, json
+import json
 import bpy  # pylint: disable=import-error
 
 from . import prefs
 from .lib import charlib, morpher, morpher_cores
-
-logger = logging.getLogger(__name__)
+from .global_logger import logger
 
 if "undo_push" in dir(bpy.ops.ed):
     undo_push = bpy.ops.ed.undo_push

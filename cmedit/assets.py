@@ -219,5 +219,17 @@ class UIProps:
         items=get_shape_keys_with_morpher,
     )
 
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
 
-classes = OpRetarget, OpFinalToSk, OpExportFold, CMEDIT_PT_Assets
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpRetarget,
+    OpFinalToSk,
+    OpExportFold,
+    CMEDIT_PT_Assets
+])
+
+if __name__ == "__main__":
+    register()

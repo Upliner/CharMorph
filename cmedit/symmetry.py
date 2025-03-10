@@ -331,4 +331,19 @@ class CMEDIT_PT_Symmetry(bpy.types.Panel):
         l.operator("cmedit.symmetrize_offsets")
 
 
-classes = OpCheckSymmetry, OpSymmetrizeVG, OpSymmetrizeWeights, OpSymmetrizeJoints, OpSymmetrizeOffsets, CMEDIT_PT_Symmetry
+"""
+Registers/Unregisters all classes from Blender. This will be called by the __init__ of this package.
+
+This order is very important.
+"""
+register, unregister = bpy.utils.register_classes_factory([
+    OpCheckSymmetry, 
+    OpSymmetrizeVG, 
+    OpSymmetrizeWeights,
+    OpSymmetrizeJoints, 
+    OpSymmetrizeOffsets,
+    CMEDIT_PT_Symmetry
+])
+
+if __name__ == "__main__":
+    register()

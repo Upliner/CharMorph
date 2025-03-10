@@ -26,6 +26,9 @@ import traceback
 
 import bpy
 from bpy.app.handlers import persistent
+from .about import bl_info
+import importlib
+ 
 
 # Safely import the updater.
 # Prevents popups for users with invalid python installs e.g. missing libraries
@@ -1319,7 +1322,9 @@ def select_link_function(self, tag):
 # -----------------------------------------------------------------------------
 # Register, should be run in the register module itself
 # -----------------------------------------------------------------------------
-classes = (
+
+# Apply annotations to remove Blender 2.8+ warnings, no effect on 2.7
+annotated_classes = [make_annotations(cls) for cls in [
     AddonUpdaterInstallPopup,
     AddonUpdaterCheckNow,
     AddonUpdaterUpdateNow,
@@ -1328,11 +1333,14 @@ classes = (
     AddonUpdaterUpdatedSuccessful,
     AddonUpdaterRestoreBackup,
     AddonUpdaterIgnore,
-    AddonUpdaterEndBackground
-)
+    AddonUpdaterEndBackground]
+]
+
+# The classes from this module. Ideally these should be in a separate module and registered the same was as all others
+register_classes, unregister_classes = bpy.utils.register_classes_factory(annotated_classes)
 
 
-def register(bl_info):
+def register():
     """Registering the operators in this module"""
     # Safer failure in case of issue loading module.
     if updater.error:
@@ -1509,11 +1517,7 @@ def register(bl_info):
     # The register line items for all operators/panels.
     # If using bpy.utils.register_module(__name__) to register elsewhere
     # in the addon, delete these lines (also from unregister).
-    for cls in classes:
-        # Apply annotations to remove Blender 2.8+ warnings, no effect on 2.7
-        make_annotations(cls)
-        # Comment out this line if using bpy.utils.register_module(__name__)
-        bpy.utils.register_class(cls)
+    register_classes()
 
     # Special situation: we just updated the addon, show a popup to tell the
     # user it worked. Could enclosed in try/catch in case other issues arise.
@@ -1521,10 +1525,6 @@ def register(bl_info):
 
 
 def unregister():
-    for cls in reversed(classes):
-        # Comment out this line if using bpy.utils.unregister_module(__name__).
-        bpy.utils.unregister_class(cls)
-
     # Clear global vars since they may persist if not restarting blender.
     updater.clear_state()  # Clear internal vars, avoids reloading oddities.
 
@@ -1536,3 +1536,5 @@ def unregister():
 
     global ran_background_check
     ran_background_check = False
+
+    unregister_classes()
