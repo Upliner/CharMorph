@@ -31,8 +31,8 @@ from .about import bl_info as bl_info_about
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 4, 0),
-    "blender": (4, 3, 0),
+    "version": (0, 3, 5),
+    "blender": (3, 3, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing, cloth fitting and rigging tools",
     'wiki_url': "",

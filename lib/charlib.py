@@ -112,22 +112,24 @@ class DataDir:
             result.flags.writeable = False
         return result
 
-    def migrate_data(self, new_directory):
+    def migrate_data(self, new_directory, move=True):
         if not os.path.exists(new_directory):
             raise ValueError(f"The directory {new_directory} does not exist")
 
-        for filename in os.listdir(self.dirpath):
-            source_path = os.path.join(self.dirpath, filename)
-            destination_path = os.path.join(new_directory, filename)
+        # We use the same method to move the file as to change the path.
+        if move:
+            for filename in os.listdir(self.dirpath):
+                source_path = os.path.join(self.dirpath, filename)
+                destination_path = os.path.join(new_directory, filename)
 
-            if os.path.isfile(source_path):
-                shutil.move(source_path, destination_path)
-            elif os.path.isdir(source_path):
-                shutil.move(source_path, destination_path)
+                if os.path.isfile(source_path):
+                    shutil.move(source_path, destination_path)
+                elif os.path.isdir(source_path):
+                    shutil.move(source_path, destination_path)
 
-        # Remove the original directory if it's empty
-        if not os.listdir(self.dirpath):
-            os.rmdir(self.dirpath)
+            # Remove the original directory if it's empty
+            if not os.listdir(self.dirpath):
+                os.rmdir(self.dirpath)
 
         # Update the directory path and save it
         self.dirpath = new_directory

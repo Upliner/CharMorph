@@ -141,10 +141,6 @@ class CharMorphPrefs(AddonPreferences):
         max=59
     )
 
-    def __init__(self):
-        logger.debug("CharMorphPrefs __init__ called")
-        super().__init__()
-        self.load_characters()
 
     def load_characters(self):
         self.character_list.clear()
@@ -325,6 +321,10 @@ annotated_classes = [addon_updater_ops.make_annotations(cls) for cls in [
 
 register_classes, unregister_classes = bpy.utils.register_classes_factory(annotated_classes)
 
+def load_characters_timer():
+    prefs = bpy.context.preferences.addons[__package__].preferences
+    prefs.load_characters()
+    return None  # Stop the timer after running once
 
 def register():
     # Addon updater code and configurations.
@@ -332,11 +332,10 @@ def register():
 	# users can revert back to a working version.
     addon_updater_ops.register()
     register_classes()
-    
-    # Load characters after registration
-    prefs = bpy.context.preferences.addons[__package__].preferences
-    prefs.data_path = global_data_dir.path() # Since the data_path is stored with the belnder file, we force it to rather use the value from our config.json
-    prefs.load_characters()
+
+
+    # Start a timer to load characters after 1 second, because the preferences are not completely available until after registration completes.
+    bpy.app.timers.register(load_characters_timer, first_interval=1.0)
 
 
 def unregister():
