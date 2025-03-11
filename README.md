@@ -36,16 +36,6 @@ It is planned that CharMorph won't be limited to humanoids. Animals and other cr
 
 ## Development notes
 
-This project uses git submodules, so you need to use `git clone --recursive` when cloning this repository. If you forgot to do so, you can execute the following commands individually after cloning:
-```
-cd CharMorph
-git submodule init
-git submodule update
-cd data
-git submodule init
-git submodule update
-``` 
-
 ### Class Registration
 The order of class registration in Bender is very important.
 Some modules have special registration requirement so we can't just use `bpy.utils.register_class(cls)`.
@@ -57,11 +47,10 @@ So is we have some in class collections and others that require module.register(
 
 * Download the latest `charmorph.zip` package from the [releases page](https://github.com/Upliner/CharMorph/releases/latest) (not the source code file but the release package).   
 * In Blender go to Edit->Preferences->Addons, click "Install..." and select the downloaded zip package.
-
-**NOTE:** If the zip file is smaller than 10MB, it means the file contains the addon only, without the character library. If that's the case, you can download it from [here](http://github.com/Upliner/CharMorph-db/) and extract it to the CharMorph data directory, which should be located in `%appdata%\Blender Foundation\Blender\<VersionNumber>\scripts\addons\CharMorph\data` on Windows
+* Download your Character of choice in the Add-on's preferences menu.
 
 ## Links
 
 * Features showcase on this [BlenderArtists forum thread](https://blenderartists.org/t/charmorph-character-creation-tool-mb-lab-based/1252543)
 * Discord server: https://discord.gg/bMsvxN3jPY
-
+* Website & Documentation: https://blendercharacterproject.org/
