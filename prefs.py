@@ -1,13 +1,16 @@
 import bpy
 import requests
 import zipfile
+import threading
 import io
 import json
 import os
 import shutil
+import traceback
+import queue
 from .lib import charlib
 from .lib.charlib import global_data_dir
-from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty, FloatProperty
 from bpy.types import PropertyGroup, AddonPreferences, Operator
 from bpy_extras.io_utils import ImportHelper
 from . import addon_updater_ops 
@@ -236,39 +239,167 @@ class CHARMORPH_OT_download_character(Operator):
     bl_idname = "charmorph.download_character"
     bl_label = "Download Character"
     character_name: StringProperty()
-    
+
+    def __init__(self):
+        self.timer = None
+        self.downloading = False
+        self.download_thread = None
+        self.download_size = 0
+        self.downloaded_size = 0
+        self.error_message = ""
+        self.progress_queue = None
+
     def execute(self, context):
         prefs = context.preferences.addons[__package__].preferences
         character = next((c for c in prefs.character_list if c.name == self.character_name), None)
-        
         if not character:
             self.report({'ERROR'}, f"Character {self.character_name} not found")
             return {'CANCELLED'}
-        
-        try:
-            # Get the latest release info
-            response = requests.get(character.repo)
-            release_data = response.json()
-            
-            # Get the ZIP file URL
-            zip_url = release_data['assets'][0]['browser_download_url']
-            
-            # Download the ZIP file
-            response = requests.get(zip_url)
-            zip_content = io.BytesIO(response.content)
-            
-            # Extract the ZIP file to the data directory
-            with zipfile.ZipFile(zip_content) as zip_ref:
-                zip_ref.extractall(global_data_dir.path("characters"))
-            
-            character.downloaded = True
-            self.report({'INFO'}, f"Character {self.character_name} downloaded successfully")
-        except Exception as e:
-            self.report({'ERROR'}, f"Error downloading character: {str(e)}")
-            return {'CANCELLED'}
-        
-        return {'FINISHED'}
 
+        # Start download process
+        self.downloading = True
+        self.error_message = ""
+        self.download_size = 0
+        self.downloaded_size = 0
+
+        # Create a queue for thread communication
+        self.progress_queue = queue.Queue()
+
+        wm = context.window_manager
+        wm.progress_begin(0, 100)
+        wm.progress_update(0)
+
+        def download_and_extract(character_name, repo, download_dir, report_func, progress_queue):
+            try:
+                response = requests.get(repo)
+                response.raise_for_status()
+                release_data = response.json()
+
+                zip_url = release_data['assets'][0]['browser_download_url']
+
+                response_head = requests.head(zip_url)
+                total_size = int(response_head.headers.get('content-length', 0))
+                progress_queue.put(('size', total_size))
+
+                response = requests.get(zip_url, stream=True)
+                response.raise_for_status()
+
+                zip_content = io.BytesIO()
+                downloaded_size = 0
+
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        zip_content.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_queue.put(('progress', downloaded_size))
+
+                zip_content.seek(0)
+
+                with zipfile.ZipFile(zip_content) as zip_ref:
+                    zip_ref.extractall(download_dir)
+
+                def update_character_status():
+                    prefs = bpy.context.preferences.addons[__package__].preferences
+                    character = next((c for c in prefs.character_list if c.name == character_name), None)
+                    if character:
+                        character.downloaded = True
+                    return None
+
+                bpy.app.timers.register(update_character_status, first_interval=0.1)
+
+                progress_queue.put(('complete', None))
+                report_func({'INFO'}, f"Character {character_name} downloaded successfully")
+
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Network error downloading character: {str(e)}"
+                progress_queue.put(('error', error_msg))
+                report_func({'ERROR'}, error_msg)
+            except zipfile.BadZipFile as e:
+                error_msg = f"Invalid zip file: {str(e)}"
+                progress_queue.put(('error', error_msg))
+                report_func({'ERROR'}, error_msg)
+            except KeyError as e:
+                error_msg = f"Error parsing release data: {str(e)}"
+                progress_queue.put(('error', error_msg))
+                report_func({'ERROR'}, error_msg)
+            except Exception as e:
+                error_msg = f"Error downloading character: {str(e)}\n{traceback.format_exc()}"
+                progress_queue.put(('error', error_msg))
+                report_func({'ERROR'}, error_msg)
+
+        self.download_thread = threading.Thread(
+            target=download_and_extract,
+            args=(self.character_name, character.repo, global_data_dir.path("characters"),
+                  self.report, self.progress_queue)
+        )
+        self.download_thread.start()
+
+        wm = context.window_manager
+        self.timer = wm.event_timer_add(0.1, window=context.window)
+        wm.modal_handler_add(self)
+
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        wm = context.window_manager
+
+        if event.type == 'TIMER':
+            try:
+                while True:
+                    msg_type, msg_data = self.progress_queue.get_nowait()
+
+                    if msg_type == 'size':
+                        self.download_size = msg_data
+                    elif msg_type == 'progress':
+                        self.downloaded_size = msg_data
+                        if self.download_size > 0:
+                            percentage = int((self.downloaded_size / self.download_size) * 100)
+                            wm.progress_update(percentage)
+
+                            downloaded_mb = self.downloaded_size / (1024 * 1024)
+                            total_mb = self.download_size / (1024 * 1024)
+                            status_text = f"Downloading {self.character_name}: {percentage}% ({downloaded_mb:.1f} MB / {total_mb:.1f} MB)"
+                            context.workspace.status_text_set(status_text)
+
+                    elif msg_type == 'complete':
+                        wm.progress_end()
+                        self.downloading = False
+                        context.workspace.status_text_set(f"Character {self.character_name} downloaded successfully")
+                    elif msg_type == 'error':
+                        self.error_message = msg_data
+                        self.downloading = False
+                        context.workspace.status_text_set(f"Error: {self.error_message}")
+
+                    self.progress_queue.task_done()
+            except queue.Empty:
+                pass
+
+            if not self.downloading:
+                wm.event_timer_remove(self.timer)
+
+                def clear_status():
+                    bpy.context.workspace.status_text_set(None)
+                    return None
+
+                bpy.app.timers.register(clear_status, first_interval=5.0)
+
+                return {'FINISHED'}
+
+        elif event.type in {'ESC'}:
+            self.cancel(context)
+            self.report({'INFO'}, "Download cancelled")
+            return {'CANCELLED'}
+
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        if self.timer:
+            wm = context.window_manager
+            wm.event_timer_remove(self.timer)
+            wm.progress_end()
+
+        context.workspace.status_text_set(None)
+        self.downloading = False
 
 class CHARMORPH_OT_delete_character(Operator):
     bl_idname = "charmorph.delete_character"
@@ -341,6 +472,7 @@ def register():
 def unregister():
     unregister_classes()
     addon_updater_ops.unregister()
+
 
 
 if __name__ == "__main__":
