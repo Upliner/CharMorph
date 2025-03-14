@@ -17,6 +17,18 @@
             "license": "CC-BY",
             "downloaded": false,
             "repo": "https://api.github.com/repos/seenbuklee/CharMorph-Reom/releases/latest"
+        },
+        {
+            "name": "MB-Lab Female",
+            "license": "AGPL",
+            "downloaded": false,
+            "repo": "https://api.github.com/repos/seenbuklee/CharMorph-MB-Lab-Female/releases/latest"
+        },
+        {
+            "name": "MB-Lab Male",
+            "license": "AGPL",
+            "downloaded": false,
+            "repo": "https://api.github.com/repos/seenbuklee/CharMorph-MB-Lab-Male/releases/latest"
         }
     ]
 }
