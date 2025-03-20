@@ -10,7 +10,7 @@ import traceback
 import queue
 from .lib import charlib
 from .lib.charlib import global_data_dir
-from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty, FloatProperty
+from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import PropertyGroup, AddonPreferences, Operator
 from bpy_extras.io_utils import ImportHelper
 from . import addon_updater_ops 
@@ -235,21 +235,79 @@ class CHARMORPH_OT_confirm_migration(Operator):
         prefs.data_path = source_dir 
 
 
+# Global variables to track progress
+download_progress_value = 0.0
+is_downloading = False
+download_progress_text = "Idle"
+draw_handler_added = False  # Flag to track if the draw handler is added
+
+# Draw handler for status bar
+def draw_download_progress(self, context):
+    global download_progress_value, download_progress_text, is_downloading
+    
+    layout = self.layout
+    
+    if is_downloading:
+        # Create three columns: left spacer, center content, right spacer
+        row = layout.row()
+        
+        # Left column - flexible to push content to center
+        left_col = row.column()
+        left_col.alignment = 'EXPAND'
+        left_col.label(text="")
+        
+        # Center column - contains our progress info
+        center_col = row.column()
+        center_col.alignment = 'CENTER'
+        
+        # Create a row for the progress text and bar
+        prog_row = center_col.row(align=True)
+        prog_row.alignment = 'CENTER'
+        prog_row.label(text=download_progress_text)
+        prog_row.separator()
+        
+        # Make the progress bar a reasonable width
+        prog_bar = prog_row.column()
+        prog_bar.scale_x = 3.0  # Adjust this value to change width
+        
+        # Ensure progress value is valid (between 0 and 1)
+        safe_progress = min(1.0, max(0.0, download_progress_value))
+        prog_bar.progress(factor=safe_progress, type='BAR')
+        
+        # Right column - flexible to push content to center
+        right_col = row.column()
+        right_col.alignment = 'EXPAND'
+        right_col.label(text="")
+
 class CHARMORPH_OT_download_character(Operator):
     bl_idname = "charmorph.download_character"
     bl_label = "Download Character"
     character_name: StringProperty()
+    
+    # These can be class variables
+    timer = None
+    downloading = False
+    download_thread = None
+    download_size = 0
+    downloaded_size = 0
+    error_message = ""
+    progress_queue = None
 
-    def __init__(self):
-        self.timer = None
+    def invoke(self, context, event):
+        # Initialize variables here
         self.downloading = False
         self.download_thread = None
         self.download_size = 0
         self.downloaded_size = 0
         self.error_message = ""
         self.progress_queue = None
+        
+        # Then proceed with execute logic
+        return self.execute(context)
 
     def execute(self, context):
+        global is_downloading, download_progress_text, draw_handler_added, download_progress_value
+        
         prefs = context.preferences.addons[__package__].preferences
         character = next((c for c in prefs.character_list if c.name == self.character_name), None)
         if not character:
@@ -258,94 +316,47 @@ class CHARMORPH_OT_download_character(Operator):
 
         # Start download process
         self.downloading = True
+        is_downloading = True
+        download_progress_value = 0.0
         self.error_message = ""
         self.download_size = 0
         self.downloaded_size = 0
+        download_progress_text = f"Preparing to download {self.character_name}..."
 
         # Create a queue for thread communication
         self.progress_queue = queue.Queue()
 
-        wm = context.window_manager
-        wm.progress_begin(0, 100)
-        wm.progress_update(0)
+        # Add our drawing function to the status bar if not already added
+        if not draw_handler_added:
+            bpy.types.STATUSBAR_HT_header.append(draw_download_progress)
+            draw_handler_added = True
 
-        def download_and_extract(character_name, repo, download_dir, report_func, progress_queue):
-            try:
-                response = requests.get(repo)
-                response.raise_for_status()
-                release_data = response.json()
-
-                zip_url = release_data['assets'][0]['browser_download_url']
-
-                response_head = requests.head(zip_url)
-                total_size = int(response_head.headers.get('content-length', 0))
-                progress_queue.put(('size', total_size))
-
-                response = requests.get(zip_url, stream=True)
-                response.raise_for_status()
-
-                zip_content = io.BytesIO()
-                downloaded_size = 0
-
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        zip_content.write(chunk)
-                        downloaded_size += len(chunk)
-                        progress_queue.put(('progress', downloaded_size))
-
-                zip_content.seek(0)
-
-                with zipfile.ZipFile(zip_content) as zip_ref:
-                    zip_ref.extractall(download_dir)
-
-                def update_character_status():
-                    prefs = bpy.context.preferences.addons[__package__].preferences
-                    character = next((c for c in prefs.character_list if c.name == character_name), None)
-                    if character:
-                        character.downloaded = True
-                    return None
-
-                bpy.app.timers.register(update_character_status, first_interval=0.1)
-
-                progress_queue.put(('complete', None))
-                report_func({'INFO'}, f"Character {character_name} downloaded successfully")
-
-            except requests.exceptions.RequestException as e:
-                error_msg = f"Network error downloading character: {str(e)}"
-                progress_queue.put(('error', error_msg))
-                report_func({'ERROR'}, error_msg)
-            except zipfile.BadZipFile as e:
-                error_msg = f"Invalid zip file: {str(e)}"
-                progress_queue.put(('error', error_msg))
-                report_func({'ERROR'}, error_msg)
-            except KeyError as e:
-                error_msg = f"Error parsing release data: {str(e)}"
-                progress_queue.put(('error', error_msg))
-                report_func({'ERROR'}, error_msg)
-            except Exception as e:
-                error_msg = f"Error downloading character: {str(e)}\n{traceback.format_exc()}"
-                progress_queue.put(('error', error_msg))
-                report_func({'ERROR'}, error_msg)
-
+        # Start the download thread
         self.download_thread = threading.Thread(
-            target=download_and_extract,
-            args=(self.character_name, character.repo, global_data_dir.path("characters"),
-                  self.report, self.progress_queue)
+            target=self.download_and_extract,
+            args=(self.character_name, character.repo, global_data_dir.path("characters")),
+            daemon=True  # Make thread daemon so it exits when Blender exits
         )
         self.download_thread.start()
 
         wm = context.window_manager
         self.timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
+        
+        # Force initial redraw to show status bar
+        for area in context.screen.areas:
+            area.tag_redraw()
 
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
-        wm = context.window_manager
+        global download_progress_value, download_progress_text, is_downloading, draw_handler_added
 
         if event.type == 'TIMER':
             try:
-                while True:
+                updated = False
+                while not self.progress_queue.empty():
+                    updated = True
                     msg_type, msg_data = self.progress_queue.get_nowait()
 
                     if msg_type == 'size':
@@ -353,36 +364,52 @@ class CHARMORPH_OT_download_character(Operator):
                     elif msg_type == 'progress':
                         self.downloaded_size = msg_data
                         if self.download_size > 0:
-                            percentage = int((self.downloaded_size / self.download_size) * 100)
-                            wm.progress_update(percentage)
-
+                            # Update global progress variables for the status bar
+                            download_progress_value = min(1.0, max(0.0, self.downloaded_size / self.download_size))
+                            
                             downloaded_mb = self.downloaded_size / (1024 * 1024)
                             total_mb = self.download_size / (1024 * 1024)
-                            status_text = f"Downloading {self.character_name}: {percentage}% ({downloaded_mb:.1f} MB / {total_mb:.1f} MB)"
-                            context.workspace.status_text_set(status_text)
-
+                            download_progress_text = f"Downloading {self.character_name}: {int(download_progress_value * 100)}% ({downloaded_mb:.1f} MB / {total_mb:.1f} MB)"
                     elif msg_type == 'complete':
-                        wm.progress_end()
                         self.downloading = False
-                        context.workspace.status_text_set(f"Character {self.character_name} downloaded successfully")
+                        download_progress_text = f"Character {self.character_name} downloaded successfully"
+                        download_progress_value = 1.0  # Ensure it shows 100%
+                        self.report({'INFO'}, download_progress_text)
                     elif msg_type == 'error':
                         self.error_message = msg_data
                         self.downloading = False
-                        context.workspace.status_text_set(f"Error: {self.error_message}")
+                        download_progress_text = f"Error: {self.error_message}"
+                        self.report({'ERROR'}, self.error_message)
 
                     self.progress_queue.task_done()
+                
+                # Force UI redraw if there were any updates
+                if updated:
+                    # Force all areas to redraw to ensure status bar updates
+                    for window in context.window_manager.windows:
+                        for area in window.screen.areas:
+                            area.tag_redraw()
+                            
             except queue.Empty:
                 pass
 
             if not self.downloading:
+                # Clean up and exit modal
+                self.cleanup_status_bar()
+                wm = context.window_manager
                 wm.event_timer_remove(self.timer)
-
+                
                 def clear_status():
-                    bpy.context.workspace.status_text_set(None)
+                    global download_progress_text, is_downloading
+                    download_progress_text = "Idle"
+                    is_downloading = False
+                    # Force UI redraw to update status bar
+                    for window in bpy.context.window_manager.windows:
+                        for area in window.screen.areas:
+                            area.tag_redraw()
                     return None
 
                 bpy.app.timers.register(clear_status, first_interval=5.0)
-
                 return {'FINISHED'}
 
         elif event.type in {'ESC'}:
@@ -392,14 +419,86 @@ class CHARMORPH_OT_download_character(Operator):
 
         return {'RUNNING_MODAL'}
 
+    def cleanup_status_bar(self):
+        global draw_handler_added
+        if draw_handler_added:
+            try:
+                bpy.types.STATUSBAR_HT_header.remove(draw_download_progress)
+                draw_handler_added = False
+            except Exception as e:
+                print(f"Error removing status bar handler: {str(e)}")
+
     def cancel(self, context):
+        global is_downloading, download_progress_text
+        
         if self.timer:
             wm = context.window_manager
             wm.event_timer_remove(self.timer)
-            wm.progress_end()
+        
+        self.cleanup_status_bar()
+        is_downloading = False
+        download_progress_text = "Download cancelled"
 
-        context.workspace.status_text_set(None)
-        self.downloading = False
+    # ADD THIS METHOD TO THE CLASS
+    def download_and_extract(self, character_name, repo, download_dir):
+        global is_downloading, download_progress_text, download_progress_value
+        
+        try:
+            # Fetch release data
+            response = requests.get(repo)
+            response.raise_for_status()
+            release_data = response.json()
+
+            zip_url = release_data['assets'][0]['browser_download_url']
+
+            # Get file size
+            response_head = requests.head(zip_url)
+            total_size = int(response_head.headers.get('content-length', 0))
+            self.progress_queue.put(('size', total_size))
+
+            # Download file
+            response = requests.get(zip_url, stream=True)
+            response.raise_for_status()
+
+            zip_content = io.BytesIO()
+            downloaded_size = 0
+
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    zip_content.write(chunk)
+                    downloaded_size += len(chunk)
+                    self.progress_queue.put(('progress', downloaded_size))
+
+            zip_content.seek(0)
+
+            # Extract file
+            with zipfile.ZipFile(zip_content) as zip_ref:
+                zip_ref.extractall(download_dir)
+
+            # Update character status
+            def update_character_status():
+                prefs = bpy.context.preferences.addons[__package__].preferences
+                character = next((c for c in prefs.character_list if c.name == character_name), None)
+                if character:
+                    character.downloaded = True
+                return None
+
+            bpy.app.timers.register(update_character_status, first_interval=0.1)
+
+            self.progress_queue.put(('complete', None))
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error downloading character: {str(e)}"
+            self.progress_queue.put(('error', error_msg))
+        except zipfile.BadZipFile as e:
+            error_msg = f"Invalid zip file: {str(e)}"
+            self.progress_queue.put(('error', error_msg))
+        except KeyError as e:
+            error_msg = f"Error parsing release data: {str(e)}"
+            self.progress_queue.put(('error', error_msg))
+        except Exception as e:
+            error_msg = f"Error downloading character: {str(e)}\n{traceback.format_exc()}"
+            self.progress_queue.put(('error', error_msg))
 
 class CHARMORPH_OT_delete_character(Operator):
     bl_idname = "charmorph.delete_character"
