@@ -8,12 +8,12 @@ import os
 import shutil
 import traceback
 import queue
-from .lib import charlib
+from pathlib import Path
+import time
 from .lib.charlib import global_data_dir
-from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty
+from bpy.props import StringProperty, BoolProperty, CollectionProperty, EnumProperty
 from bpy.types import PropertyGroup, AddonPreferences, Operator
-from bpy_extras.io_utils import ImportHelper
-from . import addon_updater_ops 
+from . import addon_updater_ops
 from .global_logger import logger
 
 undo_modes = [("S", "Simple", "Don't show additional info in undo list")]
@@ -21,18 +21,15 @@ undo_default_mode = "S"
 undo_update_hook = None
 
 
-def load_character_list():
-   
-    # The data directory is at the same level as the script
+def load_character_list_from_file():
+    """Load character data from a JSON file."""
     json_file = global_data_dir.path("lists.json")
     logger.debug(f"Attempting to load JSON from: {json_file}")
-    
+
     try:
         with open(json_file, 'r') as f:
             data = json.load(f)
-        assets = data.get("assets", [])
-        logger.debug(f"Loaded assets: {[asset['name'] for asset in assets]}")
-        return assets
+        return data.get("assets", [])
     except FileNotFoundError:
         logger.error(f"lists.json file not found at {json_file}")
         return []
@@ -42,6 +39,26 @@ def load_character_list():
     except Exception as e:
         logger.error(f"Unexpected error loading lists.json: {e}")
         return []
+
+def save_character_list_to_file(character_list):
+    """Save the character_list collection back to the JSON file."""
+    json_file = global_data_dir.path("lists.json")
+    characters = [
+        {
+            "name": item.name,
+            "license": item.license,
+            "downloaded": item.downloaded,
+            "repo": item.repo,
+        }
+        for item in character_list
+    ]
+
+    try:
+        with open(json_file, 'w') as f:
+            json.dump({"assets": characters}, f, indent=4)
+        logger.debug(f"Saved characters to {json_file}")
+    except Exception as e:
+        logger.error(f"Error saving characters to {json_file}: {e}")
 
 
 class CharacterItem(PropertyGroup):
@@ -73,7 +90,7 @@ class CharMorphPrefs(AddonPreferences):
         description="No censors, enable adult assets (genitals, pubic hair)",
         default=False
     )
-    
+
     data_path: StringProperty(
         name="Data Path",
         description="Path to CharMorph data",
@@ -98,12 +115,12 @@ class CharMorphPrefs(AddonPreferences):
         if dest_dir == source_dir:
             logger.debug("New path is the same as the current path. No migration needed.")
             return
-        
+
         # If the source is empty then there is nothing to do.
         if not os.path.exists(source_dir) or not os.listdir(source_dir):
             logger.info("The Source directory is empty or does not exist. So nothing to do except to change the path.")
             global_data_dir.migrate_data(dest_dir, move=False)
-            return 
+            return
 
         # Invoke the confirmation dialog
         bpy.ops.charmorph.confirm_migration('INVOKE_DEFAULT')
@@ -144,11 +161,12 @@ class CharMorphPrefs(AddonPreferences):
         max=59
     )
 
-
     def load_characters(self):
+        # Load the character list from the JSON file...
+        characters = load_character_list_from_file()
+        # ...then udd them to the 'character_list' collection
         self.character_list.clear()
-        characters = load_character_list()
-        logger.debug(f"Loaded characters: {[character['name'] for character in characters]}") 
+        logger.debug(f"Loaded characters: {[character['name'] for character in characters]}")
         for char in characters:
             item = self.character_list.add()
             item.name = char.get("name", "")
@@ -161,7 +179,7 @@ class CharMorphPrefs(AddonPreferences):
         layout = self.layout
         layout.prop(self, "undo_mode")
         layout.prop(self, "adult_mode")
-        
+
         layout.prop(self, "data_path")
 
         layout.label(text="Available Characters:")
@@ -200,7 +218,7 @@ class CHARMORPH_OT_confirm_migration(Operator):
             self.report({'ERROR'}, f"Error creating destination directory: {e}: {dest_dir}")
             prefs.data_path = source_dir  # Revert to source_dir on failure
             return {'CANCELLED'}
-        
+
         try:
             # Use the migrate_data function from DataDir
             global_data_dir.migrate_data(dest_dir)
@@ -224,15 +242,15 @@ class CHARMORPH_OT_confirm_migration(Operator):
             self.report({'ERROR'}, f"Source directory not found: {source_dir}")
             self.cancel(context)
             return {'CANCELLED'}
-        
+
         return context.window_manager.invoke_confirm(self, event)
-    
+
     def cancel(self, context):
         # This method is called if the user cancels the dialog
         self.report({'INFO'}, "Migration cancelled. Reverting to previous directory. See logs for more detail.")
         prefs = context.preferences.addons[__package__].preferences
         source_dir = os.path.normcase(os.path.normpath(global_data_dir.path()))
-        prefs.data_path = source_dir 
+        prefs.data_path = source_dir
 
 
 # Global variables to track progress
@@ -244,46 +262,70 @@ draw_handler_added = False  # Flag to track if the draw handler is added
 # Draw handler for status bar
 def draw_download_progress(self, context):
     global download_progress_value, download_progress_text, is_downloading
-    
+
+    logger.debug(f"==============draw_download_progress {download_progress_value}, {download_progress_text}, {is_downloading}")
     layout = self.layout
-    
+
     if is_downloading:
         # Create three columns: left spacer, center content, right spacer
         row = layout.row()
-        
+
         # Left column - flexible to push content to center
         left_col = row.column()
         left_col.alignment = 'EXPAND'
         left_col.label(text="")
-        
+
         # Center column - contains our progress info
         center_col = row.column()
         center_col.alignment = 'CENTER'
-        
+
         # Create a row for the progress text and bar
         prog_row = center_col.row(align=True)
         prog_row.alignment = 'CENTER'
         prog_row.label(text=download_progress_text)
         prog_row.separator()
-        
+
         # Make the progress bar a reasonable width
         prog_bar = prog_row.column()
         prog_bar.scale_x = 3.0  # Adjust this value to change width
-        
+
         # Ensure progress value is valid (between 0 and 1)
         safe_progress = min(1.0, max(0.0, download_progress_value))
         prog_bar.progress(factor=safe_progress, type='BAR')
-        
+
         # Right column - flexible to push content to center
         right_col = row.column()
         right_col.alignment = 'EXPAND'
         right_col.label(text="")
 
+
+# def get_statusbar_area(context):
+#     for window in bpy.context.window_manager.windows:
+#         logger.debug(f"Window: {window.screen.name}")
+#         for area in window.screen.areas:
+#             logger.debug(f"   Area: {area.type}")
+#             if area.type == 'STATUSBAR':
+#                 logger.debug(f"      !!!!!!!1Found status bar area: {area.type}")
+#                 #return area
+#                 area.tag_redraw()
+#                 return
+
+def update_statusbar_area(context):
+    for window in bpy.context.window_manager.windows:
+        logger.debug(f"Window: {window.screen.name}")
+        for area in window.screen.areas:
+            logger.debug(f"   Area: {area.type}")
+            for region in area.regions:
+                logger.debug(f"          Region: {region.type}")
+                region.tag_redraw()
+
+
 class CHARMORPH_OT_download_character(Operator):
+    """Download a character to the data/characters library"""
     bl_idname = "charmorph.download_character"
     bl_label = "Download Character"
     character_name: StringProperty()
-    
+
     # These can be class variables
     timer = None
     downloading = False
@@ -301,16 +343,17 @@ class CHARMORPH_OT_download_character(Operator):
         self.downloaded_size = 0
         self.error_message = ""
         self.progress_queue = None
-        
+
         # Then proceed with execute logic
         return self.execute(context)
 
     def execute(self, context):
         global is_downloading, download_progress_text, draw_handler_added, download_progress_value
-        
+
         prefs = context.preferences.addons[__package__].preferences
         character = next((c for c in prefs.character_list if c.name == self.character_name), None)
         if not character:
+            logger.error(f"Character {self.character_name} not found")
             self.report({'ERROR'}, f"Character {self.character_name} not found")
             return {'CANCELLED'}
 
@@ -340,12 +383,11 @@ class CHARMORPH_OT_download_character(Operator):
         self.download_thread.start()
 
         wm = context.window_manager
-        self.timer = wm.event_timer_add(0.1, window=context.window)
+        self.timer = wm.event_timer_add(0.5, window=context.window) # Don't update more than the user can observe.
         wm.modal_handler_add(self)
-        
+
         # Force initial redraw to show status bar
-        for area in context.screen.areas:
-            area.tag_redraw()
+        update_statusbar_area(bpy.context)
 
         return {'RUNNING_MODAL'}
 
@@ -358,15 +400,14 @@ class CHARMORPH_OT_download_character(Operator):
                 while not self.progress_queue.empty():
                     updated = True
                     msg_type, msg_data = self.progress_queue.get_nowait()
-
                     if msg_type == 'size':
                         self.download_size = msg_data
                     elif msg_type == 'progress':
                         self.downloaded_size = msg_data
                         if self.download_size > 0:
                             # Update global progress variables for the status bar
-                            download_progress_value = min(1.0, max(0.0, self.downloaded_size / self.download_size))
-                            
+                            # Note, at least on operator must be forced to a floar otherwise you will end with zero.
+                            download_progress_value = min(1.0, max(0.0, float(self.downloaded_size) / self.download_size))
                             downloaded_mb = self.downloaded_size / (1024 * 1024)
                             total_mb = self.download_size / (1024 * 1024)
                             download_progress_text = f"Downloading {self.character_name}: {int(download_progress_value * 100)}% ({downloaded_mb:.1f} MB / {total_mb:.1f} MB)"
@@ -382,14 +423,10 @@ class CHARMORPH_OT_download_character(Operator):
                         self.report({'ERROR'}, self.error_message)
 
                     self.progress_queue.task_done()
-                
-                # Force UI redraw if there were any updates
-                if updated:
-                    # Force all areas to redraw to ensure status bar updates
-                    for window in context.window_manager.windows:
-                        for area in window.screen.areas:
-                            area.tag_redraw()
-                            
+
+                update_statusbar_area(bpy.context)
+
+
             except queue.Empty:
                 pass
 
@@ -398,7 +435,7 @@ class CHARMORPH_OT_download_character(Operator):
                 self.cleanup_status_bar()
                 wm = context.window_manager
                 wm.event_timer_remove(self.timer)
-                
+
                 def clear_status():
                     global download_progress_text, is_downloading
                     download_progress_text = "Idle"
@@ -430,19 +467,20 @@ class CHARMORPH_OT_download_character(Operator):
 
     def cancel(self, context):
         global is_downloading, download_progress_text
-        
+
         if self.timer:
             wm = context.window_manager
             wm.event_timer_remove(self.timer)
-        
+
         self.cleanup_status_bar()
         is_downloading = False
         download_progress_text = "Download cancelled"
 
-    # ADD THIS METHOD TO THE CLASS
     def download_and_extract(self, character_name, repo, download_dir):
         global is_downloading, download_progress_text, download_progress_value
-        
+
+        logger.debug(f"Start download and extract of character: {character_name} from {repo}...")
+
         try:
             # Fetch release data
             response = requests.get(repo)
@@ -450,42 +488,47 @@ class CHARMORPH_OT_download_character(Operator):
             release_data = response.json()
 
             zip_url = release_data['assets'][0]['browser_download_url']
-
-            # Get file size
-            response_head = requests.head(zip_url)
-            total_size = int(response_head.headers.get('content-length', 0))
+            # Get file size frnm the same asset data ather than from the content header - since the latter is not always reliable
+            total_size = release_data['assets'][0]['size']
             self.progress_queue.put(('size', total_size))
 
             # Download file
+            logger.debug("...open the file...")
             response = requests.get(zip_url, stream=True)
             response.raise_for_status()
 
             zip_content = io.BytesIO()
             downloaded_size = 0
 
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in response.iter_content(chunk_size=204800): # I.e. 200KB. Don't make the chunk size too small, it will make the download too "chatty"
                 if chunk:
                     zip_content.write(chunk)
                     downloaded_size += len(chunk)
                     self.progress_queue.put(('progress', downloaded_size))
+                    # logger.debug(f"...get chunk (donwloaded size: {downloaded_size})...") too verbose
 
             zip_content.seek(0)
 
             # Extract file
             with zipfile.ZipFile(zip_content) as zip_ref:
+                logger.debug(f"...start unzipping the file...")
                 zip_ref.extractall(download_dir)
+                logger.debug(f"...done unzipping the file...")
 
             # Update character status
             def update_character_status():
+                logger.debug(f"...updating the character file...")
                 prefs = bpy.context.preferences.addons[__package__].preferences
                 character = next((c for c in prefs.character_list if c.name == character_name), None)
                 if character:
                     character.downloaded = True
+                    save_character_list_to_file(prefs.character_list)
                 return None
-
+            # REVIEW: Why do we do this on a timer?
             bpy.app.timers.register(update_character_status, first_interval=0.1)
 
             self.progress_queue.put(('complete', None))
+            logger.debug(f"...done with downloading.")
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Network error downloading character: {str(e)}"
@@ -501,24 +544,26 @@ class CHARMORPH_OT_download_character(Operator):
             self.progress_queue.put(('error', error_msg))
 
 class CHARMORPH_OT_delete_character(Operator):
+    """Delete a character from the data/characters library"""
     bl_idname = "charmorph.delete_character"
     bl_label = "Delete Character"
     character_name: StringProperty()
-    
+
     def execute(self, context):
         prefs = context.preferences.addons[__package__].preferences
         character = next((c for c in prefs.character_list if c.name == self.character_name), None)
-        
+
         if not character:
             self.report({'ERROR'}, f"Character {self.character_name} not found")
             return {'CANCELLED'}
 
-        character_dir = global_data_dir.path( "characters", self.character_name)
-        
+        character_dir = global_data_dir.path("characters", self.character_name)
+
         if os.path.exists(character_dir):
             try:
                 shutil.rmtree(character_dir)
                 character.downloaded = False
+                save_character_list_to_file(prefs.character_list)
                 self.report({'INFO'}, f"Character {self.character_name} deleted successfully")
             except Exception as e:
                 self.report({'ERROR'}, f"Error deleting character: {str(e)}")
@@ -526,7 +571,7 @@ class CHARMORPH_OT_delete_character(Operator):
         else:
             self.report({'WARNING'}, f"Character directory {character_dir} not found")
             return {'CANCELLED'}
-        
+
         return {'FINISHED'}
 
 

@@ -11,5 +11,9 @@ tmp
 ___test.py
 charmorph_updater/CharMorph_updater_status.json
 
+# Exclude the character data
+/data/characters
+
 # For those developing using visual studio
 /.vs
+

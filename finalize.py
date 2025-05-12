@@ -28,6 +28,12 @@ from .common import manager as mm, MorpherCheckOperator
 from .global_logger import logger
 
 
+# Move the drivers import inside functions that need it to break circular imports
+def get_drivers_module():
+    from . import drivers
+    return drivers
+
+
 def sk_to_verts(obj, sk):
     if isinstance(sk, str):
         k = obj.data.shape_keys
@@ -189,6 +195,126 @@ def get_exp_sk(obj, name):
     return obj.shape_key_add(name=name, from_mix=False)
 
 
+def _copy_drivers_from_char_to_asset(char_obj, asset_obj):
+    """Copy shape key drivers from character to asset"""
+    try:
+        # Get drivers module
+        drivers = get_drivers_module()
+        
+        # Skip if either object doesn't have shape keys
+        if not char_obj.data.shape_keys or not asset_obj.data.shape_keys:
+            logger.debug(f"Skipping driver copy - missing shape keys")
+            return
+        
+        # Create a direct reference to the shape keys for clarity
+        char_shape_keys = char_obj.data.shape_keys
+        asset_shape_keys = asset_obj.data.shape_keys
+            
+        # Check for animation data with drivers
+        if not char_shape_keys.animation_data or not char_shape_keys.animation_data.drivers:
+            logger.debug(f"Character has no shape key drivers to copy")
+            return
+        
+        # Log the available drivers for debugging
+        logger.debug(f"Found {len(char_shape_keys.animation_data.drivers)} drivers on character")
+        
+        # Get all drivers from the character's shape keys
+        char_drivers = drivers.get_drivers(char_shape_keys)
+        if not char_drivers:
+            logger.debug(f"No drivers found in character shape keys after extraction")
+            return
+            
+        logger.debug(f"Extracted {len(char_drivers)} drivers from character")
+        
+        # Process each driver to copy from character to asset
+        copied_count = 0
+        for driver_info in char_drivers:
+            # Extract shape key name from the data path
+            data_path = driver_info["data_path"]
+            
+            # Check if this is a shape key driver
+            if not data_path.startswith('key_blocks["'):
+                logger.debug(f"Skipping non-shape key driver: {data_path}")
+                continue
+                
+            # Extract the shape key name
+            start_idx = data_path.find('"') + 1
+            end_idx = data_path.find('"', start_idx)
+            if start_idx <= 0 or end_idx == -1:
+                logger.debug(f"Couldn't parse shape key name from: {data_path}")
+                continue
+                
+            shape_key_name = data_path[start_idx:end_idx]
+            logger.debug(f"Processing driver for shape key: {shape_key_name}")
+            
+            # Check if asset has this shape key
+            if shape_key_name not in asset_shape_keys.key_blocks:
+                logger.debug(f"Asset missing shape key: {shape_key_name}")
+                continue
+                
+            # Get property name (usually "value")
+            prop_path = data_path[end_idx+2:] if end_idx+2 < len(data_path) else "value"
+            
+            # Create asset data path
+            asset_data_path = f'key_blocks["{shape_key_name}"].{prop_path}'
+            
+            # Copy driver
+            try:
+                # Remove existing driver if present
+                try:
+                    asset_shape_keys.driver_remove(asset_data_path, driver_info["array_index"])
+                    logger.debug(f"Removed existing driver for {shape_key_name}")
+                except Exception as e:
+                    logger.debug(f"No driver to remove for {shape_key_name}")
+                    
+                # Add new driver
+                fc = asset_shape_keys.driver_add(asset_data_path, driver_info["array_index"])
+                if not fc:
+                    logger.error(f"Failed to add driver for {shape_key_name}")
+                    continue
+                    
+                # Log driver data for debugging
+                logger.debug(f"Driver info: {driver_info['driver']}")
+                
+                # Fill the driver with data
+                drivers.fill_driver(fc.driver, driver_info["driver"])
+                
+                copied_count += 1
+                logger.debug(f"Copied driver for {shape_key_name} from character to asset")
+            except Exception as e:
+                logger.error(f"Failed to copy driver for {shape_key_name}: {str(e)}")
+        
+        logger.info(f"Copied {copied_count} drivers from character to asset {asset_obj.name}")
+                
+    except Exception as e:
+        logger.error(f"Error copying drivers: {str(e)}")
+
+
+def _copy_all_drivers_to_assets():
+    """Copy all drivers from character to all assets"""
+    mc = mm.morpher.core
+    fitter = mm.morpher.fitter
+    
+    # Skip if no fitter or assets
+    if not fitter:
+        logger.debug("No fitter available for driver copy")
+        return
+    
+    assets = fitter.get_assets()
+    if not assets:
+        logger.debug("No assets available for driver copy")
+        return
+        
+    logger.info(f"Copying drivers to {len(assets)} assets")
+    
+    # Copy drivers to each asset
+    for afd in assets:
+        if not afd.obj:
+            logger.debug("Asset has no object")
+            continue
+        _copy_drivers_from_char_to_asset(mc.obj, afd.obj)
+
+
 def _import_expresions(add_assets):
     mc = mm.morpher.core
     fitter = mm.morpher.fitter
@@ -212,6 +338,7 @@ def _import_expresions(add_assets):
         ref_key = sk.reference_key
     basis = utils.verts_to_numpy(ref_key.data)
 
+    # First, create all shape keys on main mesh
     for morph in mc.enum_expressions():
         if bbox is not None:
             morph.data[bb_idx] *= bb_coeffs
@@ -230,14 +357,20 @@ def _import_expresions(add_assets):
         sk.slider_max = morph.max
         sk.data.foreach_set("co", fitted_data.reshape(-1))
 
-        if add_assets:
+    # External system will add drivers to the main mesh at this point
+    # Now only create assets shape keys if needed
+    if add_assets:
+        for morph in mc.enum_expressions():
             for afd in fitter.get_assets():
-                fitted_data = afd.binding.fit(data)
+                fitted_data = afd.binding.fit(morph.data)
                 if ((fitted_data ** 2).sum(1) < 1e-6).all():
                     continue
                 fitted_data += afd.geom.verts
-                sk = get_exp_sk(afd.obj, name)
+                sk = get_exp_sk(afd.obj, morph.name)
                 sk.data.foreach_set("co", fitted_data.reshape(-1))
+        
+        # IMPORTANT: Wait for drivers to be created on the main mesh,
+        # then copy them to assets in the OpFinalize.exec method
 
 
 class OpFinalize(MorpherCheckOperator):
@@ -268,9 +401,17 @@ class OpFinalize(MorpherCheckOperator):
 
         if ui.fin_expressions != "NO":
             _import_expresions(ui.fin_expressions == "CA")
-
+            
+        # Execute the rig creation first
         if not self._do_rig(ui):
             return {"CANCELLED"}
+            
+        # IMPORTANT: At this point, external systems have likely added drivers to the main mesh
+        # So we wait until now to copy drivers from main mesh to assets
+        if ui.fin_expressions == "CA" or ui.fin_copy_drivers:
+            # Copy drivers after all character drivers have been created
+            logger.info("Copying drivers from character to assets")
+            _copy_all_drivers_to_assets()
 
         # Show warning if fin_morph == "AL" and some shapekeys are present?
 
@@ -312,6 +453,11 @@ class UIProps:
             ("CH", "Character", "Import expression shape keys for character only"),
             ("CA", "Character+Assets", "Import expression shape keys for assets if they affect them (breathing for example)"),
         ],
+    )
+    fin_copy_drivers: bpy.props.BoolProperty(
+        name="Copy drivers to assets",
+        description="Copy shape key drivers from character to assets (useful for facial expressions)",
+        default=True,
     )
     fin_rig: bpy.props.BoolProperty(
         name="Rig",
