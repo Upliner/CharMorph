@@ -378,7 +378,7 @@ class OpFinalize(MorpherCheckOperator):
     bl_label = "Finalize"
     bl_description = "Finalize character (add rig, modifiers, cleanup)"
     vg_cleanup: bool
-
+    
     def _do_rig(self, ui):
         if not ui.fin_rig:
             return True
@@ -391,14 +391,13 @@ class OpFinalize(MorpherCheckOperator):
             self.report({"ERROR"}, str(e))
             return False
         return True
-
+    
     def exec(self, _, ui):
         t = utils.Timer()
         mm.morpher.core.ensure()
-
         apply_morphs(ui)
         self.vg_cleanup = ui.fin_vg_cleanup
-
+        
         if ui.fin_expressions != "NO":
             _import_expresions(ui.fin_expressions == "CA")
             
@@ -412,14 +411,35 @@ class OpFinalize(MorpherCheckOperator):
             # Copy drivers after all character drivers have been created
             logger.info("Copying drivers from character to assets")
             _copy_all_drivers_to_assets()
-
-        # Show warning if fin_morph == "AL" and some shapekeys are present?
-
+        
+        # Set all shape keys to zero after finalization, necessary for Rigs without drivers but has expressions
+        obj = mm.morpher.core.obj
+        if obj and obj.data.shape_keys:
+            reset_count = 0
+            for key in obj.data.shape_keys.key_blocks:
+                if key.name.startswith("Exp_"):
+                    key.value = 0
+                    reset_count += 1
+            if reset_count > 0:
+                logger.info(f"Reset {reset_count} expression shape keys to zero")
+        
+        # Reset expression shape keys as well
+        fitter = mm.morpher.fitter
+        if fitter:
+            for afd in fitter.get_assets():
+                if afd.obj and afd.obj.data.shape_keys:
+                    reset_count = 0
+                    for key in afd.obj.data.shape_keys.key_blocks:
+                        if key.name.startswith("Exp_"):
+                            key.value = 0
+                            reset_count += 1
+                    if reset_count > 0:
+                        logger.info(f"Reset {reset_count} expression shape keys to zero for asset {afd.obj.name}")
+        
         _add_modifiers(ui)
         if self.vg_cleanup:
             _do_vg_cleanup()
         mm.recreate_charmorphs()
-
         t.time("total finalize")
         return {"FINISHED"}
 
