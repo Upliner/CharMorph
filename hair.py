@@ -37,7 +37,8 @@ def create_hair_material(name, hair_color):
 def apply_hair_color(mat, hair_color):
     if not mat:
         return
-    mat.use_nodes = True
+    if bpy.app.version < (5, 0, 0):
+        mat.use_nodes = True
     tree = mat.node_tree
     tree.nodes.clear()
     output_node = tree.nodes.new("ShaderNodeOutputMaterial")

@@ -24,7 +24,7 @@
 #
 
 import math, typing
-import bpy, rna_prop_ui  # pylint: disable=import-error
+import bpy  # pylint: disable=import-error
 
 from .lib import rigging, sliding_joints, utils
 from .common import manager as mm

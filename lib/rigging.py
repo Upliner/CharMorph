@@ -44,6 +44,13 @@ def get_joints(obj, bfilter=lambda _: True):
 
 
 def layer_joints(obj, layer):
+    if hasattr(obj.data.bones[0] if obj.data.bones else obj, "collections"):
+        # Blender 4.0+ bone collections: layer is collection index
+        colls = list(obj.data.collections)
+        if isinstance(layer, int) and layer < len(colls):
+            coll = colls[layer]
+            return get_joints(obj, lambda bone: coll in bone.collections)
+        return get_joints(obj, lambda bone: True)
     return get_joints(obj, lambda bone: bone.layers[layer])
 
 

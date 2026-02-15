@@ -26,7 +26,12 @@
 import re, math, logging
 
 import bpy  # pylint: disable=import-error
-from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module
+try:
+    from rna_prop_ui import rna_idprop_ui_create  # pylint: disable=import-error, no-name-in-module
+except ImportError:
+    def rna_idprop_ui_create(bone, prop, *, default=0, min=0, max=0, **_kw):
+        bone[prop] = default
+        bone.id_properties_ui(prop).update(min=min, max=max, default=default)
 
 from . import charlib, utils
 
