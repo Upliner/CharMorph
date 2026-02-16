@@ -384,11 +384,17 @@ class Fitter(hair.HairFitter):
 
     def _fit_new_item(self, asset):
         afd = self._get_asset_data(asset)
+        is_rigid = getattr(afd.conf, 'rigid', False)
+
         if self.children is not None:
             self.children.append(afd)
         asset.parent = self.mcore.obj
 
-        if afd.morph:
+        if is_rigid:
+            asset.data["charmorph_rigid"] = True
+            logger.info("Rigid asset: %s (skipping mesh deformation)", asset.name)
+
+        if afd.morph and not is_rigid:
             name = afd.conf.name
             if not name:
                 name = asset.name
@@ -396,7 +402,7 @@ class Fitter(hair.HairFitter):
 
         ui = bpy.context.window_manager.charmorph_ui
 
-        if ui.fitting_mask == "SEPR" and masking_enabled(asset):
+        if ui.fitting_mask == "SEPR" and masking_enabled(asset) and not is_rigid:
             self.add_mask_from_asset(afd)
 
         if ui.fitting_weights != "NONE" and self.mcore.obj.find_armature():
@@ -408,7 +414,7 @@ class Fitter(hair.HairFitter):
         afd_list = [self._fit_new_item(asset) for asset in assets]
         if bpy.context.window_manager.charmorph_ui.fitting_mask == "COMB":
             for asset in assets:
-                if masking_enabled(asset):
+                if masking_enabled(asset) and not asset.data.get("charmorph_rigid"):
                     self.recalc_comb_mask()
                     break
 
@@ -416,7 +422,8 @@ class Fitter(hair.HairFitter):
             self.morpher.update()
         else:
             for afd in afd_list:
-                self.fit(afd)
+                if not afd.obj.data.get("charmorph_rigid"):
+                    self.fit(afd)
 
         self.transfer_calc = None
 

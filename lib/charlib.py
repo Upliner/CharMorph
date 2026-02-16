@@ -279,6 +279,30 @@ class Asset(DataDir):
         return [Armature(self, "", item) for item in items]
 
     @utils.lazyproperty
+    def rigid(self):
+        return self.config.get("fitting") == "rigid"
+
+    @utils.lazyproperty
+    def category(self):
+        return self.config.get("category", "Other")
+
+    @utils.lazyproperty
+    def tags(self):
+        return self.config.get("tags", [])
+
+    @utils.lazyproperty
+    def material_presets(self):
+        return self.config.get("material_presets", {})
+
+    @utils.lazyproperty
+    def parameters(self):
+        return self.config.get("parameters", {})
+
+    @utils.lazyproperty
+    def visibility_zones(self):
+        return self.config.get("visibility_zones", {})
+
+    @utils.lazyproperty
     def morph(self):
         return morphs.load_noext(self.path("morph"))
 

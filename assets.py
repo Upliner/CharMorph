@@ -258,6 +258,49 @@ class OpFitLibrary(bpy.types.Operator):
         return {"CANCELLED"}
 
 
+def unfit_asset(asset, char_obj=None, apply_transforms=True):
+    """Remove fitting from an asset object. Reusable by wardrobe and legacy panel."""
+    if asset.parent:
+        if apply_transforms:
+            utils.copy_transforms(asset, asset.parent)
+        asset.parent = asset.parent.parent
+        if asset.parent and asset.parent.type == "ARMATURE":
+            if apply_transforms:
+                utils.copy_transforms(asset, asset.parent)
+            asset.parent = asset.parent.parent
+
+    mask = fitting.mask_name(asset)
+    candidates = {asset.parent}
+    if char_obj:
+        candidates.add(char_obj)
+    for char in candidates:
+        if not char or char == asset or 'charmorph_fit_id' in char.data:
+            continue
+        f = get_fitter(char)
+        f.remove_cache(asset)
+        if mask in char.modifiers:
+            char.modifiers.remove(char.modifiers[mask])
+        if mask in char.vertex_groups:
+            char.vertex_groups.remove(char.vertex_groups[mask])
+        f.children = None
+        if "cm_mask_combined" in char.modifiers:
+            f.recalc_comb_mask()
+        if char.data.get("charmorph_asset_morphs"):
+            name = asset.data.get("charmorph_asset")
+            if name:
+                f.mcore.remove_asset_morph(name)
+                f.morpher.update()
+    try:
+        del asset.data['charmorph_fit_id']
+    except KeyError:
+        pass
+
+    if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
+        asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
+
+    mm.last_object = asset
+
+
 class OpUnfit(bpy.types.Operator):
     bl_idname = "charmorph.unfit"
     bl_label = "Unfit"
@@ -268,46 +311,10 @@ class OpUnfit(bpy.types.Operator):
         asset = get_asset_obj(context)
         return context.mode == "OBJECT" and asset and 'charmorph_fit_id' in asset.data
 
-    def execute(self, context):  # pylint: disable=no-self-use
+    def execute(self, context):
         ui = context.window_manager.charmorph_ui
         asset = get_asset_obj(context)
-
-        if asset.parent:
-            if ui.fitting_transforms:
-                utils.copy_transforms(asset, asset.parent)
-            asset.parent = asset.parent.parent
-            if asset.parent and asset.parent.type == "ARMATURE":
-                if ui.fitting_transforms:
-                    utils.copy_transforms(asset, asset.parent) #FIXME: Make transforms sum
-                asset.parent = asset.parent.parent
-
-        mask = fitting.mask_name(asset)
-        for char in {asset.parent, ui.fitting_char}:  # pylint: disable=use-sequence-for-iteration
-            if not char or char == asset or 'charmorph_fit_id' in char.data:
-                continue
-            f = get_fitter(char)
-            f.remove_cache(asset)
-            if mask in char.modifiers:
-                char.modifiers.remove(char.modifiers[mask])
-            if mask in char.vertex_groups:
-                char.vertex_groups.remove(char.vertex_groups[mask])
-            f.children = None
-            if "cm_mask_combined" in char.modifiers:
-                f.recalc_comb_mask()
-            if char.data.get("charmorph_asset_morphs"):
-                name = asset.data.get("charmorph_asset")
-                if name:
-                    f.mcore.remove_asset_morph(name)
-                    f.morpher.update()
-        try:
-            del asset.data['charmorph_fit_id']
-        except KeyError:
-            pass
-
-        if asset.data.shape_keys and "charmorph_fitting" in asset.data.shape_keys.key_blocks:
-            asset.shape_key_remove(asset.data.shape_keys.key_blocks["charmorph_fitting"])
-
-        mm.last_object = asset  # Prevent swithing morpher to asset object
+        unfit_asset(asset, ui.fitting_char, ui.fitting_transforms)
         return {"FINISHED"}
 
 
