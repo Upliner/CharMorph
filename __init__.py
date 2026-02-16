@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "CharMorph",
     "author": "Michael Vigovsky",
-    "version": (0, 3, 6),
+    "version": (0, 11, 0),
     "blender": (3, 3, 0),
     "location": "View3D > Tools > CharMorph",
     "description": "Character creation and morphing, cloth fitting and rigging tools",
@@ -38,7 +38,7 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
-VERSION_ANNEX = ""
+VERSION_ANNEX = " Wardrobe"
 
 owner = object()
 
