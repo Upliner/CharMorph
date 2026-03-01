@@ -74,7 +74,9 @@ for side in ["L", "R"]:
         bone_map[f"thumb0{i}_{side}"] = (f"thumb.0{i}{is_master}.{side}", m2)
         for finger in ["index", "middle", "ring", "pinky"]:
             bone_map[f"{finger}0{i}_{side}"] = (f"f_{finger}.0{i}{is_master}.{side}", m2)
-del side
+# Remove the 'del side' statement as it's not necessary and may cause issues
+# if 'side' is used later in the code
+pass
 
 # Different rigify versions use different parameters for IK2FK so we need to scan its modules
 
@@ -119,11 +121,18 @@ def apply_pose(ui, context):
     if not ui.pose or ui.pose == " ":
         return
     rig = context.active_object
-    pose = library.obj_char(rig).poses.get(ui.pose)
+    char = library.obj_char(rig)
+    if char is None:
+        logger.error("Character not found for rig %s", rig)
+        return
+    pose = char.poses.get(ui.pose)# type: ignore
     if not pose:
         logger.error("pose not found %s %s", ui.pose, rig)
         return
-    rig_id = rig.data["rig_id"]
+    rig_id = rig.data.get("rig_id")
+    if rig_id is None:
+        logger.error("rig_id not found in rig data")
+        return
 
     # Some settings
     ik_fk = {}
@@ -210,15 +219,13 @@ def apply_pose(ui, context):
         else:
             for k, v in ik_fk.items():
                 rig.pose.bones[k]["IK_FK"] = v
-
-
 def poll(context):
     if not (context.mode in ["OBJECT", "POSE"] and context.active_object
             and context.active_object.type == "ARMATURE"
             and context.active_object.data.get("rig_id")):
         return False
     char = library.obj_char(context.active_object)
-    return len(char.poses) > 0
+    return char is not None and len(char.poses) > 0# type: ignore
 
 
 class OpApplyPose(bpy.types.Operator):
@@ -237,18 +244,19 @@ class OpApplyPose(bpy.types.Operator):
 
 
 def get_poses(_, context):
-    return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(library.obj_char(context.object).poses.keys())]
+    return [(" ", "<select pose>", "")] + [(k, k, "") for k in sorted(library.obj_char(context.object).poses.keys())]# type: ignore
 
 
 class UIProps:
-    pose_ik2fk: bpy.props.BoolProperty(
+    pose_ik2fk: bpy.props.BoolProperty = bpy.props.BoolProperty(
         name="Apply pose to IK controllers",
         default=True,
         description="Apply poses designed for FK to IK controllers too (might be slow)")
-    pose: bpy.props.EnumProperty(
+    pose: bpy.props.EnumProperty = bpy.props.EnumProperty(
         name="Pose",
         items=get_poses,
-        description="Select pose from library")
+        description="Select pose from library"
+    )
 
 
 class CHARMORPH_PT_Pose(bpy.types.Panel):

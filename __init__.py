@@ -20,10 +20,12 @@
 
 import logging
 import bpy  # pylint: disable=import-error
+from bpy.types import Operator, PropertyGroup
+from bpy.utils import register_class, unregister_class
 
-from . import addon_updater_ops
-from . import common, library, assets, morphing, randomize, file_io, hair, finalize, rig, rigify, pose, prefs, cmedit
-from .lib import charlib
+from . import common, library, assets, hair, morphing, randomize, file_io, finalize, rig, rigify, pose, prefs, cmedit, toonify
+
+from .lib import charlib, file_preperation, materials
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ bl_info = {
     'tracker_url': 'https://github.com/Upliner/CharMorph/issues',
     "category": "Characters"
 }
+
 VERSION_ANNEX = ""
 
 owner = object()
@@ -85,8 +88,7 @@ def load_handler(_):
 def select_handler(_):
     on_select()
 
-
-classes: list[type] = [None, prefs.CharMorphPrefs, VIEW3D_PT_CharMorph]
+classes: list[type] = [None, VIEW3D_PT_CharMorph]
 
 uiprops = [bpy.types.PropertyGroup]
 
@@ -98,49 +100,67 @@ for module in library, morphing, randomize, file_io, assets, hair, rig, rigify, 
 CharMorphUIProps = type("CharMorphUIProps", tuple(uiprops), {})
 classes[0] = CharMorphUIProps
 
-class_register, class_unregister = bpy.utils.register_classes_factory(classes)
-
+_is_registered = False
 
 def register():
-    # addon updater code and configurations
-    # in case of broken version, try to register the updater first
-    # so that users can revert back to a working version
-    addon_updater_ops.register(bl_info)
-    logger.debug("Charmorph register")
-    charlib.library.load()
-    class_register()
-    common.register()
-    bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
-    subscribe_select_obj()
+    global _is_registered
+    if not _is_registered:
+        for cls in classes:
+            try:
+                bpy.utils.register_class(cls)
+            except ValueError as e:
+                print(f"Skipping registration of {cls.__name__}: {str(e)}")
+        
+        prefs.register()
+        logger.debug("Charmorph register")
+        charlib.library.load()
+        common.register()
+        morphing.register()
+        finalize.register()
+        assets.register()
+        hair.register()
+        cmedit.register()
+        library.register()
+        
+        bpy.types.WindowManager.charmorph_ui = bpy.props.PointerProperty(type=CharMorphUIProps, options={"SKIP_SAVE"})
+        subscribe_select_obj()
 
-    bpy.app.handlers.load_post.append(load_handler)
-    bpy.app.handlers.undo_post.append(undoredo_post)
-    bpy.app.handlers.redo_post.append(undoredo_post)
-    bpy.app.handlers.depsgraph_update_post.append(select_handler)
-
-    cmedit.register()
-
+        bpy.app.handlers.load_post.append(load_handler)
+        bpy.app.handlers.undo_post.append(undoredo_post)
+        bpy.app.handlers.redo_post.append(undoredo_post)
+        bpy.app.handlers.depsgraph_update_post.append(select_handler)
+        _is_registered = True
 
 def unregister():
-    # addon updater unregister
-    addon_updater_ops.unregister()
-    logger.debug("Charmorph unregister")
-    cmedit.unregister()
+    global _is_registered
+    if _is_registered:
+        for cls in reversed(classes):
+            try:
+                bpy.utils.unregister_class(cls)
+            except RuntimeError as e:
+                print(f"Skipping unregistration of {cls.__name__}: {str(e)}")
+        
+        prefs.unregister()
+        library.unregister()
+        cmedit.unregister()
+        hair.unregister()
+        assets.unregister()
+        finalize.unregister()
+        morphing.unregister()
+        common.unregister()
+        
+        for hlist in bpy.app.handlers:
+            if not isinstance(hlist, list):
+                continue
+            for handler in hlist:
+                if handler in (load_handler, select_handler):
+                    hlist.remove(handler)
+                    break
 
-    for hlist in bpy.app.handlers:
-        if not isinstance(hlist, list):
-            continue
-        for handler in hlist:
-            if handler in (load_handler, select_handler):
-                hlist.remove(handler)
-                break
-
-    bpy.msgbus.clear_by_owner(owner)
-    del bpy.types.WindowManager.charmorph_ui
-    common.manager.del_charmorphs()
-
-    common.unregister()
-    class_unregister()
+        bpy.msgbus.clear_by_owner(owner)
+        del bpy.types.WindowManager.charmorph_ui
+        common.manager.del_charmorphs()
+        _is_registered = False
 
 
 if __name__ == "__main__":

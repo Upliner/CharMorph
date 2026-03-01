@@ -1,31 +1,39 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 3
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
-#
-# Copyright (C) 2020-2022 Michael Vigovsky
-
 import os, json, collections, logging, traceback, numpy
 
 import bpy  # pylint: disable=import-error
+import shutil
+import numpy as np
 
 from . import morphs, utils
 
 logger = logging.getLogger(__name__)
 
+# Global variables
+global_data_dir = None
+library = None
+
+# Script directory and config file path
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
+
+def save_directory_path(path):
+    config = {"data_dir": path}
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as config_file:
+        json.dump(config, config_file)
+
+def load_directory_path():
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as config_file:
+            config = json.load(config_file)
+            return config.get("data_dir")
+    else:
+        default_path = os.path.realpath(os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)), "data"))
+        os.makedirs(default_path, exist_ok=True)
+        with open(CONFIG_FILE, "w") as config_file:
+            json.dump({"data_dir": default_path}, config_file)
+            return default_path
 
 def load_data_dir(path, target_ext):
     result = {}
@@ -36,7 +44,6 @@ def load_data_dir(path, target_ext):
         if ext == target_ext and os.path.isfile(os.path.join(path, file)):
             result[name] = (os.path.join(path, file), name)
     return result
-
 
 def load_json_dir(path):
     result = {}
@@ -49,12 +56,13 @@ def load_json_dir(path):
             result[name] = utils.parse_file(full_path, json.load, {})
     return result
 
-
 _empty_dict = object()
-
 
 class DataDir:
     dirpath: str = ""
+
+    if dirpath == "":
+        dirpath = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "data")
 
     def __init__(self, dirpath: str):
         self.dirpath = dirpath
@@ -75,11 +83,31 @@ class DataDir:
         file = self.path(file)
         if not os.path.isfile(file):
             return None
-        result = numpy.load(file)
-        if readonly and isinstance(result, numpy.ndarray):
+        result = numpy.load(file) # type: ignore
+        if readonly and isinstance(result, numpy.ndarray): # type: ignore
             result.flags.writeable = False
         return result
 
+    def migrate_data(self, new_directory):
+        if not os.path.exists(new_directory):
+            raise ValueError(f"The directory {new_directory} does not exist")
+
+        for filename in os.listdir(self.dirpath):
+            source_path = os.path.join(self.dirpath, filename)
+            destination_path = os.path.join(new_directory, filename)
+
+            if os.path.isfile(source_path):
+                shutil.move(source_path, destination_path)
+            elif os.path.isdir(source_path):
+                shutil.move(source_path, destination_path)
+
+        # Remove the original directory if it's empty
+        if not os.listdir(self.dirpath):
+            os.rmdir(self.dirpath)
+
+        # Update the directory path and save it
+        self.dirpath = new_directory
+        save_directory_path(self.dirpath)
 
 class Character(DataDir):
     description = ""
@@ -228,10 +256,8 @@ class Character(DataDir):
     def _parse_armature_dict(self, data):
         return {k: Armature(self, k, v) for k, v in data.items()}
 
-
 AssetFold = collections.namedtuple("AssetFold", ("verts", "faces", "pos", "idx", "weights", "wmorph"))
 AssetJoints = collections.namedtuple("AssetJoints", ("verts", "file"))
-
 
 class Asset(DataDir):
     def __init__(self, name, file, path=None):
@@ -282,7 +308,6 @@ class Asset(DataDir):
     def morph(self):
         return morphs.load_noext(self.path("morph"))
 
-
 def get_asset(asset_dir: str, name: str):
     path = os.path.join(asset_dir, name)
     if os.path.isdir(path):
@@ -293,7 +318,6 @@ def get_asset(asset_dir: str, name: str):
     elif name.endswith(".blend"):
         return Asset(name[:-6], path)
     return None
-
 
 def load_assets_dir(path: str):
     result: dict[str, Asset] = {}
@@ -314,10 +338,6 @@ def load_assets_dir(path: str):
                     asset.__dict__.update(yaml)
     return result
 
-
-# allows to mark some properties of the class as lazy yaml
-# if property value is dict or some other value, leave it as is
-# if property is a string, treat it as yaml file name, but don't load the yaml file until it's needed
 def _lazy_yaml_props(*prop_lst):
     def modify_class(cls):
         orig_init = cls.__init__
@@ -339,12 +359,10 @@ def _lazy_yaml_props(*prop_lst):
 
     return modify_class
 
-
 def parse_joints(joints, d: DataDir):
     if isinstance(joints, dict):
         joints = (joints,)
     return [AssetJoints(item["verts"], d.path(item["file"])) for item in joints]
-
 
 @_lazy_yaml_props("bones", "mixin_bones")
 class Armature:
@@ -405,9 +423,7 @@ class Armature:
     def weights_npz(self):
         return self.parent.get_np(self.weights)
 
-
 empty_char = Character("", DataDir(""))
-
 
 class Library(DataDir):
     chars: dict[str, Character]
@@ -438,7 +454,11 @@ class Library(DataDir):
         if not os.path.isdir(self.dirpath):
             logger.error("Charmorph data is not found at %s", self.dirpath)
         self.chars.clear()
-        self.hair_colors = self.get_yaml("hair_colors.yaml")
+        hair_colors = self.get_yaml("hair_colors.yaml")
+        if isinstance(hair_colors, dict):
+            self.hair_colors = {str(k): v for k, v in hair_colors.items() if isinstance(v, dict)}
+        else:
+            self.hair_colors = {}
         aliases = self.get_yaml("characters/aliases.yaml")
         self.char_aliases.clear()
         for k, v in aliases.items():
@@ -468,9 +488,13 @@ class Library(DataDir):
 
         t.time("Library load")
 
+# Load the directory path from the configuration file at startup
+stored_dirpath = load_directory_path()
+if stored_dirpath is None:
+    stored_dirpath = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data"))  # Default path if no config is found
 
-library = Library(os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data")))
-
+global_data_dir = DataDir(stored_dirpath)  # Initialize with the stored or default path
+library = Library(global_data_dir.dirpath)  # Initialize Library with the loaded path
 
 def get_basis(data, mcore=None, use_char=True):
     if isinstance(data, bpy.types.Object):
@@ -487,13 +511,20 @@ def get_basis(data, mcore=None, use_char=True):
         return get_basis(alt_topo, None, False)
 
     char = None
-    if use_char:
+    if use_char and library is not None:
         char = library.char_by_name(data.get("charmorph_template"))
 
     if char:
         if not alt_topo:
             return char.np_basis
         if isinstance(alt_topo, str):
-            return library.char_by_name(data.get("charmorph_template")).get_np("morphs/alt_topo/" + alt_topo)
+            return char.get_np("morphs/alt_topo/" + alt_topo)
 
     return utils.verts_to_numpy(data.vertices)
+
+
+def invoke(self, context, event):
+    context.window_manager.fileselect_add(self)
+    return {'RUNNING_MODAL'}
+
+print(load_directory_path())

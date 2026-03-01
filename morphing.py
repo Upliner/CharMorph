@@ -47,7 +47,7 @@ class OpResetChar(bpy.types.Operator):
             if new_morpher.error:
                 self.report({'ERROR'}, new_morpher.error)
             else:
-                self.report({'ERROR'}, "Error - no morphs found")
+                self.report({'ERROR'}, "Still no morphs found")
             del mcore.obj.data["cm_morpher"]
             return {"CANCELLED"}
         manager.update_morpher(new_morpher)
@@ -57,7 +57,7 @@ class OpResetChar(bpy.types.Operator):
 class OpProceedSlowMorphing(bpy.types.Operator):
     bl_idname = "charmorph.proceed_slow"
     bl_label = "Proceed"
-    bl_description = "Proceed to slow morphing"
+    bl_description = "Proceed to morphing desite it will be very slow"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -119,7 +119,7 @@ class UIProps:
     relative_meta: bpy.props.BoolProperty(
         name="Relative meta props",
         description="Adjust meta props relatively",
-        default=True)
+        default=True) # type: ignore
     meta_materials: bpy.props.EnumProperty(
         name="Materials",
         description="How changing meta properties will affect materials",
@@ -127,33 +127,33 @@ class UIProps:
         items=[
             ("N", "None", "Don't change materials"),
             ("A", "Absolute", "Change materials according to absolute value of meta property"),
-            ("R", "Relative", "Change materials according to relative value of meta property")])
+            ("R", "Relative", "Change materials according to relative value of meta property")]) # type: ignore
     morph_filter: bpy.props.StringProperty(
         name="Filter",
-        description="Show only morphs matching this name",
+        description="Show only morphs mathing this name",
         options={"TEXTEDIT_UPDATE"},
-    )
+    ) # type: ignore
     morph_clamp: bpy.props.BoolProperty(
         name="Clamp props",
         description="Clamp properties to (-1..1) so they remain in realistic range",
         get=lambda _: manager.morpher.core.clamp,
         set=lambda _, value: manager.morpher.set_clamp(value),
-        update=lambda _ui, _: manager.morpher.update())
+        update=lambda _ui, _: manager.morpher.update()) # type: ignore
     morph_l1: bpy.props.EnumProperty(
         name="Type",
         description="Choose character type",
         items=lambda _ui, _: manager.morpher.L1_list,
         get=lambda _: manager.morpher.L1_idx,
         set=lambda _, value: manager.morpher.set_L1_by_idx(value),
-        options={"SKIP_SAVE"})
+        options={"SKIP_SAVE"}) # type: ignore
     morph_category: bpy.props.EnumProperty(
         name="Category",
         items=lambda _ui, _:
             [("<None>", "<None>", "Hide all morphs"), ("<All>", "<All>", "Show all morphs")]
             + [(name, name, "") for name in manager.morpher.categories],
-        description="Select morphing categories to show")
+        description="Select morphing categories to show")# type: ignore
     morph_preset: bpy.props.EnumProperty(
-        name="Presets",
+        name="Presets",# type: ignore
         items=lambda _ui, _: manager.morpher.presets_list,
         description="Choose morphing preset",
         update=lambda ui, _: manager.morpher.apply_morph_data(
@@ -161,11 +161,11 @@ class UIProps:
     morph_preset_mix: bpy.props.BoolProperty(
         name="Mix with current",
         description="Mix selected preset with current morphs",
-        default=False)
+        default=False)# type: ignore
     alt_topo_build_type: bpy.props.EnumProperty(
         name="Alt topo type",
         description="Type of alt topo to build",
-        default="P",
+        default="P",# type: ignore
         items=[
             ("K", "Shapekey", "Store alt topo basis in shapekey"),
             ("P", "Separate mesh", "Store alt topo basis in separate mesh")])
@@ -183,7 +183,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         if context.mode != "OBJECT":
             if manager.morpher and not manager.morpher.error:
                 manager.last_object = None
-                manager.morpher.error = "Please re-select character"
+                manager.morpher.error = "Please re-select character"# type: ignore
             return False
         return manager.morpher
 
@@ -203,13 +203,13 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
             return
 
         if mm.error:
-            self.layout.label(text="Morphing error:")
+            self.layout.label(text="Morphing is impossible:")
             col = self.layout.column()
             for line in mm.error.split("\n"):
                 col.label(text=line)
             if m.alt_topo_buildable:
                 col = self.layout.column()
-                col.label(text="It seems there have been changes to object's topology")
+                col.label(text="It seems you've changed object's topology")
                 col.label(text="You can try to build alt topo")
                 col.label(text="to continue morphing")
                 self.layout.operator("charmorph.build_alt_topo")
@@ -246,7 +246,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         col.separator()
 
         morphs = context.window_manager.charmorphs
-        meta_morphs = m.char.morphs_meta.keys()
+        meta_morphs = m.char.morphs_meta.keys()# type: ignore
         if meta_morphs:
             self.layout.label(text="Meta morphs")
             col = self.layout.column(align=True)
@@ -261,7 +261,7 @@ class CHARMORPH_PT_Morphing(bpy.types.Panel):
         self.layout.separator()
 
         if mm.categories:
-            self.layout.label(text="Sub Morphs:")
+            self.layout.label(text="MORE MORPHS HERE:")
             self.layout.prop(ui, "morph_category")
             if ui.morph_category == "<None>":
                 return
@@ -291,7 +291,24 @@ class CHARMORPH_PT_Materials(bpy.types.Panel):
 
     def draw(self, _):
         for _, prop in manager.morpher.materials.get_node_outputs():
-            self.layout.prop(prop, "default_value", text=prop.node.label)
+            self.layout.prop(prop, "default_value", text=prop.node.label)# type: ignore
 
 
 classes = [OpResetChar, OpBuildAltTopo, OpProceedSlowMorphing, CHARMORPH_PT_Morphing, CHARMORPH_PT_Materials]
+
+def register():
+    for cls in classes:
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError as e:
+            print(f"Skipping registration of {cls.__name__}: {str(e)}")
+
+def unregister():
+    for cls in reversed(classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError as e:
+            print(f"Skipping unregistration of {cls.__name__}: {str(e)}")
+
+if __name__ == "__main__":
+    register()

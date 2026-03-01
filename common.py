@@ -98,8 +98,8 @@ class Manager:
     def _get_old_storage(self, obj):
         for m in (self.morpher, self.old_morpher):
             if m and hasattr(m.core, "storage") and m.core.char is charlib.library.obj_char(obj):
-                if m.core.storage:
-                    return m.core.storage
+                if m.core.storage: # type: ignore
+                    return m.core.storage # type: ignore
         return None
 
     def _get_morpher(self, obj):
@@ -133,7 +133,7 @@ class Manager:
                 logger.debug("Resetting morpher because of undo/redo")
                 force_recreate = True
             elif not self.morpher.check_obj():
-                logger.warning("Current morphing object is invalid, resetting...")
+                logger.warning("Current morphing object is bad, resetting...")
                 force_recreate = True
             if force_recreate:
                 self.old_morpher = self.morpher
@@ -217,23 +217,14 @@ class OpMorphCharacter(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-def register():
-    if undo_push and _get_undo_mode() == "A":
-        logger.debug("Advanced undo mode")
-        OpMorphCharacter.bl_options = set()
-    else:
-        logger.debug("Simple undo mode")
-        OpMorphCharacter.bl_options = {"UNDO"}
-    bpy.utils.register_class(OpMorphCharacter)
+classes = [
+    OpMorphCharacter,
+]
 
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
 def unregister():
-    bpy.utils.unregister_class(OpMorphCharacter)
-
-
-def update_undo_mode():
-    unregister()
-    register()
-
-
-prefs.undo_update_hook = update_undo_mode
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)

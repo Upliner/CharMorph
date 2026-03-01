@@ -1,0 +1,10 @@
+title: Example (CCO)
+author: John Smith
+additional authors: Jane Doe
+License: CCO
+
+char_obj: ExampleHuman
+basis: Default
+
+custom_morph_order: true
+recurse_materials: true

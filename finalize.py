@@ -301,9 +301,9 @@ class UIProps:
         items=[
             ("NO", "No", "No subdivision surface"),
             ("RO", "Render only", "Use subdivision only for rendering"),
-            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow)"),
+            ("RV", "Render+Viewport", "Use subdivision for rendering and viewport (may be slow on old hardware)"),
         ],
-        description="Use subdivision surface for smoother appearance")
+        description="Use subdivision surface for smoother look")
     fin_expressions: bpy.props.EnumProperty(
         name="Expressions",
         description="Import or correct facial and other expression shape keys",
@@ -389,3 +389,20 @@ class CHARMORPH_PT_Finalize(bpy.types.Panel):
 
 
 classes = [OpFinalize, CHARMORPH_PT_Finalize]
+
+def register():
+    for cls in classes:
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError as e:
+            print(f"Skipping registration of {cls.__name__}: {str(e)}")
+
+def unregister():
+    for cls in reversed(classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError as e:
+            print(f"Skipping unregistration of {cls.__name__}: {str(e)}")
+
+if __name__ == "__main__":
+    register()

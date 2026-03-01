@@ -194,3 +194,4 @@ class HairFitter(fit_calc.MorpherFitCalculator):
         for i in range(len(obj.particle_systems)):
             has_fit |= self.fit_hair(obj, i)
         return has_fit
+

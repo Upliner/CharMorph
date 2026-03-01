@@ -1,0 +1,3 @@
+fake_bpy_module_latest==20240807
+numpy==2.1.0
+PyYAML==6.0.1

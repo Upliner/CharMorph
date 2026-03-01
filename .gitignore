@@ -1,12 +1,4 @@
-__pycache__
-.idea
-.vscode
-.mypy_cache
-backups
-demo
-work
-dev
-rig
-tmp
-___test.py
-charmorph_updater/CharMorph_updater_status.json
+
+/__pycache__
+/lib/__pycache__
+*.pyc
