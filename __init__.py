@@ -106,7 +106,7 @@ _MODULES = [
     finalize, 
     pose,
     cmedit,
-    lib,
+    #lib,
     prefs,
     common
     #toonify

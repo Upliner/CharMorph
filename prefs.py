@@ -128,32 +128,32 @@ class CharMorphPrefs(AddonPreferences):
     character_list: CollectionProperty(type=CharacterItem)
 
     # add-on updater preferences
-    auto_check_update = bpy.props.BoolProperty(
+    auto_check_update: bpy.props.BoolProperty(
         name="Auto-check for Update",
         description="If enabled, auto-check for updates using an interval",
         default=False,
     )
-    updater_interval_months = bpy.props.IntProperty(
+    updater_interval_months: bpy.props.IntProperty(
         name='Months',
         description="Number of months between checking for updates",
         default=0,
         min=0
     )
-    updater_interval_days = bpy.props.IntProperty(
+    updater_interval_days: bpy.props.IntProperty(
         name='Days',
         description="Number of days between checking for updates",
         default=7,
         min=0,
         max=31
     )
-    updater_interval_hours = bpy.props.IntProperty(
+    updater_interval_hours: bpy.props.IntProperty(
         name='Hours',
         description="Number of hours between checking for updates",
         default=0,
         min=0,
         max=23
     )
-    updater_interval_minutes = bpy.props.IntProperty(
+    updater_interval_minutes: bpy.props.IntProperty(
         name='Minutes',
         description="Number of minutes between checking for updates",
         default=0,
@@ -585,12 +585,20 @@ def get_prefs():
 
 
 # Apply annotations to remove Blender 2.8+ warnings, no effect on 2.7
-annotated_classes = [addon_updater_ops.make_annotations(cls) for cls in [
+# annotated_classes = [addon_updater_ops.make_annotations(cls) for cls in [
+#     CharacterItem,
+#     CharMorphPrefs,
+#     CHARMORPH_OT_confirm_migration,
+#     CHARMORPH_OT_download_character,
+#     CHARMORPH_OT_delete_character]
+# ]
+# Cause issue in Blender starting 5.0.1
+annotated_classes = [
     CharacterItem,
     CharMorphPrefs,
     CHARMORPH_OT_confirm_migration,
     CHARMORPH_OT_download_character,
-    CHARMORPH_OT_delete_character]
+    CHARMORPH_OT_delete_character,
 ]
 
 
