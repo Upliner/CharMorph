@@ -166,7 +166,7 @@ def apply_pose(ui, context):
         spine_fk2.rotation_quaternion @= q
 
     if hasattr(context, "evaluated_depsgraph_get"):
-        # Calculate lowest point for sitting and similiar poses
+        # Calculate lowest point for sitting and similar poses
         erig = rig.evaluated_get(context.evaluated_depsgraph_get())
         torso = rig.pose.bones.get("torso")
         min_z = torso.head[2]
