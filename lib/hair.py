@@ -133,7 +133,7 @@ class HairFitter(fit_calc.MorpherFitCalculator):
             return None
 
         hd = HairData()
-        hd.cnts = z["cnt"]
+        hd.cnts = z["cnt"].astype(numpy.int64)
         hd.data = z["data"].astype(dtype=numpy.float64, casting="same_kind")
 
         if len(hd.cnts) != len(psys.particles):
