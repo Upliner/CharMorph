@@ -233,11 +233,11 @@ def _import_expresions(add_assets):
 
         if add_assets:
             for afd in fitter.get_assets():
-                fitted_data = afd.binding.fit(data)
+                fitted_data = afd.binding.fit(morph.data)
                 if ((fitted_data ** 2).sum(1) < 1e-6).all():
                     continue
                 fitted_data += afd.geom.verts
-                sk = get_exp_sk(afd.obj, name)
+                sk = get_exp_sk(afd.obj, morph.name)
                 sk.data.foreach_set("co", fitted_data.reshape(-1))
 
 

@@ -132,7 +132,21 @@ def name_to_obj(name: str):
     parts = name.split(".")
     result = cm_to_id(parts[0])
     for k in parts[1:]:
-        result = getattr(result, k)
+        try:
+            result = getattr(result, k)
+        except AttributeError:
+            # drivers.json may reference asset/child objects (e.g.
+            # "char.Lacrimal_Caruncle.data.shape_keys") which are not real
+            # python attributes. Resolve them against child objects first,
+            # then the whole scene, before giving up.
+            child = None
+            if isinstance(result, bpy.types.Object):
+                child = next((c for c in result.children if c.name == k), None)
+            if child is None:
+                child = bpy.data.objects.get(k)
+            if child is None:
+                raise
+            result = child
     return result
 
 
